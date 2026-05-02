@@ -1,5 +1,6 @@
 from fastapi import FastAPI, Request, Form, Body
 from fastapi.responses import HTMLResponse, StreamingResponse
+from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 import os
@@ -10,21 +11,7 @@ from pathlib import Path
 import torch
 from typing import Optional
 
-# 猴子补丁：修改hf_hub_download函数，使其返回本地文件路径
-from huggingface_hub import file_download
-original_hf_hub_download = file_download.hf_hub_download
-
-def local_hf_hub_download(repo_id, filename, **kwargs):
-    # 直接返回本地文件路径
-    file_path = Path(repo_id) / filename
-    if file_path.exists():
-        return str(file_path)
-    else:
-        raise FileNotFoundError(f"File not found: {file_path}")
-
-file_download.hf_hub_download = local_hf_hub_download
-
-# 现在导入kokoro
+# 导入kokoro
 from kokoro import KModel, KPipeline
 
 # 获取项目根目录
@@ -59,14 +46,29 @@ for path in potential_paths:
     print(f"{path}: {'存在' if path.exists() else '不存在'}", flush=True)
 print(f"最终使用的模型路径: {SHARED_MODELS_DIR}", flush=True)
 
-# 猴子补丁：修改KModel.MODEL_NAMES字典，添加本地模型路径
-KModel.MODEL_NAMES[str(SHARED_MODELS_DIR)] = 'kokoro-v1_1-zh.pth'
+# 使用环境变量或默认的模型目录
+MODEL_DIR = os.environ.get('KOKORO_MODEL_DIR', str(SHARED_MODELS_DIR))
+
+# 使用本地模型目录（无需 HuggingFace Hub 下载）
+KModel.MODEL_NAMES[MODEL_DIR] = 'kokoro-v1_1-zh.pth'
 
 # 设置CPU优化
 torch.set_num_threads(os.cpu_count())
-torch.set_num_interop_threads(os.cpu_count())
+try:
+    torch.set_num_interop_threads(os.cpu_count())
+except RuntimeError:
+    pass  # already set
 
 app = FastAPI()
+
+# 添加 CORS 中间件
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 # 设置静态文件目录和模板目录
 app.mount("/static", StaticFiles(directory="app/static"), name="static")
