@@ -2,22 +2,25 @@ FROM python:3.10-slim
 
 WORKDIR /app
 
-# 创建必要的目录
-RUN mkdir -p app models app/static app/templates
+# 安装系统依赖
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    libsndfile1 \
+    && rm -rf /var/lib/apt/lists/*
 
-# 复制应用文件（从构建上下文根目录）
-COPY tts-project-cpu/app/ app/
-COPY tts-project-cpu/requirements.txt .
-
-# 复制models目录
-COPY models/ models/
-
-# 先安装纯CPU版本的PyTorch
+# 先安装 CPU 版 PyTorch
 RUN pip install --no-cache-dir torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cpu
 
-# 然后安装其他依赖
-RUN pip install --no-cache-dir -r requirements.txt
+# 复制项目文件
+COPY pyproject.toml README.md ./
+COPY src/ src/
+COPY models/ models/
+COPY tests/ tests/
+
+# 安装项目 + 测试依赖
+RUN pip install --no-cache-dir -e ".[dev]"
+RUN pip install --no-cache-dir httpx pytest-asyncio starlette
 
 EXPOSE 8000
 
-CMD ["python", "app/main.py"]
+# 默认运行测试
+CMD ["python", "-m", "pytest", "tests/test_docker_integration.py", "-v", "--tb=short"]
