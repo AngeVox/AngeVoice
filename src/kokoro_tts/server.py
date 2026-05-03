@@ -21,7 +21,7 @@ def create_app(config: Optional[TTSConfig] = None, engine: Optional[TTSEngine] =
 
     可传入自定义 config 和 engine，用于嵌入场景。
     """
-    from fastapi import FastAPI, Request, HTTPException, Depends
+    from fastapi import FastAPI, Request, HTTPException, Depends, WebSocket
     from fastapi.middleware.cors import CORSMiddleware
     from fastapi.responses import HTMLResponse, StreamingResponse
     from pydantic import BaseModel, ConfigDict, Field
@@ -164,7 +164,7 @@ def create_app(config: Optional[TTSConfig] = None, engine: Optional[TTSEngine] =
     # ── WebSocket 流式合成 ──
 
     @app.websocket("/ws/v1/tts")
-    async def ws_tts(websocket):
+    async def ws_tts(websocket: WebSocket):
         await websocket.accept()
         try:
             msg = await websocket.receive_json()
