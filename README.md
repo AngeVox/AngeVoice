@@ -1,27 +1,27 @@
 # Kokoro TTS 中文语音合成
 
-> 基于 [Kokoro v1.1](https://huggingface.co/hexgrad/Kokoro-82M) 的轻量级中文 TTS
+> 基于 [Kokoro v1.1](https://huggingface.co/hexgrad/Kokoro-82M) 的轻量级中文 TTS，支持 HTTP API + WebSocket 流式合成
+
+[![Python 3.10+](https://img.shields.io/badge/python-3.10+-blue.svg)](https://www.python.org/downloads/)
+[![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
 
 ## ✨ 特性
 
 - 🎯 **中英双语** — 自动语言检测，混合文本无缝合成
 - 🖥️ **CPU/GPU 自适应** — 自动检测 CUDA，无 GPU 也能跑
 - 🔌 **OpenAI 兼容 API** — 直接替代 OpenAI TTS 接口
+- ⚡ **WebSocket 流式合成** — 逐段实时播放，低延迟体验
 - 📦 **pip 可安装** — `pip install -e .` 即可使用
 - 🐳 **Docker 一键部署** — 支持 CPU 和 GPU 两种镜像
 - 🎨 **12+ 音色** — 中文 10 个 + 英文 2 个
-- ⚡ **WebSocket 流式合成** — 逐段实时播放，低延迟体验
 
 ## 🚀 快速开始
 
 ### 方式一：pip 安装
 
 ```bash
-# 克隆项目
 git clone https://github.com/ang77712829/kokoro-tts-zh.git
 cd kokoro-tts-zh
-
-# 安装（需要先安装 Kokoro 依赖）
 pip install -e .
 
 # 启动服务
@@ -35,12 +35,14 @@ kokoro-tts synth "你好世界" -o hello.wav -v zm_010
 
 ```bash
 # CPU 版本
-docker build -f Dockerfile.cpu -t kokoro-tts:cpu .
-docker run -d -p 8000:8000 -v $(pwd)/models:/app/models kokoro-tts:cpu
+cd docker/cpu
+docker-compose up -d
+# 服务运行在 http://localhost:8100
 
 # GPU 版本
-docker build -f Dockerfile.gpu -t kokoro-tts:gpu .
-docker run -d --gpus all -p 8000:8000 -v $(pwd)/models:/app/models kokoro-tts:gpu
+cd docker/gpu
+docker-compose up -d
+# 服务运行在 http://localhost:8101
 ```
 
 ### 方式三：直接运行
@@ -88,7 +90,7 @@ ws.onopen = () => {
     text: "你好世界，这是一段流式合成的语音。",
     voice: "zm_010",
     speed: 1.0,
-    format: "pcm_s16le"
+    format: "pcm_s16le"  // 或 "wav"
   }));
 };
 ws.onmessage = (e) => {
@@ -100,11 +102,14 @@ ws.onmessage = (e) => {
 };
 ```
 
-消息协议：
-- `started` → 包含段数和采样率
-- `audio` → base64 PCM/WAV 音频数据
-- `done` → 合成完成
-- `error` → 错误信息
+**消息协议：**
+
+| 类型 | 说明 | 字段 |
+|------|------|------|
+| `started` | 合成开始 | `segments`（段数）, `sample_rate` |
+| `audio` | 音频数据 | `index`, `data`（base64）, `format` |
+| `done` | 合成完成 | `total_segments` |
+| `error` | 错误 | `message` |
 
 ### 健康检查
 
@@ -114,7 +119,14 @@ curl http://localhost:8000/health
 
 ## 🎨 可用音色
 
-运行 `kokoro-tts voices` 查看完整音色列表。中文音色前缀 `zm_`，英文 `af_`。
+运行 `kokoro-tts voices` 查看完整音色列表。
+
+| 前缀 | 语言 | 示例 |
+|------|------|------|
+| `zm_` | 中文 | `zm_010` |
+| `zf_` | 中文 | `zf_001` ~ `zf_004` |
+| `af_` | 英文 | `af_maple`, `af_sol` |
+| `bf_` | 英文 | `bf_vale` |
 
 ## 📁 项目结构
 
@@ -128,11 +140,13 @@ kokoro-tts-zh/
 │   ├── cli.py            # 命令行工具
 │   └── templates/        # Web UI
 ├── tests/                # 测试
+├── docker/               # Docker 配置
+│   ├── cpu/              # CPU 版本
+│   └── gpu/              # GPU 版本
+├── models/               # 模型文件（Git LFS）
 ├── tts-project-cpu/      # 旧版 CPU 入口（兼容）
 ├── tts-project-gpu/      # 旧版 GPU 入口（兼容）
-├── run-tts.py            # 旧版直接运行入口（兼容）
 ├── pyproject.toml        # 包配置
-├── Dockerfile.new        # 统一 Dockerfile
 └── README.md
 ```
 
@@ -147,6 +161,7 @@ kokoro-tts-zh/
 | `KOKORO_PORT` | `8000` | 端口 |
 | `KOKORO_DEVICE` | `auto` | 设备 (auto/cpu/cuda) |
 | `KOKORO_API_KEY` | - | API Key（设置后需认证） |
+| `KOKORO_CORS_ORIGINS` | `http://localhost:8000` | CORS 允许来源（逗号分隔） |
 
 ## 作为库使用
 
@@ -165,9 +180,12 @@ engine.synthesize_file("你好世界", output_path="output.wav")
 # 流式合成（逐段 yield）
 for chunk in engine.synthesize_stream("你好世界", voice="zm_010"):
     if chunk["type"] == "audio":
-        # chunk["data"] 是 base64 编码的 PCM 音频
-        process_audio(chunk["data"])
+        process_audio(chunk["data"])  # base64 PCM
 ```
+
+## 📋 更新日志
+
+详见 [CHANGELOG.md](CHANGELOG.md)
 
 ## 🙏 致谢
 
