@@ -17,6 +17,9 @@ COPY src/ src/
 # 安装项目
 RUN python3 -m pip install --no-cache-dir .
 
+COPY docker/entrypoint.sh /entrypoint.sh
+RUN chmod +x /entrypoint.sh
+
 EXPOSE 8000
 
-CMD ["python3", "-c", "from kokoro_tts.server import run_server; run_server()"]
+ENTRYPOINT ["/entrypoint.sh"]
