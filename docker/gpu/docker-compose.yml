@@ -1,5 +1,9 @@
+name: angevoice-gpu
+
 services:
-  tts-gpu:
+  angevoice-gpu:
+    image: angevoice/gpu:latest
+    container_name: angevoice-gpu
     build:
       context: ../..
       dockerfile: docker/gpu/Dockerfile
