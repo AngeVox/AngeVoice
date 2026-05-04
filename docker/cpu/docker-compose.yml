@@ -1,5 +1,9 @@
+name: angevoice-cpu
+
 services:
-  tts-cpu:
+  angevoice-cpu:
+    image: angevoice/cpu:latest
+    container_name: angevoice-cpu
     build:
       context: ../..
       dockerfile: docker/cpu/Dockerfile
