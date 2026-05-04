@@ -106,6 +106,14 @@ class TTSConfig:
     metrics_enabled: bool = True
     request_timeout_seconds: float = 300.0
 
+    # 批量/管理能力
+    batch_enabled: bool = True
+    batch_max_items: int = 20
+    admin_enabled: bool = False
+    voice_upload_enabled: bool = False
+    mp3_enabled: bool = False
+    mp3_bitrate: str = "192k"
+
     @property
     def model_path(self) -> str:
         return str(self.model_dir)
@@ -208,6 +216,20 @@ def load_config(
             1.0,
             _get_env_float("KOKORO_REQUEST_TIMEOUT_SECONDS", config.request_timeout_seconds),
         )
+    if os.environ.get("KOKORO_BATCH_ENABLED"):
+        config.batch_enabled = _get_env_bool("KOKORO_BATCH_ENABLED", config.batch_enabled)
+    if os.environ.get("KOKORO_BATCH_MAX_ITEMS"):
+        config.batch_max_items = max(1, _get_env_int("KOKORO_BATCH_MAX_ITEMS", config.batch_max_items))
+    if os.environ.get("KOKORO_ADMIN_ENABLED"):
+        config.admin_enabled = _get_env_bool("KOKORO_ADMIN_ENABLED", config.admin_enabled)
+    if os.environ.get("KOKORO_VOICE_UPLOAD_ENABLED"):
+        config.voice_upload_enabled = _get_env_bool(
+            "KOKORO_VOICE_UPLOAD_ENABLED", config.voice_upload_enabled
+        )
+    if os.environ.get("KOKORO_MP3_ENABLED"):
+        config.mp3_enabled = _get_env_bool("KOKORO_MP3_ENABLED", config.mp3_enabled)
+    if os.environ.get("KOKORO_MP3_BITRATE"):
+        config.mp3_bitrate = os.environ["KOKORO_MP3_BITRATE"]
 
     # 函数参数覆盖一切
     if model_dir:
