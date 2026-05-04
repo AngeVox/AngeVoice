@@ -63,6 +63,8 @@ services:
       # 批量合成接口：/v1/audio/batch，返回 ZIP
       - KOKORO_BATCH_ENABLED=true
       - KOKORO_BATCH_MAX_ITEMS=20
+      # 批量内部并发。GPU/NAS 建议保持 1，性能机器可逐步调到 2/4
+      - KOKORO_BATCH_CONCURRENCY=1
 
       # 管理接口默认关闭。开启后建议同时设置 KOKORO_API_KEY
       # - KOKORO_ADMIN_ENABLED=true
@@ -70,6 +72,7 @@ services:
 
       # 音色上传默认关闭。开启前请把 models/voices 挂载为 rw
       # - KOKORO_VOICE_UPLOAD_ENABLED=true
+      # - KOKORO_VOICE_UPLOAD_MAX_BYTES=10485760
 
       # MP3 默认关闭。开启前镜像/宿主需安装 ffmpeg
       # - KOKORO_MP3_ENABLED=true
@@ -89,7 +92,7 @@ services:
       test: ["CMD", "python3", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health')"]
       interval: 30s
       timeout: 10s
-      retries: 3
-      start_period: 60s
+      retries: 5
+      start_period: 120s
 
     restart: always
