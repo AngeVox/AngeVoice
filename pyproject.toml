@@ -50,8 +50,8 @@ dev = [
 kokoro-tts = "kokoro_tts.cli:main"
 
 [project.urls]
-Homepage = "https://github.com/ang77712829/kokoro-tts-zh"
-Repository = "https://github.com/ang77712829/kokoro-tts-zh"
+Homepage = "https://github.com/ang77712829/AngeVoice"
+Repository = "https://github.com/ang77712829/AngeVoice"
 
 [tool.setuptools.packages.find]
 where = ["src"]

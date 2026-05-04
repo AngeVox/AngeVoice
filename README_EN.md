@@ -5,7 +5,7 @@
 **Lightweight Chinese TTS self-hosted service**  
 Built on **Kokoro v1.1** model with OpenAI-compatible API, WebSocket streaming, Web UI, batch synthesis, and Docker deployment.
 
-[![CI](https://github.com/ang77712829/kokoro-tts-zh/actions/workflows/ci.yml/badge.svg)](https://github.com/ang77712829/kokoro-tts-zh/actions/workflows/ci.yml)
+[![CI](https://github.com/ang77712829/AngeVoice/actions/workflows/ci.yml/badge.svg)](https://github.com/ang77712829/AngeVoice/actions/workflows/ci.yml)
 [![Python 3.10+](https://img.shields.io/badge/python-3.10+-blue.svg)](https://www.python.org/downloads/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
 [![Docker](https://img.shields.io/badge/docker-cpu%20%7C%20gpu%20%7C%20legacy--gpu-2496ED.svg)](docker)
@@ -50,8 +50,8 @@ Ideal use cases:
 ### Docker GPU
 
 ```bash
-git clone https://github.com/ang77712829/kokoro-tts-zh.git
-cd kokoro-tts-zh/docker/gpu
+git clone https://github.com/ang77712829/AngeVoice.git
+cd AngeVoice/docker/gpu
 sudo docker compose up -d --build
 ```
 
@@ -70,8 +70,8 @@ cd docker/legacy-gpu && sudo docker compose up -d --build
 ### pip install
 
 ```bash
-git clone https://github.com/ang77712829/kokoro-tts-zh.git
-cd kokoro-tts-zh
+git clone https://github.com/ang77712829/AngeVoice.git
+cd AngeVoice
 pip install -e .
 
 kokoro-tts serve --port 8000
@@ -294,7 +294,7 @@ See [docs/RELEASE.md](docs/RELEASE.md) for the full release process.
 <summary><strong>View directory tree</strong></summary>
 
 ```text
-kokoro-tts-zh/
+AngeVoice/
 ├── src/kokoro_tts/       # Core package
 │   ├── config.py         # Configuration
 │   ├── engine.py         # TTS engine & text normalization
