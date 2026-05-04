@@ -1,0 +1,88 @@
+services:
+  tts-legacy-gpu:
+    build:
+      context: ../..
+      dockerfile: docker/legacy-gpu/Dockerfile
+    ports:
+      # Host port:container port. Open http://HOST_IP:8102
+      - "8102:8000"
+
+    volumes:
+      # Model directory, read-only by default.
+      - ../../models:/app/models:ro
+
+      # Development hot-reload. Uncomment for git pull + docker compose restart workflows.
+      # For production, keep it commented and rebuild the image instead.
+      # - ../../src:/app/src:ro
+
+      # Writable voices directory for optional admin voice upload.
+      # Requires KOKORO_ADMIN_ENABLED=true and KOKORO_VOICE_UPLOAD_ENABLED=true.
+      # - ../../models/voices:/app/models/voices:rw
+
+    environment:
+      # Real-time Python logs.
+      - PYTHONUNBUFFERED=1
+
+      # Base service configuration.
+      - KOKORO_HOST=0.0.0.0
+      - KOKORO_PORT=8000
+      - KOKORO_DEVICE=cuda
+
+      # Keep legacy GPU deployments conservative.
+      - KOKORO_WORKERS=1
+      - KOKORO_MAX_CONCURRENT_REQUESTS=1
+      - KOKORO_REQUEST_TIMEOUT_SECONDS=600
+
+      # Smaller segments are often more stable on older GPU / NAS environments.
+      - KOKORO_MAX_TEXT_LENGTH=10000
+      - KOKORO_SEGMENT_LENGTH=80
+
+      # Default voice and speed.
+      - KOKORO_DEFAULT_VOICE=zm_010
+      - KOKORO_DEFAULT_SPEED=1.0
+
+      # Prefer JSON/base64 streaming first on older environments; enable binary after validation if needed.
+      - KOKORO_STREAM_FORMAT=pcm_s16le
+      - KOKORO_STREAM_BINARY_ENABLED=false
+
+      # Cache reduces repeated synthesis work.
+      - KOKORO_CACHE_ENABLED=true
+      - KOKORO_CACHE_MAX_ITEMS=64
+
+      # Service status endpoints.
+      - KOKORO_METRICS_ENABLED=true
+      - KOKORO_QUEUE_STATUS_ENABLED=true
+
+      # Batch synthesis.
+      - KOKORO_BATCH_ENABLED=true
+      - KOKORO_BATCH_MAX_ITEMS=10
+
+      # Admin APIs are disabled by default. Enable only with an API key.
+      # - KOKORO_ADMIN_ENABLED=true
+      # - KOKORO_API_KEY=change-me
+
+      # Voice upload is disabled by default. Requires writable voices mount.
+      # - KOKORO_VOICE_UPLOAD_ENABLED=true
+
+      # MP3 is disabled by default. ffmpeg is included in this image.
+      # - KOKORO_MP3_ENABLED=true
+      # - KOKORO_MP3_BITRATE=192k
+
+      # CORS: use * for local testing; restrict to your frontend domain in production.
+      - KOKORO_CORS_ORIGINS=*
+
+      # NVIDIA runtime configuration.
+      - NVIDIA_VISIBLE_DEVICES=all
+      - NVIDIA_DRIVER_CAPABILITIES=compute,utility
+
+    # Docker Compose V2 syntax. For older Compose runtimes, use deploy.resources instead.
+    gpus: all
+
+    healthcheck:
+      test: ["CMD", "python3", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health')"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 90s
+
+    restart: always
