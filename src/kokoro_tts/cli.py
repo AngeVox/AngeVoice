@@ -1,18 +1,21 @@
-"""Kokoro TTS 命令行工具"""
+"""AngeVoice command line interface.
+
+The historical executable name remains ``kokoro-tts`` for compatibility.
+AngeVoice is built on the Kokoro v1.1 model.
+"""
 
 import argparse
-import sys
 import logging
+import sys
 
 
 def main():
     parser = argparse.ArgumentParser(
         prog="kokoro-tts",
-        description="Kokoro TTS 中文语音合成",
+        description="AngeVoice — 轻量级中文 TTS 服务，基于 Kokoro v1.1 模型构建",
     )
     sub = parser.add_subparsers(dest="command", help="子命令")
 
-    # serve 命令
     serve_p = sub.add_parser("serve", help="启动 HTTP 服务")
     serve_p.add_argument("--host", default=None, help="监听地址 (默认 0.0.0.0)")
     serve_p.add_argument("--port", type=int, default=None, help="端口 (默认 8000)")
@@ -20,7 +23,6 @@ def main():
     serve_p.add_argument("--model-dir", default=None, help="模型目录路径")
     serve_p.add_argument("--workers", type=int, default=None, help="工作进程数")
 
-    # synth 命令（直接合成到文件）
     synth_p = sub.add_parser("synth", help="合成语音到文件")
     synth_p.add_argument("text", help="要合成的文本")
     synth_p.add_argument("-o", "--output", default="output.wav", help="输出文件路径")
@@ -29,13 +31,11 @@ def main():
     synth_p.add_argument("--device", choices=["auto", "cpu", "cuda"], default=None, help="推理设备")
     synth_p.add_argument("--model-dir", default=None, help="模型目录路径")
 
-    # voices 命令
     voices_p = sub.add_parser("voices", help="列出可用音色")
     voices_p.add_argument("--model-dir", default=None, help="模型目录路径")
 
     args = parser.parse_args()
 
-    # 配置日志
     logging.basicConfig(
         level=logging.INFO,
         format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
@@ -83,7 +83,8 @@ def main():
             print("⚠️ 未找到音色文件，请检查模型目录")
 
     else:
-        parser.print_help()
+        parser.print_help(sys.stderr)
+        parser.exit(2, "\n错误：缺少子命令。可用子命令：serve、synth、voices。\n")
 
 
 if __name__ == "__main__":
