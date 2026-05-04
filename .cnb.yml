@@ -1,0 +1,52 @@
+# CNB CI/CD — 构建并推送 Docker 镜像到 CNB 制品库
+# 自动在 main 分支推送和 v* tag 时触发
+
+$:
+  push:
+    - name: 构建 CPU 镜像
+      services:
+        - docker
+      stages:
+        - name: docker build cpu
+          script: |
+            docker build \
+              -t ${CNB_DOCKER_REGISTRY}/${CNB_REPO_SLUG_LOWERCASE}-cpu:${CNB_COMMIT_SHORT} \
+              -t ${CNB_DOCKER_REGISTRY}/${CNB_REPO_SLUG_LOWERCASE}-cpu:latest \
+              -f docker/cpu/Dockerfile .
+
+        - name: docker push cpu
+          script: |
+            docker push ${CNB_DOCKER_REGISTRY}/${CNB_REPO_SLUG_LOWERCASE}-cpu:${CNB_COMMIT_SHORT}
+            docker push ${CNB_DOCKER_REGISTRY}/${CNB_REPO_SLUG_LOWERCASE}-cpu:latest
+
+    - name: 构建 GPU 镜像
+      services:
+        - docker
+      stages:
+        - name: docker build gpu
+          script: |
+            docker build \
+              -t ${CNB_DOCKER_REGISTRY}/${CNB_REPO_SLUG_LOWERCASE}-gpu:${CNB_COMMIT_SHORT} \
+              -t ${CNB_DOCKER_REGISTRY}/${CNB_REPO_SLUG_LOWERCASE}-gpu:latest \
+              -f docker/gpu/Dockerfile .
+
+        - name: docker push gpu
+          script: |
+            docker push ${CNB_DOCKER_REGISTRY}/${CNB_REPO_SLUG_LOWERCASE}-gpu:${CNB_COMMIT_SHORT}
+            docker push ${CNB_DOCKER_REGISTRY}/${CNB_REPO_SLUG_LOWERCASE}-gpu:latest
+
+    - name: 构建 Legacy GPU 镜像
+      services:
+        - docker
+      stages:
+        - name: docker build legacy-gpu
+          script: |
+            docker build \
+              -t ${CNB_DOCKER_REGISTRY}/${CNB_REPO_SLUG_LOWERCASE}-legacy-gpu:${CNB_COMMIT_SHORT} \
+              -t ${CNB_DOCKER_REGISTRY}/${CNB_REPO_SLUG_LOWERCASE}-legacy-gpu:latest \
+              -f docker/legacy-gpu/Dockerfile .
+
+        - name: docker push legacy-gpu
+          script: |
+            docker push ${CNB_DOCKER_REGISTRY}/${CNB_REPO_SLUG_LOWERCASE}-legacy-gpu:${CNB_COMMIT_SHORT}
+            docker push ${CNB_DOCKER_REGISTRY}/${CNB_REPO_SLUG_LOWERCASE}-legacy-gpu:latest
