@@ -12,17 +12,15 @@ services:
       - KOKORO_HOST=0.0.0.0
       - KOKORO_PORT=8000
       - KOKORO_DEVICE=cuda
+      - KOKORO_WORKERS=1
+      - KOKORO_MAX_CONCURRENT_REQUESTS=1
       - NVIDIA_VISIBLE_DEVICES=all
       - NVIDIA_DRIVER_CAPABILITIES=compute,utility
+    gpus: all
     healthcheck:
       test: ["CMD", "python3", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health')"]
       interval: 30s
       timeout: 10s
       retries: 3
       start_period: 60s
-    deploy:
-      resources:
-        reservations:
-          devices:
-            - capabilities: [gpu]
     restart: always

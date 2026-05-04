@@ -26,6 +26,11 @@ class TTSEngine:
         audio_bytes = engine.synthesize("你好世界", voice="zm_010")
     """
 
+    # HuggingFace 模型仓库 ID
+    HF_REPO = "hexgrad/Kokoro-82M-v1.1-zh"
+
+    SUPPORTED_STREAM_FORMATS = {"pcm_s16le", "wav"}
+
     def __init__(self, config: Optional[TTSConfig] = None):
         self.config = config or load_config()
         self._model = None
@@ -37,9 +42,6 @@ class TTSEngine:
     @property
     def is_loaded(self) -> bool:
         return self._loaded
-
-    # HuggingFace 模型仓库 ID
-    HF_REPO = "hexgrad/Kokoro-82M-v1.1-zh"
 
     def load(self) -> "TTSEngine":
         """加载模型和 pipeline
@@ -131,14 +133,24 @@ class TTSEngine:
         Returns:
             WAV 格式的音频字节
         """
-        if not self._loaded:
-            raise RuntimeError("引擎未加载，请先调用 load()")
+        wav = self.synthesize_array(text=text, voice=voice, speed=speed)
 
-        if not text or not text.strip():
-            raise ValueError("文本不能为空")
+        # 转为 WAV 字节
+        import soundfile as sf
 
-        if len(text) > self.config.max_text_length:
-            raise ValueError(f"文本过长 ({len(text)} 字符)，上限 {self.config.max_text_length}")
+        buffer = BytesIO()
+        sf.write(buffer, wav, self.config.sample_rate, format="WAV")
+        buffer.seek(0)
+        return buffer.read()
+
+    def synthesize_array(
+        self,
+        text: str,
+        voice: str = "zm_010",
+        speed: float = 1.0,
+    ):
+        """合成语音，返回 float32 numpy array。"""
+        self._validate_request(text=text, voice=voice, speed=speed)
 
         # 清理文本
         text = self._clean_text(text)
@@ -146,14 +158,7 @@ class TTSEngine:
             raise ValueError("清理后文本为空")
 
         # 合成
-        wav = self._do_synthesize(text, voice, speed)
-
-        # 转为 WAV 字节
-        import soundfile as sf
-        buffer = BytesIO()
-        sf.write(buffer, wav, self.config.sample_rate, format="WAV")
-        buffer.seek(0)
-        return buffer.read()
+        return self._do_synthesize(text, voice, speed)
 
     def synthesize_file(
         self,
@@ -172,6 +177,27 @@ class TTSEngine:
 
     # ── 内部方法（不需要重依赖，可直接测试） ──
 
+    def _validate_request(self, text: str, voice: str, speed: float) -> None:
+        if not self._loaded:
+            raise RuntimeError("引擎未加载，请先调用 load()")
+
+        if not text or not text.strip():
+            raise ValueError("文本不能为空")
+
+        if len(text) > self.config.max_text_length:
+            raise ValueError(f"文本过长 ({len(text)} 字符)，上限 {self.config.max_text_length}")
+
+        try:
+            speed_value = float(speed)
+        except (TypeError, ValueError):
+            raise ValueError("speed 必须是数字") from None
+
+        if not (0.5 <= speed_value <= 2.0):
+            raise ValueError("speed 必须在 0.5 到 2.0 之间")
+
+        if not voice or not str(voice).strip():
+            raise ValueError("voice 不能为空")
+
     def _clean_text(self, text: str) -> str:
         """清理文本：移除不可打印字符，合并空白"""
         text = "".join(c if c.isprintable() or c.isspace() else " " for c in text)
@@ -179,7 +205,10 @@ class TTSEngine:
         return text
 
     def _detect_language(self, text: str) -> str:
-        """检测文本主要语言"""
+        """检测文本主要语言。
+
+        当前中文 pipeline 已通过 en_callable 支持中英混合，本方法仅用于日志和后续扩展。
+        """
         english = len(re.findall(r"[a-zA-Z]", text))
         total = len(text)
         if total == 0:
@@ -187,31 +216,49 @@ class TTSEngine:
         return "en" if english / total > 0.6 else "zh"
 
     def _segment_text(self, text: str) -> list[str]:
-        """按标点符号分段，每段不超过 segment_length"""
-        max_len = self.config.segment_length
-        punctuation = set("。！？.!?,，")
-        segments = []
+        """按标点优先分段；没有合适标点时按长度硬切，避免超长单段。"""
+        max_len = max(20, int(self.config.segment_length))
+        punctuation = "。！？!?；;，,、.\n"
+        segments: list[str] = []
         current = ""
 
         for char in text:
             current += char
-            if len(current) >= max_len and char in punctuation:
-                segments.append(current)
-                current = ""
 
-        if current:
-            segments.append(current)
+            # 标点已接近目标长度，直接切
+            if len(current) >= max_len and char in punctuation:
+                if current.strip():
+                    segments.append(current.strip())
+                current = ""
+                continue
+
+            # 超过 1.5 倍长度时强制寻找最近标点，否则硬切
+            if len(current) >= int(max_len * 1.5):
+                cut_pos = max(current.rfind(p) for p in punctuation)
+                if cut_pos >= max_len // 2:
+                    head = current[: cut_pos + 1].strip()
+                    tail = current[cut_pos + 1 :].strip()
+                    if head:
+                        segments.append(head)
+                    current = tail
+                else:
+                    if current.strip():
+                        segments.append(current.strip())
+                    current = ""
+
+        if current.strip():
+            segments.append(current.strip())
 
         return segments or [text]
 
     def _make_speed_fn(self, speed: float):
         """创建语速函数"""
+        speed = float(speed)
         return lambda len_ps: speed
 
     def _do_synthesize(self, text: str, voice: str, speed: float):
         """执行实际合成（需要已加载模型）"""
         import numpy as np
-        import torch
 
         lang = self._detect_language(text)
         segments = self._segment_text(text)
@@ -225,9 +272,9 @@ class TTSEngine:
             try:
                 wav_seg = self._synthesize_segment(pipeline, segment, voice, speed_fn)
                 if wav_seg is not None:
-                    all_wavs.append(wav_seg)
+                    all_wavs.append(self._postprocess_segment(wav_seg))
             except Exception as e:
-                logger.warning(f"段落 {i+1} 合成失败: {e}")
+                logger.warning(f"段落 {i + 1} 合成失败: {e}")
 
         if not all_wavs:
             raise RuntimeError("所有段落合成均失败，无有效音频数据")
@@ -236,8 +283,8 @@ class TTSEngine:
 
     def _synthesize_segment(self, pipeline, segment: str, voice: str, speed_fn):
         """合成单个段落"""
-        import torch
         import numpy as np
+        import torch
 
         generator = pipeline(segment, voice=voice, speed=speed_fn)
         result = next(generator)
@@ -248,16 +295,44 @@ class TTSEngine:
 
         # Tensor -> NumPy
         if isinstance(audio, torch.Tensor):
-            audio = audio.cpu().numpy()
+            audio = audio.detach().cpu().numpy()
 
         if not isinstance(audio, np.ndarray):
             return None
 
-        # 确保二维
-        if audio.ndim == 1:
-            audio = np.expand_dims(audio, axis=1)
+        # 确保一维
+        if audio.ndim > 1:
+            audio = audio.reshape(-1)
 
-        return audio
+        return audio.astype(np.float32, copy=False)
+
+    def _postprocess_segment(self, audio_array):
+        """清理音频并给段落边界增加轻量淡入淡出，减少 click/pop。"""
+        import numpy as np
+
+        audio_array = self._normalize_audio(audio_array)
+
+        fade_len = int(self.config.sample_rate * 0.005)  # 5ms
+        if audio_array.size > fade_len * 2 and fade_len > 0:
+            fade_in = np.linspace(0.0, 1.0, fade_len, dtype=np.float32)
+            fade_out = np.linspace(1.0, 0.0, fade_len, dtype=np.float32)
+            audio_array[:fade_len] *= fade_in
+            audio_array[-fade_len:] *= fade_out
+
+        silence_len = int(self.config.sample_rate * 0.03)  # 30ms
+        if silence_len > 0:
+            silence = np.zeros(silence_len, dtype=np.float32)
+            audio_array = np.concatenate([audio_array, silence])
+
+        return audio_array
+
+    def _normalize_audio(self, audio_array):
+        """将音频限制在安全 float32 范围内，避免 int16 溢出爆音。"""
+        import numpy as np
+
+        audio_array = np.asarray(audio_array, dtype=np.float32).reshape(-1)
+        audio_array = np.nan_to_num(audio_array, nan=0.0, posinf=0.0, neginf=0.0)
+        return np.clip(audio_array, -1.0, 1.0)
 
     def synthesize_stream(self, text, voice="zm_010", speed=1.0, fmt="pcm_s16le"):
         """流式合成，逐段 yield 音频数据
@@ -271,14 +346,14 @@ class TTSEngine:
         Yields:
             dict: 包含 type, index, data 等字段的 JSON 消息
         """
-        import numpy as np
-
-        if not self._loaded:
-            yield {"type": "error", "message": "引擎未加载，请先调用 load()"}
+        if fmt not in self.SUPPORTED_STREAM_FORMATS:
+            yield {"type": "error", "message": f"Unsupported format: {fmt}"}
             return
 
-        if len(text) > self.config.max_text_length:
-            yield {"type": "error", "message": f"文本过长 ({len(text)} 字符)，上限 {self.config.max_text_length}"}
+        try:
+            self._validate_request(text=text, voice=voice, speed=speed)
+        except Exception as e:
+            yield {"type": "error", "message": str(e)}
             return
 
         text = self._clean_text(text)
@@ -291,6 +366,9 @@ class TTSEngine:
             "type": "started",
             "segments": len(segments),
             "sample_rate": self.config.sample_rate,
+            "channels": 1,
+            "format": fmt,
+            "dtype": "s16le" if fmt == "pcm_s16le" else "wav",
         }
 
         speed_fn = self._make_speed_fn(speed)
@@ -301,18 +379,18 @@ class TTSEngine:
                     self._zh_pipeline, segment, voice, speed_fn
                 )
                 if wav_seg is not None:
-                    # 展平为一维
-                    if wav_seg.ndim > 1:
-                        wav_seg = wav_seg.flatten()
+                    wav_seg = self._postprocess_segment(wav_seg)
                     audio_bytes = self._encode_segment(wav_seg, fmt)
                     yield {
                         "type": "audio",
                         "index": i,
                         "data": base64.b64encode(audio_bytes).decode("ascii"),
                         "format": fmt,
+                        "sample_rate": self.config.sample_rate,
+                        "channels": 1,
                     }
             except Exception as e:
-                logger.warning(f"段落 {i+1} 合成失败: {e}")
+                logger.warning(f"段落 {i + 1} 合成失败: {e}")
                 yield {"type": "segment_error", "index": i, "message": str(e)}
 
         yield {"type": "done", "total_segments": len(segments)}
@@ -327,11 +405,12 @@ class TTSEngine:
         Returns:
             bytes: 编码后的音频数据
         """
-        import numpy as np
         import soundfile as sf
 
+        audio_array = self._normalize_audio(audio_array)
+
         if format == "pcm_s16le":
-            audio_int16 = (audio_array * 32767).astype(np.int16)
+            audio_int16 = (audio_array * 32767.0).astype("<i2")
             return audio_int16.tobytes()
         elif format == "wav":
             buffer = BytesIO()
