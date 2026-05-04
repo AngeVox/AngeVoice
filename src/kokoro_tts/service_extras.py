@@ -1,20 +1,24 @@
-"""Optional service endpoints for Kokoro TTS.
+"""Optional service endpoints for AngeVoice.
 
 This module keeps product/service features out of server.py so the core server stays
-small and easy to review.
+small and easy to review. AngeVoice is built on the Kokoro v1.1 model.
 """
 
 from __future__ import annotations
 
-import base64
+import asyncio
 import json
+import logging
 import shutil
 import subprocess
-import time
 import zipfile
 from io import BytesIO
 from pathlib import Path
 from typing import Callable, Optional
+
+logger = logging.getLogger(__name__)
+
+ALLOWED_MP3_BITRATES = {"64k", "96k", "128k", "160k", "192k", "256k", "320k"}
 
 
 def _safe_zip_filename(name: Optional[str], index: int, ext: str) -> str:
@@ -28,7 +32,15 @@ def _safe_zip_filename(name: Optional[str], index: int, ext: str) -> str:
     return raw
 
 
+def _normalize_mp3_bitrate(bitrate: str = "192k") -> str:
+    value = (bitrate or "192k").strip().lower()
+    if value not in ALLOWED_MP3_BITRATES:
+        raise ValueError(f"Unsupported MP3 bitrate: {bitrate}. Allowed: {', '.join(sorted(ALLOWED_MP3_BITRATES))}")
+    return value
+
+
 def _wav_to_mp3(wav_bytes: bytes, bitrate: str = "192k") -> bytes:
+    bitrate = _normalize_mp3_bitrate(bitrate)
     if not shutil.which("ffmpeg"):
         raise RuntimeError("ffmpeg not found")
     proc = subprocess.run(
@@ -100,10 +112,7 @@ def register_extra_routes(
         fmt = (fmt or "wav").lower()
         if fmt == "mp3":
             if not cfg.mp3_enabled:
-                raise HTTPException(
-                    status_code=400,
-                    detail="MP3 output disabled. Set KOKORO_MP3_ENABLED=true and install ffmpeg.",
-                )
+                raise HTTPException(status_code=400, detail="MP3 output disabled. Set KOKORO_MP3_ENABLED=true and install ffmpeg.")
             return "mp3"
         return normalize_response_format(fmt)
 
@@ -111,12 +120,14 @@ def register_extra_routes(
         fmt = normalize_extra_format(fmt)
         if fmt != "mp3":
             return await synthesize_threaded(text, voice, speed, fmt, request_id)
-        # Generate WAV first, then convert. This keeps MP3 optional and out of the core path.
         wav_bytes, _ = await synthesize_threaded(text, voice, speed, "wav", request_id)
         try:
             mp3_bytes = _wav_to_mp3(wav_bytes, getattr(cfg, "mp3_bitrate", "192k"))
-        except Exception as exc:
-            raise HTTPException(status_code=500, detail=str(exc))
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc))
+        except Exception:
+            logger.exception("MP3 conversion failed")
+            raise HTTPException(status_code=500, detail="MP3 conversion failed")
         return mp3_bytes, "audio/mpeg"
 
     @app.post("/v1/audio/batch")
@@ -136,24 +147,36 @@ def register_extra_routes(
         stats["batch_items_total"] = stats.get("batch_items_total", 0) + len(req.items)
         mark_request(batch_id, "queued", batch=True, items=len(req.items), format=fmt)
 
+        batch_sem = asyncio.Semaphore(max(1, int(getattr(cfg, "batch_concurrency", 1))))
+
+        async def run_item(index: int, item: BatchItem):
+            if not item.text:
+                return index, None, {"index": index, "status": "error", "error": "text is empty"}
+            item_id = f"{batch_id}-{index + 1:03d}"
+            voice = item.voice or req.voice
+            speed = item.speed if item.speed is not None else req.speed
+            filename = _safe_zip_filename(item.filename, index, ext)
+            async with batch_sem:
+                try:
+                    audio_bytes, _media_type = await synthesize_optional_mp3(item.text, voice, speed, fmt, item_id)
+                    return index, (filename, audio_bytes), {"index": index, "status": "ok", "filename": filename, "bytes": len(audio_bytes)}
+                except HTTPException as exc:
+                    return index, None, {"index": index, "status": "error", "error": exc.detail}
+                except Exception:
+                    logger.exception("Batch synthesis item failed")
+                    return index, None, {"index": index, "status": "error", "error": "synthesis failed"}
+
+        results = await asyncio.gather(*(run_item(index, item) for index, item in enumerate(req.items)))
+        results.sort(key=lambda row: row[0])
+
         manifest = []
         zip_buffer = BytesIO()
         with zipfile.ZipFile(zip_buffer, "w", compression=zipfile.ZIP_DEFLATED) as zf:
-            for index, item in enumerate(req.items):
-                text = item.text
-                if not text:
-                    manifest.append({"index": index, "status": "error", "error": "text is empty"})
-                    continue
-                item_id = f"{batch_id}-{index + 1:03d}"
-                voice = item.voice or req.voice
-                speed = item.speed if item.speed is not None else req.speed
-                filename = _safe_zip_filename(item.filename, index, ext)
-                try:
-                    audio_bytes, _media_type = await synthesize_optional_mp3(text, voice, speed, fmt, item_id)
+            for _index, payload, entry in results:
+                if payload is not None:
+                    filename, audio_bytes = payload
                     zf.writestr(filename, audio_bytes)
-                    manifest.append({"index": index, "status": "ok", "filename": filename, "bytes": len(audio_bytes)})
-                except Exception as exc:
-                    manifest.append({"index": index, "status": "error", "error": str(exc)})
+                manifest.append(entry)
             zf.writestr("manifest.json", json.dumps(manifest, ensure_ascii=False, indent=2))
 
         finish_request(batch_id, "done", items=len(req.items))
@@ -163,7 +186,7 @@ def register_extra_routes(
             media_type="application/zip",
             headers={
                 "X-Request-ID": batch_id,
-                "Content-Disposition": f'attachment; filename="kokoro_batch_{batch_id}.zip"',
+                "Content-Disposition": f'attachment; filename="angevoice_batch_{batch_id}.zip"',
             },
         )
 
@@ -184,7 +207,10 @@ def register_extra_routes(
         filename = Path(file.filename or "").name
         if not filename.endswith(".pt"):
             raise HTTPException(status_code=400, detail="Only .pt voice files are accepted")
-        content = await file.read()
+        max_bytes = int(getattr(cfg, "voice_upload_max_bytes", 10 * 1024 * 1024))
+        content = await file.read(max_bytes + 1)
+        if len(content) > max_bytes:
+            raise HTTPException(status_code=413, detail=f"Voice file too large, max {max_bytes} bytes")
         if not content:
             raise HTTPException(status_code=400, detail="Empty file")
         cfg.voices_dir.mkdir(parents=True, exist_ok=True)
@@ -197,9 +223,16 @@ def register_extra_routes(
         formats = ["wav", "pcm"]
         if cfg.mp3_enabled:
             formats.append("mp3")
+        bitrate_ok = True
+        try:
+            _normalize_mp3_bitrate(getattr(cfg, "mp3_bitrate", "192k"))
+        except ValueError:
+            bitrate_ok = False
         return {
             "formats": formats,
             "mp3_enabled": cfg.mp3_enabled,
             "mp3_requires_ffmpeg": True,
             "mp3_available": bool(shutil.which("ffmpeg")),
+            "mp3_bitrate": getattr(cfg, "mp3_bitrate", "192k"),
+            "mp3_bitrate_valid": bitrate_ok,
         }
