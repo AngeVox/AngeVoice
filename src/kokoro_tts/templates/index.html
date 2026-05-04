@@ -297,7 +297,7 @@
                 source.start(startTime);
                 this.nextStartTime = startTime + buffer.duration;
                 this.sources.push(source);
-                source.onended = () => { this.sources = this.sources.filter(s !== source); checkPlaybackDone(); };
+                source.onended = () => { this.sources = this.sources.filter(s => s !== source); checkPlaybackDone(); };
             }
             buildWavBlob() {
                 if (this.pcmChunks.length === 0) return null;

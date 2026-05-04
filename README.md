@@ -362,16 +362,24 @@ AngeVoice/
 - 新增基础中文文本规范化：手机号、日期、金额、百分比、长编号
 - 新增 CPU/GPU/Legacy GPU 三套标准化 Docker profile
 - 新增 CI、GHCR 构建工作流和 benchmark 脚本
+- 新增 `.env.example` / `.env.dev` / `.env.staging` / `.env.prod` 环境变量模板
 
 ### 改进
 
 - FastAPI、包版本同步到 `2.4.0`
 - Docker 服务名统一为 `angevoice-*`
+- docker-compose 改用 `env_file` 加载环境变量，不再内联硬编码
 - CLI 保留 `kokoro-tts` 以兼容旧脚本
 - `/health` 返回 batch/admin/mp3 状态
 - WebSocket cancel 加入背压队列，避免取消后继续推送大量分段
 - 上传音色加入大小限制，MP3 bitrate 加入白名单校验
 - 测试覆盖更新，CI 已启用 Python 3.10/3.11/3.12
+
+### 修复
+
+- 修复前端 `filter(s !== source)` 语法错误，改为 `filter(s => s !== source)`
+- 修复 `from __future__ import annotations` 导致 FastAPI 将 body 参数误判为 query 参数（422 错误）
+- 修复 `service_extras.py` 中 `Optional` 类型注解兼容性
 
 </details>
 

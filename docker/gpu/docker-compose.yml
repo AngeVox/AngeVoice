@@ -21,36 +21,15 @@ services:
       # Writable voices directory for optional admin voice upload.
       # - ../../models/voices:/app/models/voices:rw
 
+    env_file:
+      # Copy .env.example -> .env and customize, or use environment-specific files:
+      #   cp .env.dev .env       (轻量开发)
+      #   cp .env.staging .env   (预发布)
+      #   cp .env.prod .env      (生产)
+      - path: .env
+        required: false
     environment:
-      - PYTHONUNBUFFERED=1
-      - HF_HOME=/root/.cache/huggingface
-      - HUGGINGFACE_HUB_CACHE=/root/.cache/huggingface/hub
-      - KOKORO_HOST=0.0.0.0
-      - KOKORO_PORT=8000
-      - KOKORO_DEVICE=cuda
-      - KOKORO_WORKERS=1
-      - KOKORO_MAX_CONCURRENT_REQUESTS=1
-      - KOKORO_REQUEST_TIMEOUT_SECONDS=300
-      - KOKORO_MAX_TEXT_LENGTH=10000
-      - KOKORO_SEGMENT_LENGTH=100
-      - KOKORO_DEFAULT_VOICE=zm_010
-      - KOKORO_DEFAULT_SPEED=1.0
-      - KOKORO_STREAM_FORMAT=pcm_s16le
-      - KOKORO_STREAM_BINARY_ENABLED=true
-      - KOKORO_CACHE_ENABLED=true
-      - KOKORO_CACHE_MAX_ITEMS=128
-      - KOKORO_METRICS_ENABLED=true
-      - KOKORO_QUEUE_STATUS_ENABLED=true
-      - KOKORO_BATCH_ENABLED=true
-      - KOKORO_BATCH_MAX_ITEMS=20
-      - KOKORO_BATCH_CONCURRENCY=1
-      # - KOKORO_ADMIN_ENABLED=true
-      # - KOKORO_API_KEY=change-me
-      # - KOKORO_VOICE_UPLOAD_ENABLED=true
-      # - KOKORO_VOICE_UPLOAD_MAX_BYTES=10485760
-      # - KOKORO_MP3_ENABLED=true
-      # - KOKORO_MP3_BITRATE=192k
-      - KOKORO_CORS_ORIGINS=*
+      # GPU-specific: NVIDIA runtime settings (not in .env files)
       - NVIDIA_VISIBLE_DEVICES=all
       - NVIDIA_DRIVER_CAPABILITIES=compute,utility
 
