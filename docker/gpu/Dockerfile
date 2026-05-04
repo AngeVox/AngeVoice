@@ -6,7 +6,7 @@ WORKDIR /app
 
 # 安装 Python 3.10 + 系统依赖
 # ffmpeg 用于可选 MP3 转码；未开启 KOKORO_MP3_ENABLED 时不会影响默认路径
-RUN apt-get update && \
+RUN apt-get update || true && \
     apt-get install -y python3.10 python3.10-dev python3.10-venv python3-pip libsndfile1 ffmpeg && \
     apt-get clean && rm -rf /var/lib/apt/lists/*
 

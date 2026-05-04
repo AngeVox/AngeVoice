@@ -5,7 +5,7 @@ WORKDIR /app
 
 # Legacy GPU profile: conservative CUDA 11.8 runtime for older drivers/cards.
 # ffmpeg is included for optional MP3 output when KOKORO_MP3_ENABLED=true.
-RUN apt-get update && \
+RUN apt-get update || true && \
     apt-get install -y --no-install-recommends \
       python3.10 \
       python3.10-dev \
