@@ -10,11 +10,23 @@ import os
 import logging
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Optional
+from typing import Callable, NamedTuple, Optional
 
 logger = logging.getLogger(__name__)
 
 MODEL_FILENAME = "kokoro-v1_1-zh.pth"
+
+
+class IntEnvSpec(NamedTuple):
+    attr: str
+    min_value: int | None = None
+    max_value: int | None = None
+
+
+class FloatEnvSpec(NamedTuple):
+    attr: str
+    min_value: float | None = None
+    max_value: float | None = None
 
 
 def _find_models_dir() -> Path:
@@ -63,8 +75,12 @@ def _get_env_bool(name: str, default: bool) -> bool:
     return value.strip().lower() in {"1", "true", "yes", "on", "y"}
 
 
-def _get_env_str(name: str, default: str) -> str:
-    return os.environ.get(name, default)
+def _clamp(value, min_value=None, max_value=None):
+    if min_value is not None:
+        value = max(min_value, value)
+    if max_value is not None:
+        value = min(max_value, value)
+    return value
 
 
 @dataclass
@@ -140,29 +156,29 @@ class TTSConfig:
 
 
 def _apply_env(config: TTSConfig) -> None:
-    simple_str = {
+    str_env: dict[str, str] = {
         "KOKORO_HOST": "host",
         "KOKORO_DEVICE": "device",
         "KOKORO_DEFAULT_VOICE": "default_voice",
         "KOKORO_STREAM_FORMAT": "stream_format",
         "KOKORO_MP3_BITRATE": "mp3_bitrate",
     }
-    simple_int = {
-        "KOKORO_PORT": ("port", 1, None),
-        "KOKORO_WORKERS": ("workers", 1, None),
-        "KOKORO_MAX_CONCURRENT_REQUESTS": ("max_concurrent_requests", 1, None),
-        "KOKORO_MAX_TEXT_LENGTH": ("max_text_length", 1, None),
-        "KOKORO_SEGMENT_LENGTH": ("segment_length", 20, None),
-        "KOKORO_CACHE_MAX_ITEMS": ("cache_max_items", 0, None),
-        "KOKORO_BATCH_MAX_ITEMS": ("batch_max_items", 1, None),
-        "KOKORO_BATCH_CONCURRENCY": ("batch_concurrency", 1, None),
-        "KOKORO_VOICE_UPLOAD_MAX_BYTES": ("voice_upload_max_bytes", 1, None),
+    int_env: dict[str, IntEnvSpec] = {
+        "KOKORO_PORT": IntEnvSpec("port", 1),
+        "KOKORO_WORKERS": IntEnvSpec("workers", 1),
+        "KOKORO_MAX_CONCURRENT_REQUESTS": IntEnvSpec("max_concurrent_requests", 1),
+        "KOKORO_MAX_TEXT_LENGTH": IntEnvSpec("max_text_length", 1),
+        "KOKORO_SEGMENT_LENGTH": IntEnvSpec("segment_length", 20),
+        "KOKORO_CACHE_MAX_ITEMS": IntEnvSpec("cache_max_items", 0),
+        "KOKORO_BATCH_MAX_ITEMS": IntEnvSpec("batch_max_items", 1),
+        "KOKORO_BATCH_CONCURRENCY": IntEnvSpec("batch_concurrency", 1),
+        "KOKORO_VOICE_UPLOAD_MAX_BYTES": IntEnvSpec("voice_upload_max_bytes", 1),
     }
-    simple_float = {
-        "KOKORO_DEFAULT_SPEED": ("default_speed", None),
-        "KOKORO_REQUEST_TIMEOUT_SECONDS": ("request_timeout_seconds", 1.0),
+    float_env: dict[str, FloatEnvSpec] = {
+        "KOKORO_DEFAULT_SPEED": FloatEnvSpec("default_speed"),
+        "KOKORO_REQUEST_TIMEOUT_SECONDS": FloatEnvSpec("request_timeout_seconds", 1.0),
     }
-    simple_bool = {
+    bool_env: dict[str, str] = {
         "KOKORO_STREAM_BINARY_ENABLED": "stream_binary_enabled",
         "KOKORO_CACHE_ENABLED": "cache_enabled",
         "KOKORO_QUEUE_STATUS_ENABLED": "queue_status_enabled",
@@ -173,25 +189,21 @@ def _apply_env(config: TTSConfig) -> None:
         "KOKORO_MP3_ENABLED": "mp3_enabled",
     }
 
-    for env_name, attr in simple_str.items():
+    for env_name, attr in str_env.items():
         if os.environ.get(env_name) is not None:
             setattr(config, attr, os.environ[env_name])
 
-    for env_name, (attr, min_value, _max_value) in simple_int.items():
+    for env_name, spec in int_env.items():
         if os.environ.get(env_name) is not None:
-            value = _get_env_int(env_name, getattr(config, attr))
-            if min_value is not None:
-                value = max(min_value, value)
-            setattr(config, attr, value)
+            value = _get_env_int(env_name, getattr(config, spec.attr))
+            setattr(config, spec.attr, _clamp(value, spec.min_value, spec.max_value))
 
-    for env_name, (attr, min_value) in simple_float.items():
+    for env_name, spec in float_env.items():
         if os.environ.get(env_name) is not None:
-            value = _get_env_float(env_name, getattr(config, attr))
-            if min_value is not None:
-                value = max(min_value, value)
-            setattr(config, attr, value)
+            value = _get_env_float(env_name, getattr(config, spec.attr))
+            setattr(config, spec.attr, _clamp(value, spec.min_value, spec.max_value))
 
-    for env_name, attr in simple_bool.items():
+    for env_name, attr in bool_env.items():
         if os.environ.get(env_name) is not None:
             setattr(config, attr, _get_env_bool(env_name, getattr(config, attr)))
 
