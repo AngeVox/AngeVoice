@@ -11,6 +11,7 @@ import json
 import logging
 import shutil
 import subprocess
+import threading
 import zipfile
 from io import BytesIO
 from pathlib import Path
@@ -19,6 +20,7 @@ from typing import Callable, Optional
 logger = logging.getLogger(__name__)
 
 ALLOWED_MP3_BITRATES = {"64k", "96k", "128k", "160k", "192k", "256k", "320k"}
+_fallback_stats_lock = threading.Lock()
 
 
 def _safe_zip_filename(name: Optional[str], index: int, ext: str) -> str:
@@ -96,7 +98,8 @@ def register_extra_routes(
     def inc_stat(name: str, delta=1) -> None:
         if increment_stat is not None:
             increment_stat(name, delta)
-        else:
+            return
+        with _fallback_stats_lock:
             stats[name] = stats.get(name, 0) + delta
 
     class BatchItem(BaseModel):
