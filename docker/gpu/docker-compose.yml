@@ -2,7 +2,7 @@ name: angevoice-gpu
 
 services:
   angevoice-gpu:
-    image: angevoice/gpu:latest
+    image: ${REGISTRY:-ghcr.io/ang77712829}/angevoice-gpu:${VERSION:-latest}
     container_name: angevoice-gpu
     build:
       context: ../..

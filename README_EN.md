@@ -60,11 +60,14 @@ Visit: `http://localhost:8101`
 ### Docker CPU / Legacy GPU
 
 ```bash
-# CPU, default port 8100
-cd docker/cpu && sudo docker compose up -d --build
+# Auto-select the fastest registry (same as above)
+cd docker && bash select-registry.sh v2.4.0
 
-# Legacy GPU / old graphics compat, default port 8102, CUDA 11.8
-cd docker/legacy-gpu && sudo docker compose up -d --build
+# CPU, default port 8100
+cd cpu && sudo docker compose up -d
+
+# Legacy GPU, default port 8102, CUDA 11.8
+cd ../legacy-gpu && sudo docker compose up -d
 ```
 
 ### pip install
@@ -276,7 +279,7 @@ python scripts/benchmark_streaming.py \
 
 ## Docker Images & Publishing
 
-GHCR workflow is ready. Regular `main` pushes only verify builds; pushing a `v*` tag or manually triggering with `publish=true` publishes images.
+CI automatically pushes to three registries. Regular `main` pushes only verify builds; pushing a `v*` tag or manually triggering with `publish=true` publishes images.
 
 Expected image names:
 
@@ -284,6 +287,12 @@ Expected image names:
 ghcr.io/ang77712829/angevoice-cpu:v2.4.0
 ghcr.io/ang77712829/angevoice-gpu:v2.4.0
 ghcr.io/ang77712829/angevoice-legacy-gpu:v2.4.0
+docker.io/maxblack777/angevoice-cpu:v2.4.0
+docker.io/maxblack777/angevoice-gpu:v2.4.0
+docker.io/maxblack777/angevoice-legacy-gpu:v2.4.0
+cr.ccs.tencentyun.com/angeangeange/angevoice-cpu:v2.4.0
+cr.ccs.tencentyun.com/angeangeange/angevoice-gpu:v2.4.0
+cr.ccs.tencentyun.com/angeangeange/angevoice-legacy-gpu:v2.4.0
 ```
 
 

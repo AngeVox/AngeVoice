@@ -7,7 +7,7 @@ on:
   workflow_dispatch:
     inputs:
       publish:
-        description: 'Push images to GHCR'
+        description: 'Push images to registries'
         required: false
         default: 'false'
         type: choice
@@ -59,6 +59,8 @@ jobs:
             echo "enabled=false" >> "$GITHUB_OUTPUT"
           fi
 
+      # ── Login to all three registries ──
+
       - name: Login to GHCR
         if: steps.publish.outputs.enabled == 'true'
         uses: docker/login-action@v3
@@ -67,15 +69,37 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
+      - name: Login to Docker Hub
+        if: steps.publish.outputs.enabled == 'true'
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      - name: Login to CNB
+        if: steps.publish.outputs.enabled == 'true'
+        uses: docker/login-action@v3
+        with:
+          registry: cr.ccs.tencentyun.com
+          username: ${{ secrets.CNB_USERNAME }}
+          password: ${{ secrets.CNB_TOKEN }}
+
+      # ── Metadata: generate tags for all three registries ──
+
       - name: Docker metadata
         id: meta
         uses: docker/metadata-action@v5
         with:
-          images: ghcr.io/${{ github.repository_owner }}/${{ matrix.image }}
+          images: |
+            ghcr.io/${{ github.repository_owner }}/${{ matrix.image }}
+            ${{ secrets.DOCKERHUB_USERNAME }}/${{ matrix.image }}
+            ${{ secrets.CNB_REGISTRY }}/${{ matrix.image }}
           tags: |
             type=raw,value=latest,enable={{is_default_branch}}
             type=ref,event=tag
             type=sha,prefix=sha-
+
+      # ── Build & Push ──
 
       - name: Build image
         uses: docker/build-push-action@v6
@@ -92,4 +116,6 @@ jobs:
       - name: Explain non-publish mode
         if: steps.publish.outputs.enabled != 'true'
         run: |
-          echo "Images were built for validation only. GHCR push is enabled only for v* tags or manual workflow_dispatch with publish=true."
+          echo "Images were built for validation only."
+          echo "Push is enabled only for v* tags or manual workflow_dispatch with publish=true."
+          echo "Registries: GHCR, Docker Hub, CNB (cr.ccs.tencentyun.com)"
