@@ -32,6 +32,7 @@ def create_app(config: Optional[TTSConfig] = None, engine: Optional[TTSEngine] =
     from fastapi.responses import HTMLResponse, StreamingResponse
     from pydantic import BaseModel, ConfigDict, Field
     from starlette.concurrency import run_in_threadpool
+    from starlette.websockets import WebSocketDisconnect
 
     cfg = config or load_config()
     eng = engine or TTSEngine(cfg)
@@ -47,6 +48,7 @@ def create_app(config: Optional[TTSConfig] = None, engine: Optional[TTSEngine] =
         "characters_total": 0,
         "audio_bytes_total": 0,
         "synthesis_seconds_total": 0.0,
+        "ws_cancelled_total": 0,
         "started_at": time.time(),
     }
 
@@ -375,6 +377,7 @@ def create_app(config: Optional[TTSConfig] = None, engine: Optional[TTSEngine] =
         await websocket.accept()
         request_id = _new_request_id()
         producer_task = None
+        control_task = None
         try:
             msg = await websocket.receive_json()
             text = msg.get("text", "")
@@ -406,7 +409,29 @@ def create_app(config: Optional[TTSConfig] = None, engine: Optional[TTSEngine] =
             queue: asyncio.Queue = asyncio.Queue()
             loop = asyncio.get_running_loop()
             done_marker = object()
-            cancel_flag = {"cancelled": False}
+            cancel_flag = {"cancelled": False, "by_client": False}
+
+            async def control_listener():
+                """Listen for client-side {type: cancel|stop} control frames."""
+                while not cancel_flag["cancelled"]:
+                    try:
+                        control_msg = await websocket.receive_json()
+                    except WebSocketDisconnect:
+                        cancel_flag["cancelled"] = True
+                        cancel_flag["by_client"] = True
+                        await queue.put(done_marker)
+                        break
+                    except Exception:
+                        break
+
+                    msg_type = str(control_msg.get("type", "")).lower()
+                    if msg_type in {"cancel", "stop"}:
+                        cancel_flag["cancelled"] = True
+                        cancel_flag["by_client"] = True
+                        stats["ws_cancelled_total"] = stats.get("ws_cancelled_total", 0) + 1
+                        await queue.put({"type": "cancelled", "request_id": request_id})
+                        await queue.put(done_marker)
+                        break
 
             def producer():
                 try:
@@ -430,6 +455,7 @@ def create_app(config: Optional[TTSConfig] = None, engine: Optional[TTSEngine] =
 
             async with tts_semaphore:
                 _mark_request(request_id, "running")
+                control_task = asyncio.create_task(control_listener())
                 producer_task = asyncio.create_task(asyncio.to_thread(producer))
                 try:
                     while True:
@@ -445,12 +471,17 @@ def create_app(config: Optional[TTSConfig] = None, engine: Optional[TTSEngine] =
                             await websocket.send_json(chunk)
                 finally:
                     cancel_flag["cancelled"] = True
+                    if control_task:
+                        control_task.cancel()
                     await producer_task
 
             elapsed = time.perf_counter() - start
-            stats["requests_ok"] += 1
-            stats["synthesis_seconds_total"] += elapsed
-            _finish_request(request_id, "done", elapsed_seconds=round(elapsed, 3))
+            if cancel_flag["by_client"]:
+                _finish_request(request_id, "cancelled", elapsed_seconds=round(elapsed, 3))
+            else:
+                stats["requests_ok"] += 1
+                stats["synthesis_seconds_total"] += elapsed
+                _finish_request(request_id, "done", elapsed_seconds=round(elapsed, 3))
         except asyncio.TimeoutError:
             stats["requests_error"] += 1
             _finish_request(request_id, "timeout")
