@@ -8,10 +8,15 @@ build/
 .env
 output*.wav
 
-# Models (large files)
+# Models (large files / local downloads)
 models/*.pth
 models/*.pt
+models/config.json
 models/voices/
+models/samples/
+
+# Hugging Face local cache persisted by Docker Compose
+.cache/
 
 # Python
 .venv/
