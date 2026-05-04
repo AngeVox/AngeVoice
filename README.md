@@ -1,6 +1,6 @@
 # Kokoro TTS 中文语音合成
 
-> 基于 [Kokoro v1.1](https://huggingface.co/hexgrad/Kokoro-82M) 的轻量级中文 TTS，支持 HTTP API + WebSocket 流式合成
+> 基于 [Kokoro v1.1](https://huggingface.co/hexgrad/Kokoro-82M) 的轻量级中文 TTS 服务，支持 OpenAI 兼容 API、WebSocket 逐段流式、批量合成、缓存与 Docker 部署。
 
 [![Python 3.10+](https://img.shields.io/badge/python-3.10+-blue.svg)](https://www.python.org/downloads/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
@@ -8,19 +8,19 @@
 ## 特性
 
 - **中英双语** — 中文 pipeline + 英文 G2P 回调，支持中英文混合输入
-- **CPU/GPU 自适应** — 自动检测 CUDA，无 GPU 也能跑
 - **OpenAI 兼容 API** — 支持 `/v1/audio/speech`，兼容 `model/input/voice/speed/response_format`
-- **WebSocket 逐段流式合成** — 按文本段落合成并实时推送 PCM/WAV 分片，支持 JSON/base64 和 binary 音频帧
-- **服务化能力** — 内存 LRU 缓存、请求 ID、`/stats`、`/requests`、超时控制、队列状态
-- **输入安全校验** — 文本长度、语速、格式统一校验，避免异常请求拖垮服务
-- **pip 可安装** — `pip install -e .` 即可使用
-- **Docker 一键部署** — 支持 CPU 和 GPU 两种镜像
-- **双部署画像** — 通用服务版 + 老显卡/保守兼容版，见 [docs/SERVICE_PROFILES.md](docs/SERVICE_PROFILES.md)
-- **100+ 音色** — 中文 100 个（55 女 + 45 男）+ 英文 3 个（2 女 + 1 男）
+- **逐段流式合成** — WebSocket 按文本段落推送音频，支持 JSON/base64 与 binary 音频帧
+- **服务化能力** — 内存 LRU 缓存、请求 ID、请求状态、`/stats`、`/requests`、超时控制
+- **批量合成** — `/v1/audio/batch` 可批量生成 ZIP，适合有声书和分段配音
+- **管理接口** — 可选开启缓存清理、音色列表、`.pt` 音色上传
+- **可选 MP3** — 默认 WAV/PCM，开启 `KOKORO_MP3_ENABLED=true` 后支持 MP3 转码
+- **Docker 部署** — CPU/GPU Compose 模板内置常用环境变量和调试注释
+- **部署画像** — 通用服务版与老显卡/保守兼容版，见 [docs/SERVICE_PROFILES.md](docs/SERVICE_PROFILES.md)
+- **100+ 音色** — 中文 100 个左右 + 英文音色，实际列表以 `kokoro-tts voices` 为准
 
 ## 快速开始
 
-> **模型自动下载**：首次运行时，如果本地没有模型文件，会自动从 HuggingFace 下载（约 330MB）。如需离线使用，请参考下方「手动下载模型」。
+> 首次运行时，如果本地没有模型文件，会自动从 HuggingFace 下载。离线部署可参考下方“手动下载模型”。
 
 ### pip 安装
 
@@ -29,37 +29,37 @@ git clone https://github.com/ang77712829/kokoro-tts-zh.git
 cd kokoro-tts-zh
 pip install -e .
 
-# 启动服务（首次会自动下载模型）
 kokoro-tts serve --port 8000
-
-# 命令行合成
 kokoro-tts synth "你好世界" -o hello.wav -v zm_010
-
-# 查看可用音色
 kokoro-tts voices
 ```
 
 ### Docker 部署
 
 ```bash
-# CPU 版本（端口 8100，首次自动下载模型）
+# CPU 版本，默认端口 8100
 cd docker/cpu && docker compose up -d
 
-# GPU 通用服务版（端口 8101，需要 nvidia-container-toolkit）
+# GPU 版本，默认端口 8101，需要 nvidia-container-toolkit
 cd docker/gpu && docker compose up -d
 ```
 
-老显卡、旧驱动、NAS 或保守环境请参考：[服务画像说明](docs/SERVICE_PROFILES.md)。
+开发/测试环境想要 `git pull + restart` 生效，可以在 Compose 中取消注释源码挂载：
 
-### 手动下载模型（离线使用）
+```yaml
+- ../../src:/app/src:ro
+```
 
-如果需要离线部署或自动下载太慢，可以手动下载模型文件：
+生产环境建议构建固定镜像：
 
 ```bash
-# 安装 huggingface_hub CLI
-pip install huggingface_hub
+docker compose up -d --build
+```
 
-# 下载模型到 models/ 目录
+### 手动下载模型
+
+```bash
+pip install huggingface_hub
 huggingface-cli download hexgrad/Kokoro-82M-v1.1-zh \
   --local-dir models/ \
   --include "config.json" "kokoro-v1_1-zh.pth" "voices/*.pt"
@@ -77,7 +77,7 @@ rm -rf /tmp/kokoro-models
 
 ## API 接口
 
-### OpenAI 兼容接口
+### OpenAI 兼容 TTS
 
 ```bash
 curl -X POST http://localhost:8000/v1/audio/speech \
@@ -86,37 +86,47 @@ curl -X POST http://localhost:8000/v1/audio/speech \
   --output output.wav
 ```
 
-当前 `response_format` 支持：
+支持格式：
 
 | 格式 | Content-Type | 说明 |
-|------|--------------|------|
+|---|---|---|
 | `wav` | `audio/wav` | 默认格式，兼容性最好 |
-| `pcm` | `audio/pcm` | 原始 PCM s16le，适合流式/低开销场景 |
+| `pcm` | `audio/pcm` | 原始 PCM s16le，适合低开销流式场景 |
+| `mp3` | `audio/mpeg` | 需开启 `KOKORO_MP3_ENABLED=true`，并安装 ffmpeg |
 
-> 暂不伪装支持 MP3。如果需要 MP3，请在外层接入 ffmpeg 转码。
+查询当前格式支持：
+
+```bash
+curl http://localhost:8000/v1/audio/formats
+```
 
 ### 旧版接口
 
 ```bash
-# JSON
 curl -X POST http://localhost:8000/api/tts \
   -H "Content-Type: application/json" \
-  -d '{"text": "你好世界", "voice": "zm_010", "format":"wav"}' \
+  -d '{"text":"你好世界","voice":"zm_010","format":"wav"}' \
   --output output.wav
 
-# GET
 curl "http://localhost:8000/api/tts?text=你好世界&voice=zm_010&response_format=wav" --output output.wav
-
-# Form
-curl -X POST http://localhost:8000/api/tts -F "text=你好世界" --output output.wav
 ```
 
-### WebSocket 流式接口
+### 批量合成 ZIP
 
-通过 WebSocket 实现逐段实时合成播放。服务端会按标点和长度切分文本，每段合成完成后立即推送音频分片：
+```bash
+curl -X POST http://localhost:8000/v1/audio/batch \
+  -H "Content-Type: application/json" \
+  -d '{"voice":"zm_010","speed":1.0,"response_format":"wav","items":[{"text":"第一段","filename":"001"},{"text":"第二段","filename":"002"}]}' \
+  --output batch.zip
+```
+
+ZIP 内会包含每条音频和 `manifest.json`。
+
+### WebSocket 流式合成
 
 ```javascript
 const ws = new WebSocket("ws://localhost:8000/ws/v1/tts");
+
 ws.onopen = () => {
   ws.send(JSON.stringify({
     text: "你好世界，这是一段流式合成的语音。",
@@ -126,29 +136,35 @@ ws.onopen = () => {
     binary: false
   }));
 };
+
 ws.onmessage = (e) => {
   if (typeof e.data !== "string") {
-    // binary=true 时，这里会收到原始音频帧
+    // binary=true 时会收到原始音频帧
     return;
   }
   const msg = JSON.parse(e.data);
   if (msg.type === "audio") {
-    playPCM(msg.data);  // base64 编码的 PCM 音频
+    playPCM(msg.data);
   }
 };
+
+// 主动取消/停止后续段落
+ws.send(JSON.stringify({ type: "cancel" }));
+// 或 ws.send(JSON.stringify({ type: "stop" }));
 ```
 
-**消息协议：**
+消息类型：
 
-| 类型 | 说明 | 字段 |
-|------|------|------|
-| `started` | 合成开始 | `request_id`, `segments`, `sample_rate`, `channels`, `format`, `dtype` |
-| `audio` | 音频数据 | `request_id`, `index`, `data`（base64）, `format`, `sample_rate`, `channels` |
-| `segment_error` | 单段失败 | `request_id`, `index`, `message` |
-| `done` | 合成完成 | `request_id`, `total_segments` |
-| `error` | 错误 | `request_id`, `message` |
+| 类型 | 说明 |
+|---|---|
+| `started` | 合成开始 |
+| `audio` | 音频数据 |
+| `segment_error` | 单段失败 |
+| `done` | 合成完成 |
+| `cancelled` | 已取消 |
+| `error` | 错误 |
 
-### 健康检查 / 服务状态
+### 服务状态
 
 ```bash
 curl http://localhost:8000/health
@@ -156,180 +172,180 @@ curl http://localhost:8000/stats
 curl http://localhost:8000/requests
 ```
 
-## 可用音色
+### 管理接口
 
-运行 `kokoro-tts voices` 查看完整音色列表。
+管理接口默认关闭。开启前建议设置 API Key：
 
-| 前缀 | 语言 | 示例 |
-|------|------|------|
-| `zm_` | 中文 | `zm_010` |
-| `zf_` | 中文 | `zf_001` ~ `zf_004` |
-| `af_` | 英文 | `af_maple`, `af_sol` |
-| `bf_` | 英文 | `bf_vale` |
+```bash
+KOKORO_ADMIN_ENABLED=true
+KOKORO_API_KEY=change-me
+```
 
-## 作为库使用
+接口：
 
-```python
-from kokoro_tts import TTSEngine
+```bash
+curl -X DELETE http://localhost:8000/admin/cache \
+  -H "Authorization: Bearer change-me"
 
-engine = TTSEngine()
-engine.load()
+curl http://localhost:8000/admin/voices \
+  -H "Authorization: Bearer change-me"
+```
 
-# 合成到内存
-wav_bytes = engine.synthesize("你好世界", voice="zm_010", speed=1.0)
+上传 `.pt` 音色还需要：
 
-# 合成到文件
-engine.synthesize_file("你好世界", output_path="output.wav")
+```bash
+KOKORO_VOICE_UPLOAD_ENABLED=true
+```
 
-# 流式合成（逐段 yield）
-for chunk in engine.synthesize_stream("你好世界", voice="zm_010"):
-    if chunk["type"] == "audio":
-        process_audio(chunk["data"])  # base64 PCM
+Docker 中需要将 voices 目录挂载为可写：
+
+```yaml
+- ../../models/voices:/app/models/voices:rw
 ```
 
 ## 配置
 
-环境变量（优先级高于默认值）：
-
 | 变量 | 默认值 | 说明 |
-|------|--------|------|
+|---|---|---|
 | `KOKORO_MODEL_DIR` | `./models` | 模型目录 |
 | `KOKORO_HOST` | `0.0.0.0` | 监听地址 |
 | `KOKORO_PORT` | `8000` | 端口 |
-| `KOKORO_DEVICE` | `auto` | 设备 (auto/cpu/cuda) |
-| `KOKORO_WORKERS` | `1` | Uvicorn worker 数 |
-| `KOKORO_MAX_CONCURRENT_REQUESTS` | `1` | 同一进程内最大合成并发 |
+| `KOKORO_DEVICE` | `auto` | `auto` / `cpu` / `cuda` |
+| `KOKORO_WORKERS` | `1` | Uvicorn worker 数，GPU 建议 1 |
+| `KOKORO_MAX_CONCURRENT_REQUESTS` | `1` | 单进程最大合成并发 |
 | `KOKORO_MAX_TEXT_LENGTH` | `10000` | 单次请求最大文本长度 |
 | `KOKORO_SEGMENT_LENGTH` | `100` | 文本切分目标长度 |
 | `KOKORO_DEFAULT_VOICE` | `zm_010` | 默认音色 |
 | `KOKORO_DEFAULT_SPEED` | `1.0` | 默认语速 |
 | `KOKORO_STREAM_FORMAT` | `pcm_s16le` | WebSocket 默认格式 |
-| `KOKORO_STREAM_BINARY_ENABLED` | `true` | 是否允许 WebSocket binary 音频帧 |
-| `KOKORO_CACHE_ENABLED` | `true` | 是否启用内存 LRU 音频缓存 |
+| `KOKORO_STREAM_BINARY_ENABLED` | `true` | 是否允许 binary 音频帧 |
+| `KOKORO_CACHE_ENABLED` | `true` | 是否启用内存 LRU 缓存 |
 | `KOKORO_CACHE_MAX_ITEMS` | `128` | 最大缓存条目数 |
-| `KOKORO_QUEUE_STATUS_ENABLED` | `true` | 是否启用 `/requests` 状态接口 |
-| `KOKORO_METRICS_ENABLED` | `true` | 是否启用 `/stats` 统计接口 |
+| `KOKORO_QUEUE_STATUS_ENABLED` | `true` | 是否启用 `/requests` |
+| `KOKORO_METRICS_ENABLED` | `true` | 是否启用 `/stats` |
 | `KOKORO_REQUEST_TIMEOUT_SECONDS` | `300` | 单次合成超时时间 |
-| `KOKORO_API_KEY` | - | API Key（设置后需认证） |
-| `KOKORO_CORS_ORIGINS` | `http://localhost:8000` | CORS 允许来源（逗号分隔） |
+| `KOKORO_BATCH_ENABLED` | `true` | 是否启用批量合成 |
+| `KOKORO_BATCH_MAX_ITEMS` | `20` | 批量合成最大条数 |
+| `KOKORO_ADMIN_ENABLED` | `false` | 是否启用管理接口 |
+| `KOKORO_VOICE_UPLOAD_ENABLED` | `false` | 是否允许上传音色 |
+| `KOKORO_MP3_ENABLED` | `false` | 是否启用 MP3 输出 |
+| `KOKORO_MP3_BITRATE` | `192k` | MP3 比特率 |
+| `KOKORO_API_KEY` | - | 设置后启用 Bearer 认证 |
+| `KOKORO_CORS_ORIGINS` | `http://localhost:8000` | CORS 允许来源，逗号分隔 |
+
+## 测试
+
+```bash
+pip install -e '.[dev]'
+pytest
+```
+
+服务冒烟测试：
+
+```bash
+chmod +x scripts/smoke_test.sh scripts/loop_test.sh
+BASE_URL=http://127.0.0.1:8101 ./scripts/smoke_test.sh
+N=50 BASE_URL=http://127.0.0.1:8101 ./scripts/loop_test.sh
+```
 
 ## 项目结构
 
-```
+```text
 kokoro-tts-zh/
 ├── src/kokoro_tts/       # 核心包
-│   ├── __init__.py       # 包入口（懒加载）
 │   ├── config.py         # 配置管理
 │   ├── engine.py         # TTS 引擎
-│   ├── server.py         # FastAPI HTTP + WebSocket 服务
+│   ├── server.py         # FastAPI 服务
+│   ├── service_extras.py # 批量/管理/MP3 等扩展接口
 │   ├── cli.py            # 命令行工具
 │   └── templates/        # Web UI
-├── tests/                # 测试
-├── docker/               # Docker 配置
-│   ├── cpu/              # CPU 版本
-│   └── gpu/              # GPU 通用服务版
-├── docs/                 # 服务画像和部署说明
-├── models/               # 模型文件（Git LFS）
-├── pyproject.toml        # 包配置
+├── scripts/              # 冒烟/稳定性测试脚本
+├── tests/                # 单元测试
+├── docker/               # CPU/GPU Docker 配置
+├── docs/                 # 部署画像和服务功能说明
+├── models/               # 模型文件目录
+├── pyproject.toml
 ├── README.md
 └── README_EN.md
 ```
 
 ## 更新日志
 
+### v2.4.0 (2026-05-04)
+
+**新增**
+- 新增 `/v1/audio/batch` 批量合成 ZIP，包含 `manifest.json`
+- 新增 `/v1/audio/formats` 查询当前支持的输出格式
+- 新增管理接口：`/admin/cache`、`/admin/voices`、`/admin/voices/upload`
+- 新增可选 MP3 输出，需开启 `KOKORO_MP3_ENABLED=true`
+- 新增 WebSocket `cancel` / `stop` 控制帧，用于停止后续段落合成
+- Docker CPU/GPU 镜像加入 `ffmpeg`，用于可选 MP3 转码
+- Compose 模板补充完整环境变量注释、源码热更新挂载和 voices 可写挂载说明
+
+**改进**
+- FastAPI 与包版本同步到 `2.4.0`
+- `/health` 返回 batch/admin/mp3 状态
+- v2.4 服务功能说明移至 [docs/V2_4_FEATURES.md](docs/V2_4_FEATURES.md)
+
 ### v2.3.0 (2026-05-04)
 
 **新增**
-- 服务化版本：新增 `/stats`、`/requests`、请求 ID、请求状态追踪和基础统计
-- 新增内存 LRU 音频缓存，重复文本/音色/语速/格式请求可直接命中缓存
-- WebSocket 支持可选 binary 音频帧，降低 base64 开销
-- 新增请求超时控制，避免长任务无限挂起
-- 新增通用服务版和老显卡/保守兼容版两套部署画像说明
+- 新增 `/stats`、`/requests`、请求 ID、请求状态追踪和基础统计
+- 新增内存 LRU 音频缓存
+- WebSocket 支持可选 binary 音频帧
+- 新增请求超时控制
+- 新增通用服务版和老显卡/保守兼容版部署画像
 
 **改进**
 - HTTP 响应增加 `X-Request-ID`
 - `/health` 返回缓存状态和并发配置
-- 扩展环境变量，支持开关缓存、metrics、queue status、binary stream 等服务特性
+- 扩展环境变量，支持缓存、metrics、queue status、binary stream 等服务特性
 
 ### v2.1.3 (2026-05-04)
 
 **修复**
-- 修复 `response_format=mp3` 被错误标记为 `audio/mpeg` 的问题；当前仅声明支持 `wav`/`pcm`
-- 将同步推理放入线程池，并增加进程内并发限制，避免阻塞 FastAPI 事件循环
-- 统一校验文本、音色、语速和输出格式，改善错误响应
-- 文本分段支持无标点长文本硬切，避免超长单段导致失败
-- PCM 编码前进行 `nan_to_num` 和 `clip`，避免 int16 溢出爆音
-- 段落边界增加轻量淡入淡出和短静音，减少拼接 click/pop
+- 修复 `response_format=mp3` 被错误标记为 `audio/mpeg` 的问题
+- 将同步推理放入线程池，并增加进程内并发限制
+- 统一校验文本、音色、语速和输出格式
+- 文本分段支持无标点长文本硬切
+- PCM 编码前进行 `nan_to_num` 和 `clip`
+- 段落边界增加轻量淡入淡出和短静音
 - Docker 启动脚本不再每次启动重复安装包
-- 统一版本号为 `2.1.3`
-
-**新增**
-- `KOKORO_WORKERS`、`KOKORO_MAX_CONCURRENT_REQUESTS`、`KOKORO_MAX_TEXT_LENGTH`、`KOKORO_SEGMENT_LENGTH` 等环境变量
-- WebSocket `started`/`audio` 消息增加 `sample_rate`、`channels` 等元信息
 
 ### v2.1.2 (2026-05-04)
 
 **新增**
-- 🚀 模型自动下载：本地无模型时自动从 HuggingFace 下载（~330MB）
-- 📖 新增「手动下载模型」离线部署文档
-- 🔧 修复 Docker Compose 配置（healthcheck、卷挂载、环境变量）
-- 🔧 GPU Docker CUDA 11.7.1 → 12.1.1
-- 🔧 版本号统一为 2.1.2
+- 模型自动下载
+- 离线模型下载文档
+- Docker Compose 配置修复
+- GPU Docker 更新到 CUDA 12.1.1
 
 ### v2.1.1 (2026-05-03)
 
 **新增**
-- WebSocket 流式语音合成（`/ws/v1/tts`），支持逐段实时播放
+- WebSocket 逐段流式语音合成
 - PCM s16le 和 WAV 两种音频格式
-- Web UI 流式播放开关 + WebSocket 状态指示灯
-- Docker 集成测试（17 个测试用例）
-
-**改进**
-- `engine.py`: 新增 `synthesize_stream()` 生成器方法
-- `server.py`: 新增 WebSocket 端点，含 API Key 验证
-- `config.py`: 新增 `stream_enabled`、`stream_format` 配置项
+- Web UI 流式播放开关和状态指示
 
 ### v2.0.1 (2026-05-03)
 
 **安全**
-- API Key 时序攻击防护（`hmac.compare_digest`）
-- CORS 默认关闭，支持 `KOKORO_CORS_ORIGINS` 配置
-- 错误信息脱敏，不再暴露内部异常堆栈
-- 文本长度限制（10000 字符），防止 OOM
-
-**修复**
-- `engine.py` 缺少 `import os`
-- `tts-project-cpu/main.py` 重复函数定义
-- 缺失 `static/` 目致 Docker 挂载崩溃
-- 无效 fallback 逻辑（相同参数重试）
-
-**清理**
-- 删除无用的 `Dockerfile.new`
-- Python 版本统一为 `>=3.10`
-
-### v1.1 (2026-05-02)
-
-**新增**
-- CORS 中间件支持
-- `KOKORO_MODEL_DIR` 环境变量配置
-- CPU + GPU 双版本 Docker
-
-**修复**
-- `torch.set_num_interop_threads` 重复设置保护
+- API Key 时序攻击防护
+- CORS 可配置
+- 错误信息脱敏
+- 文本长度限制
 
 ### v1.0 (2026-02-21)
 
 **初始版本**
-- 中英文语音合成（Kokoro-82M-v1.1-zh）
-- 100+ 音色，语速调节
+- 中英文语音合成
 - OpenAI 风格 API
 - Docker CPU/GPU 部署
-- 一键启动脚本
 
 ## 致谢
 
 - [Kokoro v1.1 模型](https://huggingface.co/hexgrad/Kokoro-82M) — hexgrad
-- 原始模型 [Apache 2.0](https://huggingface.co/hexgrad/Kokoro-82M/blob/main/LICENSE) 授权
+- 原始模型 Apache 2.0 授权
 - 本项目 MIT 授权
 
 ## License
