@@ -1,4 +1,4 @@
-"""Kokoro TTS 基础测试
+"""AngeVoice 基础测试
 
 测试配置和引擎初始化逻辑（不需要实际模型文件）。
 模型加载测试需要在有模型文件的环境中运行。
@@ -47,7 +47,7 @@ class TestConfig:
         assert config.device == "cpu"
 
     def test_function_params_override(self):
-        from kokoro_tts.config import TTSConfig, load_config
+        from kokoro_tts.config import load_config
         config = load_config(port=3000, device="cuda")
         assert config.port == 3000
         assert config.device == "cuda"
@@ -55,12 +55,10 @@ class TestConfig:
     def test_voices_empty_when_no_dir(self):
         from kokoro_tts.config import TTSConfig
         config = TTSConfig(model_dir=Path("/nonexistent"))
-        # voices_dir 不存在时应返回空列表
         assert config.get_voices() == []
 
     def test_voices_discovery(self, tmp_path):
         from kokoro_tts.config import TTSConfig
-        # 创建临时音色文件
         voices_dir = tmp_path / "voices"
         voices_dir.mkdir()
         (voices_dir / "zm_001.pt").touch()
@@ -93,11 +91,8 @@ class TestEngine:
     def test_clean_text(self):
         from kokoro_tts.engine import TTSEngine
         engine = TTSEngine()
-        # \x00 不可打印 → 被替换为空格，再合并连续空白
         assert engine._clean_text("hello\x00world") == "hello world"
-        # 合并空白
         assert engine._clean_text("hello   world") == "hello world"
-        # 去除首尾空白
         assert engine._clean_text("  hello  ") == "hello"
 
     def test_detect_language(self):
@@ -110,16 +105,19 @@ class TestEngine:
     def test_segment_text(self):
         from kokoro_tts.engine import TTSEngine
         engine = TTSEngine()
-        # 短文本不分段
         text = "你好"
         segments = engine._segment_text(text)
         assert len(segments) == 1
 
-        # 长文本按标点分段
-        text = "你好世界。这是第二句话，很长很长。"
-        engine.config.segment_length = 5  # 很小的值触发分段
+        engine.config.segment_length = 20
+        text = (
+            "第一句话用于测试分段逻辑，内容需要足够长才能触发切分。"
+            "第二句话继续补充长度，确保超过一倍半的切分阈值。"
+            "第三句话用于验证标点优先切分。"
+        )
         segments = engine._segment_text(text)
         assert len(segments) >= 2
+        assert all(s for s in segments)
 
     def test_make_speed_fn(self):
         from kokoro_tts.engine import TTSEngine
@@ -132,30 +130,22 @@ class TestEngine:
 class TestServer:
     """测试服务器模块"""
 
-    @pytest.mark.skipif(
-        not _has_module("fastapi"),
-        reason="fastapi not installed",
-    )
+    @pytest.mark.skipif(not _has_module("fastapi"), reason="fastapi not installed")
     def test_create_app(self):
         from kokoro_tts.server import create_app
         from kokoro_tts.config import TTSConfig
-        # 不加载模型，只测试 app 创建
         with patch("kokoro_tts.engine.TTSEngine.load"):
             config = TTSConfig(model_dir=Path("/nonexistent"))
             app = create_app(config=config)
-            assert app.title == "Kokoro TTS"
+            assert app.title == "AngeVoice"
 
-    @pytest.mark.skipif(
-        not _has_module("fastapi"),
-        reason="fastapi not installed",
-    )
+    @pytest.mark.skipif(not _has_module("fastapi"), reason="fastapi not installed")
     def test_tts_request_model(self):
         from kokoro_tts.server import create_app
         from kokoro_tts.config import TTSConfig
         with patch("kokoro_tts.engine.TTSEngine.load"):
             app = create_app(config=TTSConfig(model_dir=Path("/nonexistent")))
-            # TTSRequest is internal to create_app; just verify app was created
-            assert app.title == "Kokoro TTS"
+            assert app.title == "AngeVoice"
 
 
 class TestCLI:
