@@ -40,8 +40,7 @@ jobs:
           # Install the package without heavyweight runtime deps, then install only
           # the libraries actually imported by tests. This keeps CI stable and fast.
           python -m pip install -e . --no-deps
-          python -m pip install pytest httpx fastapi uvicorn python-multipart jinja2 websockets numpy soundfile
-          python -m pip install torch --index-url https://download.pytorch.org/whl/cpu
+          python -m pip install pytest pytest-asyncio httpx fastapi uvicorn python-multipart jinja2 websockets numpy soundfile
 
       - name: Run tests
         run: |
