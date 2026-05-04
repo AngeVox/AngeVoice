@@ -106,7 +106,7 @@ def create_app(config: Optional[TTSConfig] = None, engine: Optional[TTSEngine] =
     app = FastAPI(
         title="Kokoro TTS",
         description="轻量级中文 TTS 服务 (Kokoro v1.1)",
-        version="2.3.0",
+        version="2.4.0",
         lifespan=lifespan,
     )
 
@@ -133,7 +133,7 @@ def create_app(config: Optional[TTSConfig] = None, engine: Optional[TTSEngine] =
         input: str = Field(..., description="要合成的文本", alias="text")
         voice: str = Field(default="zm_010", description="音色名称")
         speed: float = Field(default=1.0, ge=0.5, le=2.0, description="语速")
-        response_format: str = Field(default="wav", description="音频格式：wav 或 pcm")
+        response_format: str = Field(default="wav", description="音频格式：wav、pcm，启用 ffmpeg 后可用 mp3")
 
         model_config = ConfigDict(populate_by_name=True, extra="ignore")
 
@@ -149,9 +149,17 @@ def create_app(config: Optional[TTSConfig] = None, engine: Optional[TTSEngine] =
         fmt = (fmt or "wav").lower()
         if fmt in {"wav", "pcm"}:
             return fmt
+        if fmt == "mp3" and getattr(cfg, "mp3_enabled", False):
+            return fmt
+        if fmt == "mp3":
+            raise HTTPException(
+                status_code=400,
+                detail="MP3 output disabled. Set KOKORO_MP3_ENABLED=true and install ffmpeg.",
+            )
+        supported = "wav, pcm" + (", mp3" if getattr(cfg, "mp3_enabled", False) else "")
         raise HTTPException(
             status_code=400,
-            detail="Unsupported response_format. Currently supported: wav, pcm",
+            detail=f"Unsupported response_format. Currently supported: {supported}",
         )
 
     def _synthesize_response_bytes(text: str, voice: str, speed: float, fmt: str) -> tuple[bytes, str]:
@@ -164,6 +172,10 @@ def create_app(config: Optional[TTSConfig] = None, engine: Optional[TTSEngine] =
         if fmt == "pcm":
             wav = eng.synthesize_array(text=text, voice=voice, speed=speed)
             result = (eng._encode_segment(wav, "pcm_s16le"), "audio/pcm")
+        elif fmt == "mp3":
+            from .service_extras import _wav_to_mp3
+            wav_bytes = eng.synthesize(text=text, voice=voice, speed=speed)
+            result = (_wav_to_mp3(wav_bytes, getattr(cfg, "mp3_bitrate", "192k")), "audio/mpeg")
         else:
             result = (eng.synthesize(text=text, voice=voice, speed=speed), "audio/wav")
         _cache_set(key, result)
@@ -220,6 +232,9 @@ def create_app(config: Optional[TTSConfig] = None, engine: Optional[TTSEngine] =
             "max_concurrent_requests": cfg.max_concurrent_requests,
             "cache_enabled": cfg.cache_enabled,
             "cache_items": len(tts_cache),
+            "batch_enabled": getattr(cfg, "batch_enabled", False),
+            "admin_enabled": getattr(cfg, "admin_enabled", False),
+            "mp3_enabled": getattr(cfg, "mp3_enabled", False),
         }
 
     @app.get("/v1/audio/voices")
@@ -456,6 +471,22 @@ def create_app(config: Optional[TTSConfig] = None, engine: Optional[TTSEngine] =
                 await websocket.close()
             except Exception:
                 pass
+
+    from .service_extras import register_extra_routes
+    register_extra_routes(
+        app=app,
+        cfg=cfg,
+        eng=eng,
+        verify_api_key=verify_api_key,
+        tts_cache=tts_cache,
+        active_requests=active_requests,
+        stats=stats,
+        synthesize_threaded=_synthesize_response_threaded,
+        new_request_id=_new_request_id,
+        normalize_response_format=_normalize_response_format,
+        mark_request=_mark_request,
+        finish_request=_finish_request,
+    )
 
     return app
 
