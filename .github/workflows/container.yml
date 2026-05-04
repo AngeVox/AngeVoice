@@ -59,7 +59,7 @@ jobs:
             echo "enabled=false" >> "$GITHUB_OUTPUT"
           fi
 
-      # ── Login to all three registries ──
+      # ── Login to registries ──
 
       - name: Login to GHCR
         if: steps.publish.outputs.enabled == 'true'
@@ -76,15 +76,7 @@ jobs:
           username: ${{ secrets.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}
 
-      - name: Login to CNB
-        if: steps.publish.outputs.enabled == 'true'
-        uses: docker/login-action@v3
-        with:
-          registry: cr.ccs.tencentyun.com
-          username: ${{ secrets.CNB_USERNAME }}
-          password: ${{ secrets.CNB_TOKEN }}
-
-      # ── Metadata: generate tags for all three registries ──
+      # ── Metadata: generate tags ──
 
       - name: Docker metadata
         id: meta
@@ -93,7 +85,6 @@ jobs:
           images: |
             ghcr.io/${{ github.repository_owner }}/${{ matrix.image }}
             ${{ secrets.DOCKERHUB_USERNAME }}/${{ matrix.image }}
-            ${{ secrets.CNB_REGISTRY }}/${{ matrix.image }}
           tags: |
             type=raw,value=latest,enable={{is_default_branch}}
             type=ref,event=tag
@@ -118,4 +109,21 @@ jobs:
         run: |
           echo "Images were built for validation only."
           echo "Push is enabled only for v* tags or manual workflow_dispatch with publish=true."
-          echo "Registries: GHCR, Docker Hub, CNB (cr.ccs.tencentyun.com)"
+          echo "Registries: GHCR, Docker Hub"
+
+  # ── Mirror to CNB (triggers CNB CI to build Docker images) ──
+  mirror-cnb:
+    name: Mirror to CNB
+    runs-on: ubuntu-latest
+    needs: build
+    if: always() && !cancelled()
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Push to CNB
+        run: |
+          git remote add cnb https://cnb:${{ secrets.CNB_TOKEN }}@cnb.cool/${{ secrets.CNB_REPO }}.git
+          git push cnb HEAD:main --force
