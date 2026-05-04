@@ -63,6 +63,13 @@ def _get_env_float(name: str, default: float) -> float:
         return default
 
 
+def _get_env_bool(name: str, default: bool) -> bool:
+    value = os.environ.get(name)
+    if value is None:
+        return default
+    return value.strip().lower() in {"1", "true", "yes", "on", "y"}
+
+
 @dataclass
 class TTSConfig:
     """TTS 配置"""
@@ -90,6 +97,14 @@ class TTSConfig:
     # 流式
     stream_enabled: bool = True
     stream_format: str = "pcm_s16le"  # pcm_s16le, wav
+    stream_binary_enabled: bool = True
+
+    # 服务化能力
+    cache_enabled: bool = True
+    cache_max_items: int = 128
+    queue_status_enabled: bool = True
+    metrics_enabled: bool = True
+    request_timeout_seconds: float = 300.0
 
     @property
     def model_path(self) -> str:
@@ -174,6 +189,25 @@ def load_config(
         ]
     if os.environ.get("KOKORO_STREAM_FORMAT"):
         config.stream_format = os.environ["KOKORO_STREAM_FORMAT"]
+    if os.environ.get("KOKORO_STREAM_BINARY_ENABLED"):
+        config.stream_binary_enabled = _get_env_bool(
+            "KOKORO_STREAM_BINARY_ENABLED", config.stream_binary_enabled
+        )
+    if os.environ.get("KOKORO_CACHE_ENABLED"):
+        config.cache_enabled = _get_env_bool("KOKORO_CACHE_ENABLED", config.cache_enabled)
+    if os.environ.get("KOKORO_CACHE_MAX_ITEMS"):
+        config.cache_max_items = max(0, _get_env_int("KOKORO_CACHE_MAX_ITEMS", config.cache_max_items))
+    if os.environ.get("KOKORO_QUEUE_STATUS_ENABLED"):
+        config.queue_status_enabled = _get_env_bool(
+            "KOKORO_QUEUE_STATUS_ENABLED", config.queue_status_enabled
+        )
+    if os.environ.get("KOKORO_METRICS_ENABLED"):
+        config.metrics_enabled = _get_env_bool("KOKORO_METRICS_ENABLED", config.metrics_enabled)
+    if os.environ.get("KOKORO_REQUEST_TIMEOUT_SECONDS"):
+        config.request_timeout_seconds = max(
+            1.0,
+            _get_env_float("KOKORO_REQUEST_TIMEOUT_SECONDS", config.request_timeout_seconds),
+        )
 
     # 函数参数覆盖一切
     if model_dir:
