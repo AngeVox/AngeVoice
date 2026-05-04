@@ -58,8 +58,10 @@ sudo docker compose up -d
 
 | Registry | 地址 |
 |---|---|
-| GHCR | `ghcr.io/ang77712829/angevoice-gpu` |
 | Docker Hub | `docker.io/maxblack777/angevoice-gpu` |
+| GHCR | `ghcr.io/ang77712829/angevoice-gpu` |
+
+> 国内用户默认走 Docker Hub 即可，无需代理。如有需要也可手动改为 GHCR 镜像地址。
 
 **方式二：本地构建**
 
@@ -300,12 +302,12 @@ python scripts/benchmark_streaming.py \
 CI 自动推送到两个 registry（GHCR + Docker Hub）。普通 `main` 提交只做构建验证；打 `v*` tag 或手动触发 `publish=true` 时才推送。
 预期镜像名：
 ```text
-ghcr.io/ang77712829/angevoice-cpu:latest
-ghcr.io/ang77712829/angevoice-gpu:latest
-ghcr.io/ang77712829/angevoice-legacy-gpu:latest
 docker.io/maxblack777/angevoice-cpu:latest
 docker.io/maxblack777/angevoice-gpu:latest
 docker.io/maxblack777/angevoice-legacy-gpu:latest
+ghcr.io/ang77712829/angevoice-cpu:latest
+ghcr.io/ang77712829/angevoice-gpu:latest
+ghcr.io/ang77712829/angevoice-legacy-gpu:latest
 ```
 
 

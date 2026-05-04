@@ -61,8 +61,10 @@ Supported registries:
 
 | Registry | Address |
 |---|---|
-| GHCR | `ghcr.io/ang77712829/angevoice-gpu` |
 | Docker Hub | `docker.io/maxblack777/angevoice-gpu` |
+| GHCR | `ghcr.io/ang77712829/angevoice-gpu` |
+
+> Default is Docker Hub. If you're behind a firewall, you can switch the image address to GHCR (requires proxy in China).
 
 **Option 2: Build locally**
 
@@ -302,12 +304,12 @@ CI automatically pushes to two registries (GHCR + Docker Hub). Regular `main` pu
 Expected image names:
 
 ```text
-ghcr.io/ang77712829/angevoice-cpu:latest
-ghcr.io/ang77712829/angevoice-gpu:latest
-ghcr.io/ang77712829/angevoice-legacy-gpu:latest
 docker.io/maxblack777/angevoice-cpu:latest
 docker.io/maxblack777/angevoice-gpu:latest
 docker.io/maxblack777/angevoice-legacy-gpu:latest
+ghcr.io/ang77712829/angevoice-cpu:latest
+ghcr.io/ang77712829/angevoice-gpu:latest
+ghcr.io/ang77712829/angevoice-legacy-gpu:latest
 
 ```
 

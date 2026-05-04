@@ -2,7 +2,7 @@ name: angevoice-legacy-gpu
 
 services:
   angevoice-legacy-gpu:
-    image: ghcr.io/ang77712829/angevoice-legacy-gpu:latest
+    image: docker.io/maxblack777/angevoice-legacy-gpu:latest
     container_name: angevoice-legacy-gpu
     build:
       context: ../..

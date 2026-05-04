@@ -2,7 +2,7 @@ name: angevoice-cpu
 
 services:
   angevoice-cpu:
-    image: ghcr.io/ang77712829/angevoice-cpu:latest
+    image: docker.io/maxblack777/angevoice-cpu:latest
     container_name: angevoice-cpu
     build:
       context: ../..
