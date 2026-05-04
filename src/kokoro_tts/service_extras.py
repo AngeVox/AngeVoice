@@ -86,11 +86,18 @@ def register_extra_routes(
     normalize_response_format: Callable[[str], str],
     mark_request: Callable,
     finish_request: Callable,
+    increment_stat: Callable[[str, object], None] | None = None,
 ):
     """Register optional v2.4 service routes on the existing FastAPI app."""
     from fastapi import Depends, File, HTTPException, UploadFile
     from fastapi.responses import StreamingResponse
     from pydantic import BaseModel, Field
+
+    def inc_stat(name: str, delta=1) -> None:
+        if increment_stat is not None:
+            increment_stat(name, delta)
+        else:
+            stats[name] = stats.get(name, 0) + delta
 
     class BatchItem(BaseModel):
         text: str = Field(..., description="Text to synthesize")
@@ -143,8 +150,8 @@ def register_extra_routes(
         fmt = normalize_extra_format(req.response_format)
         ext = "raw" if fmt == "pcm" else fmt
         batch_id = new_request_id()
-        stats["batch_requests_total"] = stats.get("batch_requests_total", 0) + 1
-        stats["batch_items_total"] = stats.get("batch_items_total", 0) + len(req.items)
+        inc_stat("batch_requests_total")
+        inc_stat("batch_items_total", len(req.items))
         mark_request(batch_id, "queued", batch=True, items=len(req.items), format=fmt)
 
         batch_sem = asyncio.Semaphore(max(1, int(getattr(cfg, "batch_concurrency", 1))))
