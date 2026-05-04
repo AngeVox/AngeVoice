@@ -11,7 +11,7 @@ permissions:
 
 jobs:
   test:
-    name: Python tests
+    name: Python tests (${{ matrix.python-version }})
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
@@ -33,10 +33,15 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y libsndfile1 ffmpeg
 
-      - name: Install package
+      - name: Install lightweight test dependencies
         run: |
           python -m pip install --upgrade pip
-          python -m pip install -e '.[dev]'
+          # CI unit tests are designed to avoid real Kokoro model loading.
+          # Install the package without heavyweight runtime deps, then install only
+          # the libraries actually imported by tests. This keeps CI stable and fast.
+          python -m pip install -e . --no-deps
+          python -m pip install pytest httpx fastapi uvicorn python-multipart jinja2 websockets numpy soundfile
+          python -m pip install torch --index-url https://download.pytorch.org/whl/cpu
 
       - name: Run tests
         run: |
