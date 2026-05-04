@@ -1,5 +1,9 @@
+name: angevoice-legacy-gpu
+
 services:
-  tts-legacy-gpu:
+  angevoice-legacy-gpu:
+    image: angevoice/legacy-gpu:latest
+    container_name: angevoice-legacy-gpu
     build:
       context: ../..
       dockerfile: docker/legacy-gpu/Dockerfile
