@@ -7,46 +7,46 @@ $:
       services:
         - docker
       stages:
+        - name: docker login
+          script: docker login -u cnb -p ${CNB_TOKEN} docker.cnb.cool
+
         - name: docker build cpu
           script: |
             docker build \
-              -t ${CNB_DOCKER_REGISTRY}/${CNB_REPO_SLUG_LOWERCASE}-cpu \
               -t ${CNB_DOCKER_REGISTRY}/${CNB_REPO_SLUG_LOWERCASE}-cpu:latest \
               -f docker/cpu/Dockerfile .
 
         - name: docker push cpu
-          script: |
-            docker push ${CNB_DOCKER_REGISTRY}/${CNB_REPO_SLUG_LOWERCASE}-cpu
-            docker push ${CNB_DOCKER_REGISTRY}/${CNB_REPO_SLUG_LOWERCASE}-cpu:latest
+          script: docker push ${CNB_DOCKER_REGISTRY}/${CNB_REPO_SLUG_LOWERCASE}-cpu:latest
 
     - name: 构建 GPU 镜像
       services:
         - docker
       stages:
+        - name: docker login
+          script: docker login -u cnb -p ${CNB_TOKEN} docker.cnb.cool
+
         - name: docker build gpu
           script: |
             docker build \
-              -t ${CNB_DOCKER_REGISTRY}/${CNB_REPO_SLUG_LOWERCASE}-gpu \
               -t ${CNB_DOCKER_REGISTRY}/${CNB_REPO_SLUG_LOWERCASE}-gpu:latest \
               -f docker/gpu/Dockerfile .
 
         - name: docker push gpu
-          script: |
-            docker push ${CNB_DOCKER_REGISTRY}/${CNB_REPO_SLUG_LOWERCASE}-gpu
-            docker push ${CNB_DOCKER_REGISTRY}/${CNB_REPO_SLUG_LOWERCASE}-gpu:latest
+          script: docker push ${CNB_DOCKER_REGISTRY}/${CNB_REPO_SLUG_LOWERCASE}-gpu:latest
 
     - name: 构建 Legacy GPU 镜像
       services:
         - docker
       stages:
+        - name: docker login
+          script: docker login -u cnb -p ${CNB_TOKEN} docker.cnb.cool
+
         - name: docker build legacy-gpu
           script: |
             docker build \
-              -t ${CNB_DOCKER_REGISTRY}/${CNB_REPO_SLUG_LOWERCASE}-legacy-gpu \
               -t ${CNB_DOCKER_REGISTRY}/${CNB_REPO_SLUG_LOWERCASE}-legacy-gpu:latest \
               -f docker/legacy-gpu/Dockerfile .
 
         - name: docker push legacy-gpu
-          script: |
-            docker push ${CNB_DOCKER_REGISTRY}/${CNB_REPO_SLUG_LOWERCASE}-legacy-gpu
-            docker push ${CNB_DOCKER_REGISTRY}/${CNB_REPO_SLUG_LOWERCASE}-legacy-gpu:latest
+          script: docker push ${CNB_DOCKER_REGISTRY}/${CNB_REPO_SLUG_LOWERCASE}-legacy-gpu:latest
