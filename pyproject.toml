@@ -52,6 +52,9 @@ kokoro-tts = "kokoro_tts.cli:main"
 [project.urls]
 Homepage = "https://github.com/ang77712829/AngeVoice"
 Repository = "https://github.com/ang77712829/AngeVoice"
+Documentation = "https://github.com/ang77712829/AngeVoice#readme"
+Issues = "https://github.com/ang77712829/AngeVoice/issues"
+Changelog = "https://github.com/ang77712829/AngeVoice/releases"
 
 [tool.setuptools.packages.find]
 where = ["src"]

@@ -4,7 +4,6 @@
 
 set -euo pipefail
 
-VERSION="latest"
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 
 registries=(
@@ -21,15 +20,14 @@ best_time=999
 best_label=""
 
 for entry in "${registries[@]}"; do
-  IFS='|' read -r url label <<< "$entry"
+  IFS="|" read -r url label <<< "$entry"
 
-  # 用 curl 测 HTTPS 响应时间（只测 v2 API 头部）
   time_total=$(curl -s -o /dev/null -w "%{time_total}" \
     --connect-timeout 5 --max-time 10 \
     "https://${url}/v2/" 2>/dev/null || echo "999")
 
-  # 转为毫秒比较
-  time_ms=$(echo "$time_total * 1000" | bc 2>/dev/null | cut -d. -f1)
+  # 用 awk 替代 bc（更通用）
+  time_ms=$(echo "$time_total" | awk '{printf "%d", $1 * 1000}')
   [ -z "$time_ms" ] && time_ms=999
 
   if [ "$time_ms" -lt "$best_time" ]; then
@@ -43,8 +41,13 @@ done
 
 echo ""
 echo "✅ 最快: $best_label (${best_time}ms)"
-echo "REGISTRY=$best_reg" > "${SCRIPT_DIR}/.env"
-echo "VERSION=$VERSION" >> "${SCRIPT_DIR}/.env"
-echo "📝 已写入 ${SCRIPT_DIR}/.env"
+
+# 写入各 profile 目录的 .env（Docker Compose 自动读取同目录 .env）
+for profile in gpu cpu legacy-gpu; do
+  env_file="${SCRIPT_DIR}/${profile}/.env"
+  echo "REGISTRY=$best_reg" > "$env_file"
+  echo "📝 已写入 $env_file"
+done
+
 echo ""
-cat "${SCRIPT_DIR}/.env"
+echo "现在可以 cd 到任意 profile 目录运行 docker compose up -d"

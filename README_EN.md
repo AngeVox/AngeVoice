@@ -49,6 +49,28 @@ Ideal use cases:
 
 ### Docker GPU
 
+**Option 1: Pull from registry (recommended)**
+
+```bash
+git clone https://github.com/ang77712829/AngeVoice.git
+cd AngeVoice/docker
+bash select-registry.sh
+
+cd gpu
+sudo docker compose up -d
+```
+
+Supported registries:
+
+| Registry | Address |
+|---|---|
+|---|---|
+| Docker Hub | `docker.io/maxblack777/angevoice-gpu` |
+| GHCR | `ghcr.io/ang77712829/angevoice-gpu` |
+| CNB | `cr.ccs.tencentyun.com/angeangeange/angevoice-gpu` |
+
+**Option 2: Build locally**
+
 ```bash
 git clone https://github.com/ang77712829/AngeVoice.git
 cd AngeVoice/docker/gpu
@@ -60,14 +82,16 @@ Visit: `http://localhost:8101`
 ### Docker CPU / Legacy GPU
 
 ```bash
-# Auto-select the fastest registry (same as above)
-cd docker && bash select-registry.sh latest
+# After running select-registry.sh above, just cd to the profile
+cd cpu && sudo docker compose up -d           # port 8100
+cd ../legacy-gpu && sudo docker compose up -d  # port 8102, CUDA 11.8
+```
 
-# CPU, default port 8100
-cd cpu && sudo docker compose up -d
+Or build locally:
 
-# Legacy GPU, default port 8102, CUDA 11.8
-cd ../legacy-gpu && sudo docker compose up -d
+```bash
+cd docker/cpu && sudo docker compose up -d --build
+cd docker/legacy-gpu && sudo docker compose up -d --build
 ```
 
 ### pip install

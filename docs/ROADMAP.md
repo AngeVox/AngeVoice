@@ -108,7 +108,7 @@ This roadmap tracks the long-term direction of Kokoro TTS Zh. Completed items ar
 - □ WebSocket cancel integration test / WebSocket 取消集成测试
 - □ Batch API integration test / 批量接口集成测试
 - □ Admin API integration test / 管理接口集成测试
-- □ CI workflow / CI 工作流
+- √ CI workflow / CI 工作流
 - □ Release checklist / 发布检查清单
 
 ## Documentation / 文档
