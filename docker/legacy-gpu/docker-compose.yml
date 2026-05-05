@@ -15,6 +15,12 @@ services:
       # Model directory, read-only by default.
       - ../../models:/app/models:ro
 
+      # HuggingFace model cache: persist on host to avoid re-download.
+      - ../../hf_cache:/root/.cache/huggingface
+
+      # Frontend templates: persist on host, update without rebuild.
+      - ../../templates:/app/src/kokoro_tts/templates:ro
+
       # Development hot-reload. Uncomment for git pull + docker compose restart workflows.
       # For production, keep it commented and rebuild the image instead.
       # - ../../src:/app/src:ro
