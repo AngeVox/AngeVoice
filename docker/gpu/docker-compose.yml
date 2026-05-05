@@ -15,6 +15,9 @@ services:
       # 模型目录：只读挂载，避免容器误改模型文件
       - ../../models:/app/models:ro
 
+      # HuggingFace 模型缓存：持久化到宿主机，避免容器重启后重新下载
+      - ../../hf_cache:/root/.cache/huggingface
+
       # 开发/测试环境热更新源码：取消注释后 git pull + docker compose restart 即可生效
       # 生产环境建议保持注释，通过 docker compose up -d --build 固化进镜像
       # - ../../src:/app/src:ro
