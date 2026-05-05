@@ -22,6 +22,9 @@ services:
       # 生产环境建议保持注释，通过 docker compose up -d --build 固化进镜像
       # - ../../src:/app/src:ro
 
+      # 前端模板：持久化到宿主机，改前端无需重建镜像
+      - ../../templates:/app/src/kokoro_tts/templates:ro
+
       # 如果开启音色上传，需要把 voices 目录单独以可写方式挂载，并开启 KOKORO_ADMIN_ENABLED / KOKORO_VOICE_UPLOAD_ENABLED
       # - ../../models/voices:/app/models/voices:rw
 
