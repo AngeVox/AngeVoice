@@ -1,11 +1,24 @@
-# v2.4 服务功能说明
+# v2.5 服务功能说明
 
-v2.4 在 v2.3 服务版基础上补充批量合成、管理接口、可选 MP3 转码和 WebSocket 主动取消能力。默认部署仍保持轻量稳定，管理类能力默认关闭，适合按需启用。
+v2.5 在 v2.4 功能基础上完成服务端模块化重构，并统一项目品牌为 AngeVoice。批量合成、管理接口、可选 MP3、WebSocket 取消能力保持兼容。
+
+## v2.5 新增/调整
+
+| 项目 | 说明 |
+|---|---|
+| 模块化服务端 | `server.py` 拆分为 `service_state.py`、`security.py`、`api_models.py`、`routes/*` |
+| CLI 品牌统一 | 新增 `angevoice` 命令，保留 `kokoro-tts` alias |
+| 发行包名 | `pyproject.toml` 项目名改为 `angevoice`，import 包名仍保留 `kokoro_tts` |
+| 文档补强 | 新增架构、安全、排障文档，README 中英文重写 |
+| CI 补强 | CLI smoke check 覆盖 `angevoice` 与 `kokoro-tts` |
 
 ## 功能总览
 
 | 功能 | 接口/配置 | 默认状态 |
 |---|---|---|
+| OpenAI 兼容合成 | `POST /v1/audio/speech` | 开启 |
+| 旧版兼容接口 | `POST/GET /api/tts` | 开启 |
+| WebSocket 流式 | `GET /ws/v1/tts` | 开启 |
 | 批量合成 ZIP | `POST /v1/audio/batch` | 开启 |
 | 支持格式查询 | `GET /v1/audio/formats` | 开启 |
 | 清理缓存 | `DELETE /admin/cache` | 管理接口关闭 |
@@ -41,6 +54,7 @@ POST /v1/audio/batch
 ```bash
 KOKORO_BATCH_ENABLED=true
 KOKORO_BATCH_MAX_ITEMS=20
+KOKORO_BATCH_CONCURRENCY=1
 ```
 
 ## 管理接口
@@ -105,35 +119,12 @@ KOKORO_MP3_BITRATE=192k
 {"type":"stop"}
 ```
 
-服务端会停止后续段落推送，并在 `/requests` 中记录 `cancelled` 状态。当前段落如果已经进入同步推理，会在当前段完成后停止后续段，这是逐段流式模式下更稳定的取消方式。
+服务端会停止后续段落推送，并在 `/requests` 中记录 `cancelled` 状态。当前段落如果已经进入同步推理，会在当前段完成后停止后续段。
 
-## Docker 调试模板
+## 模块化后的开发建议
 
-CPU/GPU 两套 `docker-compose.yml` 都提供注释模板，包含：
-
-- 模型目录挂载
-- `src` 源码热更新挂载
-- voices 可写挂载
-- workers / 并发 / 超时
-- 缓存开关
-- `/stats` 和 `/requests` 开关
-- batch/admin/upload/mp3 配置
-- CORS 配置说明
-
-开发环境想要 `git pull + restart` 生效，可取消注释：
-
-```yaml
-- ../../src:/app/src:ro
-```
-
-生产环境建议使用镜像构建固定版本：
-
-```bash
-docker compose up -d --build
-```
-
-## 后续方向
-
-- Web UI 音色管理和批量任务页面
-- 可选多引擎插件化，例如 MOSS-TTS-Nano、CosyVoice、GPT-SoVITS
-- 更完整的任务队列与后台作业持久化
+- 新增普通 HTTP 路由：优先放入 `routes/audio.py` 或新增 `routes/*.py`。
+- 新增运行时共享状态：放入 `ServiceState`，避免在多个路由中重复维护全局变量。
+- 新增鉴权逻辑：放入 `security.py`。
+- 新增请求模型：放入 `api_models.py`。
+- 批量/管理/MP3 后续可从 `service_extras.py` 继续拆分。
