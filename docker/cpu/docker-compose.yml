@@ -19,7 +19,7 @@ services:
       - ../../hf_cache:/root/.cache/huggingface
 
       # 前端模板：持久化到宿主机，改前端无需重建镜像
-      - ../../templates:/app/src/kokoro_tts/templates:ro
+      - ../../src/kokoro_tts/templates:/app/src/kokoro_tts/templates:ro
 
       # 开发/测试环境热更新源码：取消注释后 git pull + docker compose restart 即可生效
       # 生产环境建议保持注释，通过 docker compose up -d --build 固化进镜像

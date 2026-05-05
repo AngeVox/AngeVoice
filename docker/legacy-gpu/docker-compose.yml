@@ -19,7 +19,7 @@ services:
       - ../../hf_cache:/root/.cache/huggingface
 
       # Frontend templates: persist on host, update without rebuild.
-      - ../../templates:/app/src/kokoro_tts/templates:ro
+      - ../../src/kokoro_tts/templates:/app/src/kokoro_tts/templates:ro
 
       # Development hot-reload. Uncomment for git pull + docker compose restart workflows.
       # For production, keep it commented and rebuild the image instead.
