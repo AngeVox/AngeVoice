@@ -125,6 +125,25 @@ class TestWebSocketStructure:
         # WebSocket 路由应支持 websocket 方法
         assert hasattr(route, 'endpoint')
 
+    def test_ws_error_frame_counts_as_error(self, app_with_mock, mock_engine):
+        """WebSocket 返回 error 帧时，不应被统计成 requests_ok。"""
+        from fastapi.testclient import TestClient
+
+        mock_engine.synthesize_stream.return_value = iter([
+            {"type": "error", "message": "Unsupported format: mp3"},
+        ])
+
+        with TestClient(app_with_mock) as client:
+            with client.websocket_connect("/ws/v1/tts") as ws:
+                ws.send_json({"text": "你好", "voice": "zm_010", "format": "mp3"})
+                msg = ws.receive_json()
+                assert msg["type"] == "error"
+                assert msg["request_id"]
+
+            stats = client.get("/stats").json()
+            assert stats["requests_error"] == 1
+            assert stats["requests_ok"] == 0
+
 
 class TestStreamEncoding:
     """流式编码测试"""
