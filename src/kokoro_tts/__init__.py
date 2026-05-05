@@ -1,22 +1,25 @@
 """AngeVoice — lightweight Chinese TTS service built on Kokoro v1.1.
 
+The import package intentionally remains ``kokoro_tts`` for backward
+compatibility with earlier releases. The distribution name and recommended CLI
+are now ``angevoice``; the historical ``kokoro-tts`` command is kept as an alias.
+
 Usage:
-    # Library
     from kokoro_tts import TTSEngine
     engine = TTSEngine()
     engine.load()
     wav_bytes = engine.synthesize("你好世界")
 
-    # CLI
-    kokoro-tts serve
-    kokoro-tts synth "你好" -o out.wav
-    kokoro-tts voices
+    angevoice serve
+    angevoice synth "你好" -o out.wav
+    angevoice voices
 """
 
-__version__ = "2.4.0"
+__version__ = "2.5.0"
 
-# Lazy imports — don't force numpy/torch at package import time.
+
 def __getattr__(name):
+    """Lazy imports so importing the package does not load torch/numpy."""
     if name == "TTSEngine":
         from .engine import TTSEngine
         return TTSEngine
@@ -27,5 +30,6 @@ def __getattr__(name):
         from .config import load_config
         return load_config
     raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
+
 
 __all__ = ["TTSEngine", "TTSConfig", "load_config"]
