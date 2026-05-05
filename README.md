@@ -1,120 +1,113 @@
-<div align="center">
-
 # AngeVoice
 
-**轻量级中文 TTS 自托管服务**  
-基于 **Kokoro v1.1** 模型构建，支持 OpenAI 兼容 API、WebSocket 流式播放、Web UI、批量合成与 Docker 部署。
+> 轻量级中文 TTS 自托管服务。AngeVoice 基于 Kokoro v1.1 中文模型做工程化封装，提供 OpenAI 兼容 API、WebSocket 逐段流式、Web UI、批量合成、缓存、统计和 Docker CPU/GPU/老显卡部署。
+
+[English](README_EN.md) | 中文
 
 [![CI](https://github.com/ang77712829/AngeVoice/actions/workflows/ci.yml/badge.svg)](https://github.com/ang77712829/AngeVoice/actions/workflows/ci.yml)
 [![Python 3.10+](https://img.shields.io/badge/python-3.10+-blue.svg)](https://www.python.org/downloads/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
-[![Docker](https://img.shields.io/badge/docker-cpu%20%7C%20gpu%20%7C%20legacy--gpu-2496ED.svg)](docker)
 
-**🌐 Language / 语言**
+## 项目定位
 
-[**English**](README_EN.md) | **中文** (当前)
+AngeVoice 不是重新训练的新模型，而是围绕 Kokoro v1.1 中文模型做的服务化封装。目标是让本地部署、内网调用、OpenAI 风格接入、网页流式播放和 Docker 自托管更简单。
 
-</div>
+适合：
 
----
-
-## 简介
-
-AngeVoice 是由 **安歌** 构建和维护的中文 TTS 服务项目。它不是独立训练的新模型，而是一个围绕 **Kokoro v1.1 中文模型** 做的工程化服务封装，目标是让本地部署、API 调用、Web 流式播放和 Docker 自托管更简单。
-
-适合这些场景：
-
-- 本地/内网中文语音合成服务
+- 本地/NAS/家用服务器中文语音合成服务
+- Agent、阅读器、有声书、配音工具的 TTS 后端
 - OpenAI 兼容 TTS API 后端
-- Agent、阅读器、有声书、配音工具接入
-- NAS、家用服务器、GPU/老显卡环境部署
-- 需要 WebSocket 逐段播放和停止生成的 Web 应用
+- 需要逐段播放、停止生成、批量导出 ZIP 的 Web 应用
+- CPU、NVIDIA GPU、Legacy GPU/保守 CUDA 环境
 
-> 模型来源：本项目基于 [Kokoro v1.1 / Kokoro-82M](https://huggingface.co/hexgrad/Kokoro-82M) 及其中文模型构建。模型版权、许可证与限制请以原模型仓库为准。
+> 模型来源：本项目基于 Kokoro v1.1 / Kokoro-82M 及其中文模型构建。模型版权、许可证与限制请以原模型仓库为准。
 
 ## 功能亮点
 
 | 能力 | 说明 |
 |---|---|
-| OpenAI 兼容 API | 支持 `/v1/audio/speech`，兼容 `model/input/voice/speed/response_format` |
-| Web UI | 内置 AngeVoice 前端页面，支持音色选择、音色试听、流式播放、停止生成 |
-| WebSocket 流式 | 支持逐段音频推送、`cancel/stop` 中断、JSON/base64 与可选 binary 音频帧 |
-| 批量合成 | `/v1/audio/batch` 返回 ZIP，适合分段配音和有声书流程 |
-| 服务化能力 | 请求 ID、`/stats`、`/requests`、超时控制、LRU 缓存、基础统计 |
-| 管理接口 | 可选开启缓存清理、音色列表、`.pt` 音色上传 |
-| Docker | 提供 CPU、GPU、Legacy GPU 三套 Compose profile |
+| OpenAI 兼容 API | `POST /v1/audio/speech`，兼容 `model/input/voice/speed/response_format` |
+| Web UI | 内置前端页面，支持音色选择、试听、流式播放、停止生成 |
+| WebSocket 流式 | `ws://.../ws/v1/tts` 逐段推送，支持 `cancel` / `stop` 控制帧 |
+| 批量合成 | `POST /v1/audio/batch` 返回 ZIP 和 `manifest.json` |
+| 服务治理 | 请求 ID、`/health`、`/stats`、`/requests`、超时、并发限制、LRU 缓存 |
+| 管理接口 | 可选缓存清理、音色列表、`.pt` 音色上传 |
+| 输出格式 | WAV、PCM s16le，可选 MP3，MP3 依赖 ffmpeg |
+| Docker | CPU、GPU、Legacy GPU 三套 Compose 画像 |
+| CLI | 推荐 `angevoice`，旧命令 `kokoro-tts` 继续兼容 |
+
+## v2.5 模块化重构
+
+v2.5 将原来较重的 `server.py` 拆成独立模块，保留原有对外入口：
+
+```text
+src/kokoro_tts/
+├── server.py             # FastAPI 应用装配：create_app / run_server
+├── service_state.py      # 运行时状态、缓存、统计、并发、合成调度
+├── security.py           # HTTP / WebSocket API Key 校验
+├── api_models.py         # Pydantic 请求模型
+├── routes/
+│   ├── status.py         # /, /health, /stats, /requests, voices, cancel
+│   ├── audio.py          # /v1/audio/speech 与 /api/tts
+│   └── ws.py             # /ws/v1/tts
+├── service_extras.py     # batch/admin/mp3 扩展接口
+├── engine.py             # Kokoro 引擎、分段、文本规范化、音频编码
+└── config.py             # 配置与环境变量
+```
+
+兼容性说明：
+
+- Python import 包名仍为 `kokoro_tts`，避免破坏旧代码。
+- 发行包名/项目品牌改为 `angevoice`。
+- CLI 新增 `angevoice`，旧 `kokoro-tts` 保留为 alias。
+- Kokoro 模型加载不依赖发行包名，而依赖上游 `kokoro` 库、模型目录、模型文件名与 Hugging Face repo，因此改项目名不会影响模型加载。
 
 ## 快速开始
 
-### 前置条件
-
-- Docker 20.10+ 与 Docker Compose V2
-- （GPU 版）NVIDIA 驱动 + [nvidia-container-toolkit](https://docs.nvidia.com/datacenter/cloud-native/container-toolkit/latest/install-guide.html)
-
-### 第一步：克隆仓库
-
-所有部署方式都需要仓库中的 `docker-compose.yml` 和配置文件，先克隆：
+### Docker GPU
 
 ```bash
 git clone https://github.com/ang77712829/AngeVoice.git
-cd AngeVoice
-```
-
-### 第二步：选择部署方式
-
-#### Docker GPU
-
-**拉取预构建镜像（推荐）：**
-
-```bash
-cd docker/gpu
+cd AngeVoice/docker/gpu
 sudo docker compose up -d
 ```
 
-默认从 Docker Hub 拉取 `docker.io/maxblack777/angevoice-gpu:latest`。如果 Docker Hub 访问受限，可以手动修改 `docker-compose.yml` 中的 `image` 字段切换到 GHCR：
-
-| Registry | 镜像地址 |
-|---|---|
-| Docker Hub | `docker.io/maxblack777/angevoice-gpu:latest` |
-| GHCR | `ghcr.io/ang77712829/angevoice-gpu:latest` |
-
-**本地构建（无需拉取远程镜像）：**
+默认访问：`http://localhost:8101`
 
 ```bash
-cd docker/gpu
-sudo docker compose up -d --build
-```
-
-访问：`http://localhost:8101`
-
-```bash
-# 检查服务
 curl http://127.0.0.1:8101/health
 curl http://127.0.0.1:8101/stats
 ```
 
-#### Docker CPU / Legacy GPU
+### Docker CPU / Legacy GPU
 
 ```bash
-# CPU 版，默认端口 8100
+# CPU，默认端口 8100
 cd docker/cpu && sudo docker compose up -d
 
 # Legacy GPU，默认端口 8102，CUDA 11.8
 cd docker/legacy-gpu && sudo docker compose up -d
 ```
 
-需要本地构建时加 `--build` 参数即可。
+本地构建：
 
-### pip 安装
+```bash
+sudo docker compose up -d --build
+```
+
+### pip 开发安装
 
 ```bash
 git clone https://github.com/ang77712829/AngeVoice.git
 cd AngeVoice
 pip install -e .
 
+angevoice serve --port 8000
+angevoice synth "你好世界" -o hello.wav -v zm_010
+angevoice voices
+
+# 旧命令仍可用
 kokoro-tts serve --port 8000
-kokoro-tts synth "你好世界" -o hello.wav -v zm_010
-kokoro-tts voices
 ```
 
 ## API 示例
@@ -127,6 +120,8 @@ curl -X POST http://localhost:8000/v1/audio/speech \
   -d '{"model":"kokoro","input":"你好世界","voice":"zm_010","response_format":"wav"}' \
   --output output.wav
 ```
+
+支持格式：`wav`、`pcm`、`mp3`。MP3 需开启 `KOKORO_MP3_ENABLED=true` 且环境存在 ffmpeg。
 
 ### WebSocket 流式播放
 
@@ -143,23 +138,10 @@ ws.onopen = () => {
   }));
 };
 
-// 中断后续段落
 ws.send(JSON.stringify({ type: "cancel" }));
 ```
 
-<details>
-<summary><strong>更多 API 示例</strong></summary>
-
-### 旧版接口
-
-```bash
-curl -X POST http://localhost:8000/api/tts \
-  -H "Content-Type: application/json" \
-  -d '{"text":"你好世界","voice":"zm_010","format":"wav"}' \
-  --output output.wav
-
-curl "http://localhost:8000/api/tts?text=你好世界&voice=zm_010&response_format=wav" --output output.wav
-```
+消息类型：`started`、`audio`、`segment_error`、`done`、`cancelled`、`error`。
 
 ### 批量合成 ZIP
 
@@ -170,71 +152,15 @@ curl -X POST http://localhost:8000/v1/audio/batch \
   --output batch.zip
 ```
 
-ZIP 内包含音频文件和 `manifest.json`。
-
-### 状态接口
-
-```bash
-curl http://localhost:8000/health
-curl http://localhost:8000/stats
-curl http://localhost:8000/requests
-curl http://localhost:8000/v1/audio/formats
-curl http://localhost:8000/v1/audio/voices
-```
-
-### 管理接口
-
-管理接口默认关闭，开启前建议设置 API Key：
-
-```bash
-KOKORO_ADMIN_ENABLED=true
-KOKORO_API_KEY=change-me
-```
-
-```bash
-curl -X DELETE http://localhost:8000/admin/cache \
-  -H "Authorization: Bearer change-me"
-
-curl http://localhost:8000/admin/voices \
-  -H "Authorization: Bearer change-me"
-```
-
-上传 `.pt` 音色需要额外开启：
-
-```bash
-KOKORO_VOICE_UPLOAD_ENABLED=true
-```
-
-并将 voices 目录挂载为可写：
-
-```yaml
-- ../../models/voices:/app/models/voices:rw
-```
-
-</details>
-
 ## 模型文件
 
-首次运行时，如果本地没有完整模型文件，服务会自动从 Hugging Face 下载。离线部署或想提升冷启动速度，建议手动准备模型。
-
-<details>
-<summary><strong>手动下载模型</strong></summary>
+首次运行时，如果本地没有完整模型文件，服务会自动从 Hugging Face 下载。离线部署或想提升冷启动速度，建议手动准备：
 
 ```bash
 pip install huggingface_hub
 huggingface-cli download hexgrad/Kokoro-82M-v1.1-zh \
   --local-dir models/ \
   --include "config.json" "kokoro-v1_1-zh.pth" "voices/*.pt"
-```
-
-或者使用 Git LFS：
-
-```bash
-git lfs install
-git clone https://huggingface.co/hexgrad/Kokoro-82M-v1.1-zh /tmp/kokoro-models
-cp /tmp/kokoro-models/{config.json,kokoro-v1_1-zh.pth} models/
-cp /tmp/kokoro-models/voices/*.pt models/voices/
-rm -rf /tmp/kokoro-models
 ```
 
 至少需要：
@@ -245,52 +171,54 @@ models/kokoro-v1_1-zh.pth
 models/voices/*.pt
 ```
 
-</details>
+普通 `git clone` 可能只拿到 Git LFS 指针文件，不一定是真实模型文件。Docker Compose 已持久化 Hugging Face 缓存，避免容器重建后重复下载。
 
-## 配置
-
-常用配置已经写入三套 Docker Compose 模板，并配有注释。完整变量如下：
-
-<details>
-<summary><strong>环境变量列表</strong></summary>
+## 常用配置
 
 | 变量 | 默认值 | 说明 |
 |---|---|---|
 | `KOKORO_MODEL_DIR` | `./models` | 模型目录 |
 | `KOKORO_HOST` | `0.0.0.0` | 监听地址 |
-| `KOKORO_PORT` | `8000` | 端口 |
+| `KOKORO_PORT` | `8000` | 服务端口 |
 | `KOKORO_DEVICE` | `auto` | `auto` / `cpu` / `cuda` |
-| `KOKORO_WORKERS` | `1` | Uvicorn worker 数，GPU 建议 1 |
+| `KOKORO_WORKERS` | `1` | Uvicorn worker 数；GPU 建议保持 1 |
 | `KOKORO_MAX_CONCURRENT_REQUESTS` | `1` | 单进程最大合成并发 |
 | `KOKORO_REQUEST_TIMEOUT_SECONDS` | `300` | 单次合成超时 |
 | `KOKORO_MAX_TEXT_LENGTH` | `10000` | 单次请求最大文本长度 |
 | `KOKORO_SEGMENT_LENGTH` | `100` | 文本切分目标长度 |
 | `KOKORO_DEFAULT_VOICE` | `zm_010` | 默认音色 |
-| `KOKORO_DEFAULT_SPEED` | `1.0` | 默认语速 |
-| `KOKORO_STREAM_FORMAT` | `pcm_s16le` | WebSocket 默认格式 |
 | `KOKORO_STREAM_BINARY_ENABLED` | `true` | 是否允许 binary 音频帧 |
 | `KOKORO_CACHE_ENABLED` | `true` | 是否启用内存 LRU 缓存 |
-| `KOKORO_CACHE_MAX_ITEMS` | `128` | 最大缓存条目数 |
-| `KOKORO_QUEUE_STATUS_ENABLED` | `true` | 是否启用 `/requests` |
-| `KOKORO_METRICS_ENABLED` | `true` | 是否启用 `/stats` |
 | `KOKORO_BATCH_ENABLED` | `true` | 是否启用批量合成 |
-| `KOKORO_BATCH_MAX_ITEMS` | `20` | 批量合成最大条数 |
-| `KOKORO_BATCH_CONCURRENCY` | `1` | 批量内部并发，GPU/NAS 建议 1 |
 | `KOKORO_ADMIN_ENABLED` | `false` | 是否启用管理接口 |
 | `KOKORO_VOICE_UPLOAD_ENABLED` | `false` | 是否允许上传音色 |
-| `KOKORO_VOICE_UPLOAD_MAX_BYTES` | `10485760` | 音色上传大小限制 |
 | `KOKORO_MP3_ENABLED` | `false` | 是否启用 MP3 输出 |
-| `KOKORO_MP3_BITRATE` | `192k` | MP3 比特率，支持 64k/96k/128k/160k/192k/256k/320k |
 | `KOKORO_API_KEY` | - | 设置后启用 Bearer 认证 |
 | `KOKORO_CORS_ORIGINS` | `http://localhost:8000` | CORS 允许来源，逗号分隔 |
 
-</details>
+## 安全说明
 
-## 测试与压测
+- 公网部署建议设置 `KOKORO_API_KEY`，并在反向代理层限制来源。
+- 管理接口默认关闭；开启 `KOKORO_ADMIN_ENABLED=true` 时必须设置强 API Key。
+- `.pt` 音色上传默认关闭。只上传可信来源文件；PyTorch 权重文件不应来自不可信渠道。
+- 不建议把 `/admin/*` 直接暴露到公网。
+- `cancel/stop` 会阻止后续段落继续推送；如果当前段已进入同步推理，通常会在当前段结束后停止。
+
+详见 [安全说明](docs/SECURITY.md)。
+
+## 已知限制
+
+- AngeVoice 不是独立训练的新模型，音质、许可证和语言能力受 Kokoro 上游模型影响。
+- 长文本依赖分段合成，极长文本建议走批量/任务队列工作流。
+- GPU 场景下不建议多 worker 同时加载模型，容易造成显存占用翻倍。
+- MP3 输出依赖 ffmpeg。
+- WebSocket 是逐段流式，不是模型内部 token 级真实流式。
+
+## 测试
 
 ```bash
 pip install -e '.[dev]'
-pytest -q
+pytest -q --cov=kokoro_tts --cov-report=term-missing
 ```
 
 服务冒烟测试：
@@ -301,128 +229,15 @@ BASE_URL=http://127.0.0.1:8101 ./scripts/smoke_test.sh
 N=50 BASE_URL=http://127.0.0.1:8101 ./scripts/loop_test.sh
 ```
 
-流式延迟对比：
-
-```bash
-python scripts/benchmark_streaming.py \
-  --angevoice-http http://127.0.0.1:8101 \
-  --angevoice-ws ws://127.0.0.1:8101/ws/v1/tts
-```
-
-## Docker 镜像与发布
-
-CI 自动推送到两个 registry（GHCR + Docker Hub）。普通 `main` 提交只做构建验证；打 `v*` tag 或手动触发 `publish=true` 时才推送。
-预期镜像名：
-```text
-docker.io/maxblack777/angevoice-cpu:latest
-docker.io/maxblack777/angevoice-gpu:latest
-docker.io/maxblack777/angevoice-legacy-gpu:latest
-ghcr.io/ang77712829/angevoice-cpu:latest
-ghcr.io/ang77712829/angevoice-gpu:latest
-ghcr.io/ang77712829/angevoice-legacy-gpu:latest
-```
-
-
-
-## 项目结构
-
-<details>
-<summary><strong>查看目录结构</strong></summary>
-
-```text
-AngeVoice/
-├── src/kokoro_tts/       # 核心包
-│   ├── config.py         # 配置管理
-│   ├── engine.py         # TTS 引擎与文本规范化
-│   ├── server.py         # FastAPI 服务
-│   ├── service_extras.py # 批量/管理/MP3 等扩展接口
-│   ├── cli.py            # 命令行工具
-│   └── templates/        # Web UI
-├── scripts/              # 冒烟/稳定性/benchmark 脚本
-├── tests/                # 单元测试
-├── docker/               # CPU/GPU/Legacy GPU Docker 配置
-├── docs/                 # 部署画像、路线图、发布说明
-├── models/               # 模型文件目录
-├── pyproject.toml
-├── README.md
-└── README_EN.md
-```
-
-</details>
-
 ## 文档
 
+- [架构说明](docs/ARCHITECTURE.md)
+- [安全说明](docs/SECURITY.md)
+- [排障手册](docs/TROUBLESHOOTING.md)
 - [服务画像](docs/SERVICE_PROFILES.md)
-- [v2.4 功能说明](docs/V2_4_FEATURES.md)
-- [Legacy GPU 部署说明](docker/legacy-gpu/README.md)
+- [v2.5 功能说明](docs/V2_4_FEATURES.md)
 - [路线图](docs/ROADMAP.md)
-
-
-## 更新日志
-
-<details>
-<summary><strong>latest</strong></summary>
-
-### 新增
-
-- 新增 AngeVoice Web UI，支持音色试听、流式播放和停止生成
-- 新增 `/v1/audio/batch` 批量合成 ZIP，包含 `manifest.json`
-- 新增 `/v1/audio/formats` 查询当前支持的输出格式
-- 新增管理接口：`/admin/cache`、`/admin/voices`、`/admin/voices/upload`
-- 新增可选 MP3 输出，需开启 `KOKORO_MP3_ENABLED=true`
-- 新增 WebSocket `cancel` / `stop` 控制帧
-- 新增基础中文文本规范化：手机号、日期、金额、百分比、长编号
-- 新增 CPU/GPU/Legacy GPU 三套标准化 Docker profile
-- 新增 CI、GHCR 构建工作流和 benchmark 脚本
-- 新增 `.env.example` / `.env.dev` / `.env.staging` / `.env.prod` 环境变量模板
-
-### 改进
-
-- FastAPI、包版本同步到 `2.4.0`
-- Docker 服务名统一为 `angevoice-*`
-- docker-compose 改用 `env_file` 加载环境变量，不再内联硬编码
-- CLI 保留 `kokoro-tts` 以兼容旧脚本
-- `/health` 返回 batch/admin/mp3 状态
-- WebSocket cancel 加入背压队列，避免取消后继续推送大量分段
-- 上传音色加入大小限制，MP3 bitrate 加入白名单校验
-- 测试覆盖更新，CI 已启用 Python 3.10/3.11/3.12
-
-### 修复
-
-- 修复前端 `filter(s !== source)` 语法错误，改为 `filter(s => s !== source)`
-- 修复 `from __future__ import annotations` 导致 FastAPI 将 body 参数误判为 query 参数（422 错误）
-- 修复 `service_extras.py` 中 `Optional` 类型注解兼容性
-
-</details>
-
-<details>
-<summary><strong>历史版本摘要</strong></summary>
-
-### v2.3.0
-
-- 新增 `/stats`、`/requests`、请求 ID、请求状态追踪和基础统计
-- 新增内存 LRU 音频缓存
-- WebSocket 支持可选 binary 音频帧
-- 新增请求超时控制
-- 新增通用服务版和老显卡/保守兼容版部署画像
-
-### v2.1.x
-
-- 修复输出格式、并发限制、文本分段、PCM 编码和 Docker 启动问题
-- 新增 WebSocket 逐段流式语音合成
-- 新增模型自动下载和离线模型下载文档
-
-### v1.0
-
-- 初始中文语音合成、OpenAI 风格 API、Docker CPU/GPU 部署
-
-</details>
-
-## 致谢
-
-- [Kokoro v1.1 模型](https://huggingface.co/hexgrad/Kokoro-82M) — hexgrad
-- [Kokoro 中文模型](https://huggingface.co/hexgrad/Kokoro-82M-v1.1-zh) — hexgrad
-- 原始模型许可证请以模型仓库为准
+- [Legacy GPU 部署说明](docker/legacy-gpu/README.md)
 
 ## License
 

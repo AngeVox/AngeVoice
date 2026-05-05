@@ -1,124 +1,116 @@
-<div align="center">
-
 # AngeVoice
 
-**Lightweight Chinese TTS self-hosted service**  
-Built on **Kokoro v1.1** model with OpenAI-compatible API, WebSocket streaming, Web UI, batch synthesis, and Docker deployment.
+> Lightweight Chinese TTS self-hosted service. AngeVoice wraps the Kokoro v1.1 Chinese model with OpenAI-compatible APIs, WebSocket segment streaming, Web UI, batch synthesis, cache, metrics, and CPU/GPU/legacy-GPU Docker profiles.
+
+English | [中文](README.md)
 
 [![CI](https://github.com/ang77712829/AngeVoice/actions/workflows/ci.yml/badge.svg)](https://github.com/ang77712829/AngeVoice/actions/workflows/ci.yml)
 [![Python 3.10+](https://img.shields.io/badge/python-3.10+-blue.svg)](https://www.python.org/downloads/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
-[![Docker](https://img.shields.io/badge/docker-cpu%20%7C%20gpu%20%7C%20legacy--gpu-2496ED.svg)](docker)
 
-**🌐 Language / 语言**
+## What is AngeVoice?
 
-**English** (current) | [**中文**](README.md)
+AngeVoice is not a newly trained model. It is a service-oriented wrapper around the Kokoro v1.1 Chinese model, designed to make local deployment, intranet usage, OpenAI-style integration, browser streaming playback, and Docker self-hosting easier.
 
-</div>
+Good fits:
 
----
-
-## Introduction
-
-AngeVoice is a Chinese TTS service project built and maintained by **安歌 (Ange)**. It is not a new model trained from scratch, but an engineering wrapper around the **Kokoro v1.1 Chinese model**, designed to simplify local deployment, API integration, web streaming playback, and Docker self-hosting.
-
-Ideal use cases:
-
-- Local / intranet Chinese speech synthesis service
+- Local/NAS/home-server Chinese speech synthesis
+- TTS backend for agents, readers, audiobooks, and dubbing tools
 - OpenAI-compatible TTS API backend
-- Agent, reader, audiobook, dubbing tool integration
-- NAS, home server, GPU / legacy graphics card deployment
-- Web applications needing WebSocket per-segment playback and stop generation
+- Web apps that need segment playback, stop generation, and batch ZIP export
+- CPU, NVIDIA GPU, and legacy/conservative CUDA environments
 
-> Model source: This project is built on [Kokoro v1.1 / Kokoro-82M](https://huggingface.co/hexgrad/Kokoro-82M) and its Chinese model. Model copyright, license, and restrictions follow the original model repository.
+> Model source: this project is built on Kokoro v1.1 / Kokoro-82M and its Chinese model. Model copyright, license, and restrictions follow the upstream model repositories.
 
-## Feature Highlights
+## Highlights
 
-- **OpenAI-compatible API** — `/v1/audio/speech` with `model/input/voice/speed/response_format`
-- **Web UI** — Built-in AngeVoice frontend with voice selection, voice preview, streaming playback, and stop generation
-- **WebSocket streaming** — Per-segment audio push, `cancel/stop` control, JSON/base64 and optional binary audio frames
-- **Batch synthesis** — `/v1/audio/batch` returns ZIP, suitable for segment dubbing and audiobook workflows
-- **Service features** — Request ID, `/stats`, `/requests`, timeout control, LRU cache, basic metrics
-- **Text normalization** — Conservative Chinese TN for dates, money, percentages, phone numbers, and long IDs
-- **Admin APIs** — Optional cache clearing, voice listing, `.pt` voice upload
-- **MP3 output** — Optional MP3 behind `KOKORO_MP3_ENABLED=true` via ffmpeg
-- **Docker** — CPU, GPU, and Legacy GPU Compose profiles with inline config comments
-- **CLI** — `kokoro-tts serve / synth / voices` for headless and scripted use
+| Capability | Description |
+|---|---|
+| OpenAI-compatible API | `POST /v1/audio/speech` with `model/input/voice/speed/response_format` |
+| Web UI | Built-in page with voice selection, preview, streaming playback, and stop generation |
+| WebSocket streaming | `ws://.../ws/v1/tts` segment streaming with `cancel` / `stop` control frames |
+| Batch synthesis | `POST /v1/audio/batch` returns a ZIP and `manifest.json` |
+| Service controls | Request IDs, `/health`, `/stats`, `/requests`, timeout, concurrency guard, LRU cache |
+| Admin APIs | Optional cache clearing, voice listing, and `.pt` voice upload |
+| Output formats | WAV, PCM s16le, optional MP3 through ffmpeg |
+| Docker | CPU, GPU, and Legacy GPU Compose profiles |
+| CLI | Recommended command: `angevoice`; legacy `kokoro-tts` remains supported |
 
-## Quick Start
+## v2.5 modular refactor
 
-### Prerequisites
+v2.5 splits the previously heavy `server.py` into focused modules while keeping the public entry points compatible:
 
-- Docker 20.10+ with Docker Compose V2
-- (GPU) NVIDIA driver + [nvidia-container-toolkit](https://docs.nvidia.com/datacenter/cloud-native/container-toolkit/latest/install-guide.html)
+```text
+src/kokoro_tts/
+├── server.py             # FastAPI app assembly: create_app / run_server
+├── service_state.py      # Runtime state, cache, metrics, concurrency, synthesis dispatch
+├── security.py           # HTTP / WebSocket API-key checks
+├── api_models.py         # Pydantic request models
+├── routes/
+│   ├── status.py         # /, /health, /stats, /requests, voices, cancel
+│   ├── audio.py          # /v1/audio/speech and /api/tts
+│   └── ws.py             # /ws/v1/tts
+├── service_extras.py     # batch/admin/mp3 extension routes
+├── engine.py             # Kokoro engine, segmentation, normalization, audio encoding
+└── config.py             # configuration and environment variables
+```
 
-### Step 1: Clone the Repository
+Compatibility notes:
 
-All deployment methods require the `docker-compose.yml` and config files from the repo:
+- The Python import package remains `kokoro_tts` to avoid breaking existing users.
+- The distribution/project name is now `angevoice`.
+- The new CLI is `angevoice`; the historical `kokoro-tts` command remains as an alias.
+- Kokoro model loading does not depend on the distribution package name. It depends on the upstream `kokoro` package, model directory, model filenames, and Hugging Face repo.
+
+## Quick start
+
+### Docker GPU
 
 ```bash
 git clone https://github.com/ang77712829/AngeVoice.git
-cd AngeVoice
-```
-
-### Step 2: Choose a Deployment Method
-
-#### Docker GPU
-
-**Pull pre-built image (recommended):**
-
-```bash
-cd docker/gpu
+cd AngeVoice/docker/gpu
 sudo docker compose up -d
 ```
 
-Pulls `docker.io/maxblack777/angevoice-gpu:latest` from Docker Hub by default. If Docker Hub is inaccessible, edit the `image` field in `docker-compose.yml` to switch to GHCR:
-
-| Registry | Image |
-|---|---|
-| Docker Hub | `docker.io/maxblack777/angevoice-gpu:latest` |
-| GHCR | `ghcr.io/ang77712829/angevoice-gpu:latest` |
-
-**Build locally (no remote image pull needed):**
+Default URL: `http://localhost:8101`
 
 ```bash
-cd docker/gpu
-sudo docker compose up -d --build
-```
-
-Visit: `http://localhost:8101`
-
-```bash
-# Verify
 curl http://127.0.0.1:8101/health
 curl http://127.0.0.1:8101/stats
 ```
 
-#### Docker CPU / Legacy GPU
+### Docker CPU / Legacy GPU
 
 ```bash
-# CPU — port 8100
+# CPU, default port 8100
 cd docker/cpu && sudo docker compose up -d
 
-# Legacy GPU — port 8102, CUDA 11.8
+# Legacy GPU, default port 8102, CUDA 11.8
 cd docker/legacy-gpu && sudo docker compose up -d
 ```
 
-Add `--build` to build locally instead of pulling.
+Build locally if needed:
 
-### pip install
+```bash
+sudo docker compose up -d --build
+```
+
+### Editable pip install
 
 ```bash
 git clone https://github.com/ang77712829/AngeVoice.git
 cd AngeVoice
 pip install -e .
 
+angevoice serve --port 8000
+angevoice synth "Hello world" -o hello.wav -v zm_010
+angevoice voices
+
+# Legacy command still works
 kokoro-tts serve --port 8000
-kokoro-tts synth "Hello world" -o hello.wav -v zm_010
-kokoro-tts voices
 ```
 
-## API Examples
+## API examples
 
 ### OpenAI-compatible TTS
 
@@ -129,13 +121,9 @@ curl -X POST http://localhost:8000/v1/audio/speech \
   --output output.wav
 ```
 
-Supported formats:
+Supported formats: `wav`, `pcm`, `mp3`. MP3 requires `KOKORO_MP3_ENABLED=true` and ffmpeg.
 
-- `wav` — Default, most compatible
-- `pcm` — Raw PCM s16le
-- `mp3` — Requires `KOKORO_MP3_ENABLED=true` and ffmpeg
-
-### WebSocket Streaming
+### WebSocket streaming
 
 ```javascript
 const ws = new WebSocket("ws://localhost:8000/ws/v1/tts");
@@ -150,33 +138,12 @@ ws.onopen = () => {
   }));
 };
 
-ws.onmessage = (e) => {
-  if (typeof e.data !== "string") return; // binary frame
-  const msg = JSON.parse(e.data);
-  if (msg.type === "audio") {
-    playPCM(msg.data);
-  }
-};
-
-// Cancel remaining segments
 ws.send(JSON.stringify({ type: "cancel" }));
 ```
 
-Message types: `started`, `audio`, `segment_error`, `done`, `cancelled`, `error`
+Message types: `started`, `audio`, `segment_error`, `done`, `cancelled`, `error`.
 
-<details>
-<summary><strong>More API examples</strong></summary>
-
-### Legacy API
-
-```bash
-curl -X POST http://localhost:8000/api/tts \
-  -H "Content-Type: application/json" \
-  -d '{"text":"Hello world","voice":"zm_010","format":"wav"}' \
-  --output output.wav
-```
-
-### Batch Synthesis
+### Batch ZIP synthesis
 
 ```bash
 curl -X POST http://localhost:8000/v1/audio/batch \
@@ -185,55 +152,9 @@ curl -X POST http://localhost:8000/v1/audio/batch \
   --output batch.zip
 ```
 
-ZIP contains audio files and `manifest.json`.
+## Model files
 
-### Status Endpoints
-
-```bash
-curl http://localhost:8000/health
-curl http://localhost:8000/stats
-curl http://localhost:8000/requests
-curl http://localhost:8000/v1/audio/formats
-curl http://localhost:8000/v1/audio/voices
-```
-
-### Admin APIs
-
-Disabled by default. Enable with API key:
-
-```bash
-KOKORO_ADMIN_ENABLED=true
-KOKORO_API_KEY=change-me
-```
-
-```bash
-curl -X DELETE http://localhost:8000/admin/cache \
-  -H "Authorization: Bearer change-me"
-
-curl http://localhost:8000/admin/voices \
-  -H "Authorization: Bearer change-me"
-```
-
-Voice upload also requires:
-
-```bash
-KOKORO_VOICE_UPLOAD_ENABLED=true
-```
-
-For Docker deployments, mount the voices directory as writable:
-
-```yaml
-- ../../models/voices:/app/models/voices:rw
-```
-
-</details>
-
-## Model Files
-
-On first run, if no local model files are found, the service automatically downloads from Hugging Face. For offline deployment or faster cold start, prepare models manually.
-
-<details>
-<summary><strong>Manual model download</strong></summary>
+If local model files are not found, the service falls back to Hugging Face download. For offline deployments or faster cold starts, prepare the files manually:
 
 ```bash
 pip install huggingface_hub
@@ -242,7 +163,7 @@ huggingface-cli download hexgrad/Kokoro-82M-v1.1-zh \
   --include "config.json" "kokoro-v1_1-zh.pth" "voices/*.pt"
 ```
 
-Required files:
+Required layout:
 
 ```text
 models/config.json
@@ -250,14 +171,9 @@ models/kokoro-v1_1-zh.pth
 models/voices/*.pt
 ```
 
-</details>
+A normal `git clone` may only download Git LFS pointer files, not real model weights. Docker Compose profiles persist the Hugging Face cache to avoid repeated downloads after container recreation.
 
-## Configuration
-
-Common configuration is included in the three Docker Compose templates with inline comments. Full variable list:
-
-<details>
-<summary><strong>Environment variables</strong></summary>
+## Common configuration
 
 | Variable | Default | Description |
 |---|---|---|
@@ -267,37 +183,45 @@ Common configuration is included in the three Docker Compose templates with inli
 | `KOKORO_DEVICE` | `auto` | `auto` / `cpu` / `cuda` |
 | `KOKORO_WORKERS` | `1` | Uvicorn workers; keep 1 for GPU |
 | `KOKORO_MAX_CONCURRENT_REQUESTS` | `1` | Max in-process synthesis concurrency |
-| `KOKORO_REQUEST_TIMEOUT_SECONDS` | `300` | Synthesis timeout |
+| `KOKORO_REQUEST_TIMEOUT_SECONDS` | `300` | Request timeout |
 | `KOKORO_MAX_TEXT_LENGTH` | `10000` | Max input text length |
 | `KOKORO_SEGMENT_LENGTH` | `100` | Target segment length |
 | `KOKORO_DEFAULT_VOICE` | `zm_010` | Default voice |
-| `KOKORO_DEFAULT_SPEED` | `1.0` | Default speed |
-| `KOKORO_STREAM_FORMAT` | `pcm_s16le` | Default WebSocket stream format |
 | `KOKORO_STREAM_BINARY_ENABLED` | `true` | Enable binary WebSocket audio frames |
 | `KOKORO_CACHE_ENABLED` | `true` | Enable LRU audio cache |
-| `KOKORO_CACHE_MAX_ITEMS` | `128` | Cache item limit |
-| `KOKORO_QUEUE_STATUS_ENABLED` | `true` | Enable `/requests` |
-| `KOKORO_METRICS_ENABLED` | `true` | Enable `/stats` |
 | `KOKORO_BATCH_ENABLED` | `true` | Enable batch synthesis |
-| `KOKORO_BATCH_MAX_ITEMS` | `20` | Max batch items |
-| `KOKORO_BATCH_CONCURRENCY` | `1` | Batch internal concurrency |
 | `KOKORO_ADMIN_ENABLED` | `false` | Enable admin APIs |
-| `KOKORO_VOICE_UPLOAD_ENABLED` | `false` | Enable `.pt` voice upload |
+| `KOKORO_VOICE_UPLOAD_ENABLED` | `false` | Enable voice upload |
 | `KOKORO_MP3_ENABLED` | `false` | Enable MP3 output |
-| `KOKORO_MP3_BITRATE` | `192k` | MP3 bitrate (64k–320k) |
 | `KOKORO_API_KEY` | - | Bearer API key |
 | `KOKORO_CORS_ORIGINS` | `http://localhost:8000` | Comma-separated CORS origins |
 
-</details>
+## Security notes
 
-## Testing & Benchmarking
+- Set `KOKORO_API_KEY` for public or semi-public deployments.
+- Admin APIs are disabled by default. If enabled, use a strong API key and restrict access at the reverse proxy layer.
+- `.pt` voice upload is disabled by default. Only upload trusted files; PyTorch weight files should not come from untrusted sources.
+- Do not expose `/admin/*` directly to the public internet.
+- `cancel/stop` prevents later segments from being sent. If the current segment is already inside synchronous inference, it usually stops after that segment completes.
+
+See [Security Notes](docs/SECURITY.md).
+
+## Known limitations
+
+- AngeVoice does not train a new model; quality, license, and language capability follow the upstream Kokoro model.
+- Long-form text is synthesized segment by segment. Very long books should use a batch/task workflow.
+- For GPU deployments, avoid multiple workers loading the model at the same time unless you have enough VRAM.
+- MP3 output depends on ffmpeg.
+- WebSocket streaming is segment-level streaming, not true model-internal token streaming.
+
+## Testing
 
 ```bash
 pip install -e '.[dev]'
-pytest -q
+pytest -q --cov=kokoro_tts --cov-report=term-missing
 ```
 
-Service smoke test:
+Service smoke tests:
 
 ```bash
 chmod +x scripts/smoke_test.sh scripts/loop_test.sh
@@ -305,123 +229,15 @@ BASE_URL=http://127.0.0.1:8101 ./scripts/smoke_test.sh
 N=50 BASE_URL=http://127.0.0.1:8101 ./scripts/loop_test.sh
 ```
 
-Streaming latency benchmark:
-
-```bash
-python scripts/benchmark_streaming.py \
-  --angevoice-http http://127.0.0.1:8101 \
-  --angevoice-ws ws://127.0.0.1:8101/ws/v1/tts
-```
-
-## Docker Images & Publishing
-
-CI automatically pushes to two registries (GHCR + Docker Hub). Regular `main` pushes only verify builds; pushing a `v*` tag or manually triggering with `publish=true` publishes images.
-
-Expected image names:
-
-```text
-docker.io/maxblack777/angevoice-cpu:latest
-docker.io/maxblack777/angevoice-gpu:latest
-docker.io/maxblack777/angevoice-legacy-gpu:latest
-ghcr.io/ang77712829/angevoice-cpu:latest
-ghcr.io/ang77712829/angevoice-gpu:latest
-ghcr.io/ang77712829/angevoice-legacy-gpu:latest
-
-```
-
-
-
-## Project Structure
-
-<details>
-<summary><strong>View directory tree</strong></summary>
-
-```text
-AngeVoice/
-├── src/kokoro_tts/       # Core package
-│   ├── config.py         # Configuration
-│   ├── engine.py         # TTS engine & text normalization
-│   ├── server.py         # FastAPI service
-│   ├── service_extras.py # Batch/admin/MP3 extensions
-│   ├── cli.py            # CLI tool
-│   └── templates/        # Web UI
-├── scripts/              # Smoke/stability/benchmark scripts
-├── tests/                # Unit tests
-├── docker/               # CPU/GPU/Legacy GPU Docker configs
-├── docs/                 # Profiles, roadmap, release guide
-├── models/               # Model files directory
-├── pyproject.toml
-├── README.md
-└── README_EN.md
-```
-
-</details>
-
 ## Documentation
 
+- [Architecture](docs/ARCHITECTURE.md)
+- [Security Notes](docs/SECURITY.md)
+- [Troubleshooting](docs/TROUBLESHOOTING.md)
 - [Service Profiles](docs/SERVICE_PROFILES.md)
-- [v2.4 Features](docs/V2_4_FEATURES.md)
-- [Legacy GPU Deployment](docker/legacy-gpu/README.md)
+- [v2.5 Features](docs/V2_4_FEATURES.md)
 - [Roadmap](docs/ROADMAP.md)
-
-
-## Changelog
-
-<details>
-<summary><strong>latest</strong></summary>
-
-### Added
-
-- AngeVoice Web UI with voice preview, streaming playback, and stop generation
-- `/v1/audio/batch` batch ZIP synthesis with `manifest.json`
-- `/v1/audio/formats` runtime format query
-- Admin APIs: `/admin/cache`, `/admin/voices`, `/admin/voices/upload`
-- Optional MP3 output behind `KOKORO_MP3_ENABLED=true`
-- WebSocket `cancel` / `stop` control frames
-- Basic Chinese text normalization: phone numbers, dates, money, percentages, long IDs
-- CI, GHCR build workflow, and benchmark script
-- Three standardized Docker profiles: CPU, GPU, Legacy GPU
-
-### Improved
-
-- FastAPI and package version synced to `2.4.0`
-- Docker service names unified to `angevoice-*`
-- CLI keeps `kokoro-tts` for backward compatibility
-- `/health` returns batch/admin/mp3 status
-- WebSocket cancel with backpressure queue
-- Upload size limit and MP3 bitrate whitelist validation
-- Test coverage updated, CI enabled for Python 3.10/3.11/3.12
-
-</details>
-
-<details>
-<summary><strong>Earlier versions</strong></summary>
-
-### v2.3.0
-
-- `/stats`, `/requests`, request IDs, request status tracking, service metrics
-- In-memory LRU audio cache
-- Optional binary WebSocket audio frames
-- Request timeout control
-- General and conservative deployment profiles
-
-### v2.1.x
-
-- Audio format, concurrency, text segmentation, PCM encoding, and Docker startup fixes
-- WebSocket per-segment streaming synthesis
-- Model auto-download and offline download docs
-
-### v1.0
-
-- Initial Chinese synthesis, OpenAI-style API, Docker CPU/GPU deployment
-
-</details>
-
-## Acknowledgements
-
-- [Kokoro v1.1 Model](https://huggingface.co/hexgrad/Kokoro-82M) — hexgrad
-- [Kokoro Chinese Model](https://huggingface.co/hexgrad/Kokoro-82M-v1.1-zh) — hexgrad
-- Original model license follows the model repository
+- [Legacy GPU Deployment](docker/legacy-gpu/README.md)
 
 ## License
 

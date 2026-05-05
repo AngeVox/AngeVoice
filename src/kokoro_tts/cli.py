@@ -1,19 +1,22 @@
 """AngeVoice command line interface.
 
-The historical executable name remains ``kokoro-tts`` for compatibility.
-AngeVoice is built on the Kokoro v1.1 model.
+``angevoice`` is the recommended executable name. ``kokoro-tts`` remains
+available for scripts created before the project was branded as AngeVoice.
 """
 
 import argparse
 import logging
 import sys
+from pathlib import Path
 
 
 def main():
+    prog = Path(sys.argv[0]).name or "angevoice"
     parser = argparse.ArgumentParser(
-        prog="kokoro-tts",
+        prog=prog,
         description="AngeVoice — 轻量级中文 TTS 服务，基于 Kokoro v1.1 模型构建",
     )
+    parser.add_argument("--version", action="version", version="AngeVoice 2.5.0")
     sub = parser.add_subparsers(dest="command", help="子命令")
 
     serve_p = sub.add_parser("serve", help="启动 HTTP 服务")

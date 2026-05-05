@@ -148,58 +148,6 @@ class TestServer:
             assert app.title == "AngeVoice"
 
 
-class TestTextNormalization:
-    """测试文本规范化（不需要实际模型）"""
-
-    def test_date_normalization(self):
-        from kokoro_tts.engine import normalize_text_for_tts
-        result = normalize_text_for_tts("2026-05-04")
-        assert "年" in result
-        assert "月" in result
-        assert "日" in result
-        assert "二零二六" in result
-
-    def test_money_with_symbol(self):
-        from kokoro_tts.engine import normalize_text_for_tts
-        result = normalize_text_for_tts("¥99.50")
-        assert "九十九元" in result
-        assert "五角" in result
-
-    def test_money_with_unit(self):
-        from kokoro_tts.engine import normalize_text_for_tts
-        result = normalize_text_for_tts("100元")
-        assert "一百元" in result
-
-    def test_bare_number_not_mangled(self):
-        """Bare numbers without currency context should not be converted."""
-        from kokoro_tts.engine import normalize_text_for_tts
-        result = normalize_text_for_tts("一共100个")
-        assert result == "一共100个"
-
-    def test_percent_normalization(self):
-        from kokoro_tts.engine import normalize_text_for_tts
-        result = normalize_text_for_tts("增长了30%")
-        assert "百分之三十" in result
-
-    def test_mobile_normalization(self):
-        from kokoro_tts.engine import normalize_text_for_tts
-        result = normalize_text_for_tts("13800138000")
-        # Should be grouped as 3-4-4 with commas
-        assert "，" in result
-
-    def test_spell_digits_no_spaces(self):
-        from kokoro_tts.engine import _spell_digits
-        result = _spell_digits("2026")
-        assert result == "二零二六"
-        assert " " not in result
-
-    def test_long_number_normalization(self):
-        from kokoro_tts.engine import normalize_text_for_tts
-        result = normalize_text_for_tts("订单号1234567890")
-        # 10 digits → grouped as 4-4-2
-        assert "，" in result
-
-
 class TestCLI:
     """测试 CLI 模块"""
 

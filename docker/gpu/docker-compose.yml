@@ -2,37 +2,90 @@ name: angevoice-gpu
 
 services:
   angevoice-gpu:
-    image: docker.io/maxblack777/angevoice-gpu:latest
+    image: angevoice/gpu:latest
     container_name: angevoice-gpu
     build:
       context: ../..
       dockerfile: docker/gpu/Dockerfile
     ports:
-      # Host port:container port. Open http://HOST_IP:8101
+      # 宿主机端口:容器端口。访问 http://宿主机IP:8101
       - "8101:8000"
 
     volumes:
-      # Local model directory. Real model files require Git LFS or huggingface-cli download.
+      # 模型目录：只读挂载，避免容器误改模型文件
       - ../../models:/app/models:ro
-      # Persist Hugging Face cache so downloaded model/voice files survive container recreation.
-      - ../../.cache/huggingface:/root/.cache/huggingface
-      # Development hot-reload. Uncomment for git pull + docker compose restart workflows.
+
+      # 开发/测试环境热更新源码：取消注释后 git pull + docker compose restart 即可生效
+      # 生产环境建议保持注释，通过 docker compose up -d --build 固化进镜像
       # - ../../src:/app/src:ro
-      # Writable voices directory for optional admin voice upload.
+
+      # 如果开启音色上传，需要把 voices 目录单独以可写方式挂载，并开启 KOKORO_ADMIN_ENABLED / KOKORO_VOICE_UPLOAD_ENABLED
       # - ../../models/voices:/app/models/voices:rw
 
-    env_file:
-      # Copy .env.example -> .env and customize, or use environment-specific files:
-      #   cp .env.dev .env       (轻量开发)
-      #   cp .env.staging .env   (预发布)
-      #   cp .env.prod .env      (生产)
-      - path: .env
-        required: false
     environment:
-      # GPU-specific: NVIDIA runtime settings (not in .env files)
+      # Python 日志实时输出
+      - PYTHONUNBUFFERED=1
+
+      # 基础服务配置
+      - KOKORO_HOST=0.0.0.0
+      - KOKORO_PORT=8000
+      - KOKORO_DEVICE=cuda
+
+      # Uvicorn worker。GPU 模式建议保持 1，避免多进程重复加载模型
+      - KOKORO_WORKERS=1
+
+      # 同一进程内最大合成并发。GPU/小显存建议 1；CPU 可按机器性能增加
+      - KOKORO_MAX_CONCURRENT_REQUESTS=1
+
+      # 请求超时。长文本/慢机器可以调大
+      - KOKORO_REQUEST_TIMEOUT_SECONDS=300
+
+      # 文本限制与切分长度
+      - KOKORO_MAX_TEXT_LENGTH=10000
+      - KOKORO_SEGMENT_LENGTH=100
+
+      # 默认音色和语速
+      - KOKORO_DEFAULT_VOICE=zm_010
+      - KOKORO_DEFAULT_SPEED=1.0
+
+      # WebSocket 流式配置
+      - KOKORO_STREAM_FORMAT=pcm_s16le
+      - KOKORO_STREAM_BINARY_ENABLED=true
+
+      # 内存 LRU 缓存：重复文本/音色/语速/格式会直接命中缓存
+      - KOKORO_CACHE_ENABLED=true
+      - KOKORO_CACHE_MAX_ITEMS=128
+
+      # 服务状态接口：/stats 和 /requests
+      - KOKORO_METRICS_ENABLED=true
+      - KOKORO_QUEUE_STATUS_ENABLED=true
+
+      # 批量合成接口：/v1/audio/batch，返回 ZIP
+      - KOKORO_BATCH_ENABLED=true
+      - KOKORO_BATCH_MAX_ITEMS=20
+      # 批量内部并发。GPU/NAS 建议保持 1，性能机器可逐步调到 2/4
+      - KOKORO_BATCH_CONCURRENCY=1
+
+      # 管理接口默认关闭。开启后建议同时设置 KOKORO_API_KEY
+      # - KOKORO_ADMIN_ENABLED=true
+      # - KOKORO_API_KEY=change-me
+
+      # 音色上传默认关闭。开启前请把 models/voices 挂载为 rw
+      # - KOKORO_VOICE_UPLOAD_ENABLED=true
+      # - KOKORO_VOICE_UPLOAD_MAX_BYTES=10485760
+
+      # MP3 默认关闭。开启前镜像/宿主需安装 ffmpeg
+      # - KOKORO_MP3_ENABLED=true
+      # - KOKORO_MP3_BITRATE=192k
+
+      # CORS：测试环境可用 *；公网建议改成你的前端域名
+      - KOKORO_CORS_ORIGINS=*
+
+      # NVIDIA 容器配置
       - NVIDIA_VISIBLE_DEVICES=all
       - NVIDIA_DRIVER_CAPABILITIES=compute,utility
 
+    # Docker Compose V2 推荐写法。旧环境可改回 deploy.resources.reservations.devices
     gpus: all
 
     healthcheck:

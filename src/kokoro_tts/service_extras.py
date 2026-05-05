@@ -4,6 +4,8 @@ This module keeps product/service features out of server.py so the core server s
 small and easy to review. AngeVoice is built on the Kokoro v1.1 model.
 """
 
+from __future__ import annotations
+
 import asyncio
 import json
 import logging
@@ -86,13 +88,12 @@ def register_extra_routes(
     normalize_response_format: Callable[[str], str],
     mark_request: Callable,
     finish_request: Callable,
-    increment_stat: Optional[Callable[[str, object], None]] = None,
+    increment_stat: Callable[[str, object], None] | None = None,
 ):
     """Register optional v2.4 service routes on the existing FastAPI app."""
-    from fastapi import Body, Depends, File, HTTPException, UploadFile
+    from fastapi import Depends, File, HTTPException, UploadFile
     from fastapi.responses import StreamingResponse
     from pydantic import BaseModel, Field
-    from typing import Annotated
 
     def inc_stat(name: str, delta=1) -> None:
         if increment_stat is not None:
@@ -140,7 +141,7 @@ def register_extra_routes(
         return mp3_bytes, "audio/mpeg"
 
     @app.post("/v1/audio/batch")
-    async def batch_tts(req: Annotated[BatchTTSRequest, Body()], _=Depends(verify_api_key)):
+    async def batch_tts(req: BatchTTSRequest, _=Depends(verify_api_key)):
         """Batch synthesize multiple texts and return a ZIP file."""
         if not cfg.batch_enabled:
             raise HTTPException(status_code=404, detail="Batch API disabled")

@@ -33,7 +33,7 @@ _DIGITS_ZH_READING = {**_DIGITS_ZH, "1": "幺"}
 
 def _spell_digits(text: str, use_yao: bool = False) -> str:
     table = _DIGITS_ZH_READING if use_yao else _DIGITS_ZH
-    return "".join(table.get(ch, ch) for ch in text)
+    return " ".join(table.get(ch, ch) for ch in text)
 
 
 def _read_small_int(value: int) -> str:
@@ -66,12 +66,12 @@ def normalize_text_for_tts(text: str) -> str:
         year, month, day = match.groups()
         return f"{_spell_digits(year)}年{_read_small_int(int(month))}月{_read_small_int(int(day))}日"
 
-    # Use (?<!\d) / (?!\d) instead of \b — \b treats Chinese chars as \w
-    # and fails between a Chinese character and a digit.
-    text = re.sub(r"(?<!\d)(20\d{2}|19\d{2})[-/.](\d{1,2})[-/.](\d{1,2})(?!\d)", repl_date, text)
+    text = re.sub(r"\b(20\d{2}|19\d{2})[-/.](\d{1,2})[-/.](\d{1,2})\b", repl_date, text)
 
-    def repl_money_prefix(match):
-        amount = match.group(1)
+    def repl_money(match):
+        prefix, amount, suffix = match.groups()
+        if not prefix and not suffix:
+            return match.group(0)
         integer, dot, frac = amount.partition(".")
         spoken = _read_small_int(int(integer)) + "元"
         if dot and frac:
@@ -82,32 +82,13 @@ def normalize_text_for_tts(text: str) -> str:
                 spoken += _DIGITS_ZH[frac[1]] + "分"
         return spoken
 
-    def repl_money_suffix(match):
-        amount = match.group(1)
-        integer, dot, frac = amount.partition(".")
-        spoken = _read_small_int(int(integer)) + "元"
-        if dot and frac:
-            frac = (frac + "00")[:2]
-            if frac[0] != "0":
-                spoken += _DIGITS_ZH[frac[0]] + "角"
-            if frac[1] != "0":
-                spoken += _DIGITS_ZH[frac[1]] + "分"
-        return spoken
-
-    # Only match when a currency symbol is present (¥/￥ prefix OR explicit 元 suffix).
-    # Bare numbers like "100" must not be caught.
-    text = re.sub(r"(?:¥|￥)(\d{1,7}(?:\.\d{1,2})?)", repl_money_prefix, text)
-    text = re.sub(r"(\d{1,7}(?:\.\d{1,2})?)元", repl_money_suffix, text)
+    text = re.sub(r"(¥|￥)?\b(\d{1,5}(?:\.\d{1,2})?)\b(元)?", repl_money, text)
 
     def repl_percent(match):
         value = match.group(1)
-        integer, dot, frac = value.partition(".")
-        spoken = _read_small_int(int(integer))
-        if dot and frac:
-            spoken += "点" + _spell_digits(frac)
-        return "百分之" + spoken
+        return "百分之" + _spell_digits(value.replace(".", "点"))
 
-    text = re.sub(r"(\d+(?:\.\d+)?)%", repl_percent, text)
+    text = re.sub(r"\b(\d+(?:\.\d+)?)%", repl_percent, text)
 
     def repl_mobile(match):
         number = match.group(0)
