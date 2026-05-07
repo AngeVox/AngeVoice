@@ -114,7 +114,7 @@ def create_app(config: Optional[TTSConfig] = None, engine: Optional[TTSEngine] =
     app = FastAPI(
         title="AngeVoice",
         description="Lightweight local TTS service with selectable model engines",
-        version="2.6.0",
+        version="2.6.1",
         lifespan=lifespan,
     )
     app.state.angevoice = state

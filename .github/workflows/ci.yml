@@ -49,7 +49,7 @@ jobs:
         run: |
           python - <<'PY'
           import kokoro_tts
-          assert kokoro_tts.__version__ == "2.6.0"
+          assert kokoro_tts.__version__ == "2.6.1"
           print("AngeVoice version:", kokoro_tts.__version__)
           PY
           angevoice --version
