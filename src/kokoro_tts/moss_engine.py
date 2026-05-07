@@ -12,6 +12,7 @@ import gc
 import logging
 import sys
 import tempfile
+import time
 from pathlib import Path
 from typing import Optional
 
@@ -20,6 +21,9 @@ from .config import TTSConfig
 from .engine import normalize_text_for_tts
 
 logger = logging.getLogger(__name__)
+
+# Silence between concatenated segments (seconds)
+_SEGMENT_SILENCE_SECONDS = 0.08
 
 
 class MossNanoEngine:
@@ -140,37 +144,64 @@ class MossNanoEngine:
         return write_wav_bytes(waveform, self.sample_rate)
 
     def synthesize_array(self, text: str, voice: str = "", speed: float = 1.0, prompt_audio_path: str | None = None):
+        import numpy as np
+
         self._validate_request(text=text, voice=voice, speed=speed)
         prepared_text = self._clean_text(text)
+        segments = self._segment_text(prepared_text)
         prompt_audio = prompt_audio_path or (str(self.config.moss_prompt_audio_path) if self.config.moss_prompt_audio_path else None)
         timeout = self.config.request_timeout_seconds
 
+        logger.info("MOSS synthesize: segments=%d, voice=%s", len(segments), voice or self.default_voice)
+
+        all_waveforms = []
+
         def _run():
-            return self._runtime.synthesize(
-                text=prepared_text,
-                voice=voice or self.default_voice,
-                prompt_audio_path=prompt_audio,
-                output_audio_path=self._temp_output_path(),
-                sample_mode=self.config.moss_sample_mode,
-                do_sample=self.config.moss_sample_mode != "greedy",
-                streaming=bool(self.config.moss_realtime_streaming_decode),
-                max_new_frames=self.config.moss_max_new_frames,
-                voice_clone_max_text_tokens=self.config.moss_voice_clone_max_text_tokens,
-                enable_wetext=bool(self.config.moss_enable_wetext_processing),
-                enable_normalize_tts_text=bool(self.config.moss_enable_normalize_tts_text),
-            )
+            for i, seg in enumerate(segments):
+                if not seg.strip():
+                    continue
+                t0 = time.monotonic()
+                result = self._runtime.synthesize(
+                    text=seg,
+                    voice=voice or self.default_voice,
+                    prompt_audio_path=prompt_audio,
+                    output_audio_path=self._temp_output_path(),
+                    sample_mode=self.config.moss_sample_mode,
+                    do_sample=self.config.moss_sample_mode != "greedy",
+                    streaming=bool(self.config.moss_realtime_streaming_decode),
+                    max_new_frames=self.config.moss_max_new_frames,
+                    voice_clone_max_text_tokens=self.config.moss_voice_clone_max_text_tokens,
+                    enable_wetext=bool(self.config.moss_enable_wetext_processing),
+                    enable_normalize_tts_text=bool(self.config.moss_enable_normalize_tts_text),
+                )
+                waveform = normalize_audio_array(result["waveform"])
+                all_waveforms.append(waveform)
+                elapsed = time.monotonic() - t0
+                logger.info("MOSS segment %d/%d done (%.1fs, %d samples)", i + 1, len(segments), elapsed, waveform.shape[0])
+
+            if not all_waveforms:
+                raise RuntimeError("MOSS: all segments produced empty audio")
+
+            # Concatenate with inter-segment silence
+            sr = self.sample_rate
+            silence = np.zeros((int(sr * _SEGMENT_SILENCE_SECONDS), all_waveforms[0].shape[-1]), dtype=np.float32) if all_waveforms[0].ndim == 2 else np.zeros(int(sr * _SEGMENT_SILENCE_SECONDS), dtype=np.float32)
+            parts = []
+            for idx, wf in enumerate(all_waveforms):
+                parts.append(wf)
+                if idx < len(all_waveforms) - 1:
+                    parts.append(silence)
+            return np.concatenate(parts)
 
         with concurrent.futures.ThreadPoolExecutor(max_workers=1) as pool:
             future = pool.submit(_run)
             try:
-                result = future.result(timeout=timeout)
+                return future.result(timeout=timeout)
             except concurrent.futures.TimeoutError:
                 future.cancel()
                 raise RuntimeError(
                     f"MOSS inference timed out ({timeout}s). "
                     "CUDA inference may be stuck. Try switching to CPU or restarting."
                 )
-        return normalize_audio_array(result["waveform"])
 
     def synthesize_stream(self, text, voice="", speed=1.0, fmt="pcm_s16le"):
         if fmt not in self.SUPPORTED_STREAM_FORMATS:
@@ -182,30 +213,58 @@ class MossNanoEngine:
             yield {"type": "error", "message": str(exc)}
             return
 
+        prepared_text = self._clean_text(text)
+        segments = self._segment_text(prepared_text)
+
         yield {
             "type": "started",
-            "segments": 1,
+            "segments": len(segments),
             "sample_rate": self.sample_rate,
             "channels": self.channels,
             "format": fmt,
             "dtype": "s16le" if fmt == "pcm_s16le" else "wav",
             "model": self.engine_id,
         }
-        try:
-            waveform = self.synthesize_array(text=text, voice=voice, speed=speed)
-            audio_bytes = encode_audio_segment(waveform, fmt, self.sample_rate)
-        except Exception as exc:
-            yield {"type": "error", "message": str(exc), "model": self.engine_id}
-            return
-        yield {
-            "type": "audio",
-            "index": 0,
-            "data": base64.b64encode(audio_bytes).decode("ascii"),
-            "format": fmt,
-            "sample_rate": self.sample_rate,
-            "channels": self.channels,
-        }
-        yield {"type": "done", "total_segments": 1}
+
+        prompt_audio = str(self.config.moss_prompt_audio_path) if self.config.moss_prompt_audio_path else None
+        total_done = 0
+
+        for i, seg in enumerate(segments):
+            if not seg.strip():
+                continue
+            try:
+                t0 = time.monotonic()
+                result = self._runtime.synthesize(
+                    text=seg,
+                    voice=voice or self.default_voice,
+                    prompt_audio_path=prompt_audio,
+                    output_audio_path=self._temp_output_path(),
+                    sample_mode=self.config.moss_sample_mode,
+                    do_sample=self.config.moss_sample_mode != "greedy",
+                    streaming=bool(self.config.moss_realtime_streaming_decode),
+                    max_new_frames=self.config.moss_max_new_frames,
+                    voice_clone_max_text_tokens=self.config.moss_voice_clone_max_text_tokens,
+                    enable_wetext=bool(self.config.moss_enable_wetext_processing),
+                    enable_normalize_tts_text=bool(self.config.moss_enable_normalize_tts_text),
+                )
+                waveform = normalize_audio_array(result["waveform"])
+                audio_bytes = encode_audio_segment(waveform, fmt, self.sample_rate)
+                elapsed = time.monotonic() - t0
+                logger.info("MOSS stream segment %d/%d (%.1fs)", i + 1, len(segments), elapsed)
+                yield {
+                    "type": "audio",
+                    "index": i,
+                    "data": base64.b64encode(audio_bytes).decode("ascii"),
+                    "format": fmt,
+                    "sample_rate": self.sample_rate,
+                    "channels": self.channels,
+                }
+                total_done += 1
+            except Exception as exc:
+                logger.warning("MOSS stream segment %d failed: %s", i + 1, exc)
+                yield {"type": "segment_error", "index": i, "message": str(exc), "model": self.engine_id}
+
+        yield {"type": "done", "total_segments": total_done}
 
     def _ensure_import_path(self) -> None:
         repo_path = self.config.moss_repo_path
@@ -323,8 +382,45 @@ class MossNanoEngine:
         text = "".join(c if c.isprintable() or c.isspace() else " " for c in str(text or ""))
         text = " ".join(text.split()).strip()
         if self.config.moss_apply_angevoice_rules:
-            text = normalize_text_for_tts(text)
+            text = normalize_text_for_tts(text, model="moss")
         return text
+
+    def _segment_text(self, text: str) -> list[str]:
+        """Split text into segments for incremental synthesis.
+
+        Uses the same punctuation-aware logic as the Kokoro engine: accumulate
+        characters until *segment_length* is reached and a punctuation boundary
+        is found, then cut.  A hard-cut at 1.5x length prevents runaway loops
+        on punctuation-free text.
+        """
+        max_len = max(20, int(self.config.segment_length))
+        punctuation = "。！？!?；;，,、.：:\n"
+        segments: list[str] = []
+        current = ""
+
+        for char in text:
+            current += char
+            if len(current) >= max_len and char in punctuation:
+                if current.strip():
+                    segments.append(current.strip())
+                current = ""
+                continue
+            if len(current) >= int(max_len * 1.5):
+                cut_pos = max(current.rfind(p) for p in punctuation)
+                if cut_pos >= max_len // 2:
+                    head = current[: cut_pos + 1].strip()
+                    tail = current[cut_pos + 1 :].strip()
+                    if head:
+                        segments.append(head)
+                    current = tail
+                else:
+                    if current.strip():
+                        segments.append(current.strip())
+                    current = ""
+
+        if current.strip():
+            segments.append(current.strip())
+        return segments or [text]
 
     def _temp_output_path(self) -> str:
         temp_dir = Path(tempfile.gettempdir()) / "angevoice_moss"

@@ -16,7 +16,7 @@ def main():
         prog=prog,
         description="AngeVoice — 轻量级中文 TTS 服务，基于 Kokoro v1.1 模型构建",
     )
-    parser.add_argument("--version", action="version", version="AngeVoice 2.6.1")
+    parser.add_argument("--version", action="version", version="AngeVoice 2.6.2")
     sub = parser.add_subparsers(dest="command", help="子命令")
 
     serve_p = sub.add_parser("serve", help="启动 HTTP 服务")

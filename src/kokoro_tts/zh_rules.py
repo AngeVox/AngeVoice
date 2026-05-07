@@ -4,10 +4,16 @@ from __future__ import annotations
 
 import re
 
+try:
+    from pypinyin import pinyin as _py_pinyin, Style as _py_Style
+    _HAS_PYPINYIN = True
+except ImportError:
+    _HAS_PYPINYIN = False
+
 _CHINESE_RE = re.compile(r"[\u4e00-\u9fff]")
 _LONG_CHINESE_RUN_RE = re.compile(r"[\u4e00-\u9fff]{24,}")
 _SENTENCE_END = "。！？!?"
-_ANY_PUNCT = "。！？!?；;，,、：:"
+_ANY_PUNCT = "。！？!？；;，,、：:"
 _PAUSE_PUNCT = "，"
 
 _LEXICON = {
@@ -31,7 +37,12 @@ _LEXICON = {
 }
 _MAX_WORD_LEN = max(len(word) for word in _LEXICON)
 
-_LIAO_PATTERNS = [
+# ---- Per-model polyphone rules ----
+# Kokoro G2P: character-replacement biasing works well.
+# MOSS G2P: has its own robust polyphone handling; most replacements break it.
+# Only add confirmed MOSS fixes here.
+
+_LIAO_PATTERNS_KOKORO = [
     (re.compile(r"何时了(?=[$。！？!?；;，,、\s])"), "何时瞭"),
     (re.compile(r"没完没了(?=[$。！？!?；;，,、\s])"), "没完没瞭"),
     (re.compile(r"一了百了"), "一瞭百瞭"),
@@ -39,10 +50,13 @@ _LIAO_PATTERNS = [
     (re.compile(r"得了(?=[$。！？!?；;，,、\s])"), "得瞭"),
 ]
 
+# MOSS: no liao overrides needed (MOSS reads 瞭 as liào, not liao)
+_LIAO_PATTERNS_MOSS: list = []
+
 # These overrides are deliberately conservative and phrase based.  The right
 # side uses common homophone characters to bias Chinese G2P without adding a
 # separate markup language to the public API.
-_POLYPHONE_PHRASES = (
+_POLYPHONE_PHRASES_KOKORO = (
     # 了: le / liao
     ("春花秋月何时了", "春花秋月何时瞭"),
     ("何时了", "何时瞭"),
@@ -289,6 +303,11 @@ _POLYPHONE_PHRASES = (
     ("圈养", "倦养"),
 )
 
+# MOSS: empty — its G2P handles polyphones natively.
+# Add confirmed fixes here if needed later.
+_POLYPHONE_PHRASES_MOSS: tuple = ()
+
+# Regex overrides are grammatical (只→支, 地→的), apply to ALL models.
 _REGEX_OVERRIDES = (
     (re.compile(r"([一二两三四五六七八九十百千万0-9]+)只(?=[\u4e00-\u9fff])"), r"\1支"),
     (
@@ -384,20 +403,65 @@ def apply_auto_punctuation(text: str) -> str:
     return normalized
 
 
-def apply_polyphone_overrides(text: str) -> str:
-    """Bias common Chinese polyphones toward the intended reading."""
+def _is_moss_model(model: str) -> bool:
+    """Check if model identifier refers to a MOSS engine."""
+    return str(model or "").lower().startswith("moss")
+
+
+def apply_polyphone_overrides(text: str, model: str = "kokoro") -> str:
+    """Bias common Chinese polyphones toward the intended reading.
+
+    For Kokoro: uses character-replacement biasing (reliable).
+    For MOSS: skips replacements (MOSS has its own G2P).
+    """
     if not _has_chinese(text):
         return text
-    for source, target in _POLYPHONE_PHRASES:
+
+    is_moss = _is_moss_model(model)
+
+    # Select model-specific rule sets
+    phrases = _POLYPHONE_PHRASES_MOSS if is_moss else _POLYPHONE_PHRASES_KOKORO
+    liao_patterns = _LIAO_PATTERNS_MOSS if is_moss else _LIAO_PATTERNS_KOKORO
+
+    for source, target in phrases:
         text = text.replace(source, target)
+    # Regex overrides are grammatical, apply to all models
     for pattern, replacement in _REGEX_OVERRIDES:
         text = pattern.sub(replacement, text)
     padded = text + "$"
-    for pattern, replacement in _LIAO_PATTERNS:
+    for pattern, replacement in liao_patterns:
         padded = pattern.sub(replacement, padded)
     return padded[:-1]
 
 
-def normalize_chinese_rules(text: str) -> str:
+def normalize_chinese_rules(text: str, model: str = "kokoro") -> str:
     text = apply_auto_punctuation(text)
-    return apply_polyphone_overrides(text)
+    return apply_polyphone_overrides(text, model=model)
+
+
+def detect_polyphones(text: str) -> list[dict]:
+    """Detect polyphone characters in text using pypinyin.
+
+    Returns a list of dicts with character, position, and possible readings.
+    Useful for debugging and admin tools.
+    """
+    if not _HAS_PYPINYIN or not _has_chinese(text):
+        return []
+
+    results = []
+    for i, char in enumerate(text):
+        if not _CHINESE_RE.match(char):
+            continue
+        try:
+            readings = _py_pinyin(char, style=_py_Style.TONE3, heteronym=True)
+            if readings and len(readings[0]) > 1:
+                # This character has multiple readings (polyphone)
+                results.append({
+                    "char": char,
+                    "position": i,
+                    "readings": readings[0],
+                    "context": text[max(0, i - 3):i + 4],
+                })
+        except Exception:
+            pass
+    return results

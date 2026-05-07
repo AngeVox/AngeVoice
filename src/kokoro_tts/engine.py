@@ -108,7 +108,7 @@ def _read_clock_time(hour: int, minute: int) -> str:
     return spoken + _read_small_int(minute) + "分"
 
 
-def normalize_text_for_tts(text: str) -> str:
+def normalize_text_for_tts(text: str, model: str = "kokoro") -> str:
     """Normalize common Chinese TTS patterns before synthesis.
 
     This intentionally stays conservative. It handles common phone numbers,
@@ -171,7 +171,7 @@ def normalize_text_for_tts(text: str) -> str:
         return "，".join(_spell_digits(group, use_yao=True) for group in grouped)
 
     text = re.sub(r"(?<!\d)\d{6,}(?!\d)", repl_long_number, text)
-    text = normalize_chinese_rules(text)
+    text = normalize_chinese_rules(text, model=model)
     return text
 
 
