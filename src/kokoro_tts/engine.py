@@ -5,6 +5,7 @@ kokoro are imported lazily when the model is loaded or audio is encoded.
 """
 
 import base64
+import concurrent.futures
 import logging
 import os
 import re
@@ -298,7 +299,21 @@ class TTSEngine:
         text = self._clean_text(text)
         if not text:
             raise ValueError("清理后文本为空")
-        return self._do_synthesize(text, voice, speed)
+        timeout = self.config.request_timeout_seconds
+
+        def _run():
+            return self._do_synthesize(text, voice, speed)
+
+        with concurrent.futures.ThreadPoolExecutor(max_workers=1) as pool:
+            future = pool.submit(_run)
+            try:
+                return future.result(timeout=timeout)
+            except concurrent.futures.TimeoutError:
+                future.cancel()
+                raise RuntimeError(
+                    f"Kokoro inference timed out ({timeout}s). "
+                    "Synthesis may be stuck due to GPU memory or model issues."
+                )
 
     def synthesize_file(self, text: str, output_path: str, voice: str = "zm_010", speed: float = 1.0) -> str:
         audio_bytes = self.synthesize(text, voice, speed)
