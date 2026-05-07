@@ -10,7 +10,7 @@ class TTSRequest(BaseModel):
     an alias for older local clients.
     """
 
-    model: str = Field(default="kokoro", description="OpenAI-compatible model name")
+    model: str = Field(default="kokoro", description="Model id, for example kokoro or moss-nano-cpu")
     input: str = Field(..., description="Text to synthesize", alias="text")
     voice: str = Field(default="zm_010", description="Voice name")
     speed: float = Field(default=1.0, ge=0.5, le=2.0, description="Speed")

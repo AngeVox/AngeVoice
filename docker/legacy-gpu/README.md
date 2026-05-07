@@ -129,6 +129,53 @@ curl -X POST http://localhost:8102/v1/audio/speech \
   --output test.mp3
 ```
 
+## Optional MOSS / 可选 MOSS
+
+Legacy GPU preinstalls the MOSS runtime, including a CUDA 11.8 compatible
+`onnxruntime-gpu` package from the official ONNX Runtime CUDA 11 feed, but its
+Compose profile exposes only Kokoro and MOSS CPU by default. This keeps NAS and
+older driver stacks stable while still allowing advanced users to try MOSS CUDA
+without rebuilding the image.
+
+ONNX Runtime CUDA install reference:
+https://onnxruntime.ai/docs/install/
+
+老显卡镜像会预装 MOSS runtime，包括 CUDA 11.8 兼容的 `onnxruntime-gpu`
+依赖，但 Compose 默认只开放 Kokoro 和 MOSS CPU。这样能保证 NAS 与旧驱动长期稳定，同时让高级用户无需重建镜像就能尝试 MOSS CUDA。
+
+```yaml
+INSTALL_MOSS: "true"
+ANGEVOICE_ENABLED_MODELS=kokoro,moss-nano-cpu
+MOSS_EXECUTION_PROVIDER=cpu
+MOSS_CUDA_ENABLED=false
+MOSS_MODEL_DIR=/opt/MOSS-TTS-Nano/models
+MOSS_PROMPT_UPLOAD_MAX_BYTES=20971520
+```
+
+Generated HTTP audio and MOSS ONNX assets are persisted by the Compose mounts:
+
+HTTP 合成结果和 MOSS ONNX 模型会通过 Compose 挂载持久化：
+
+```yaml
+- ../../moss_models:/opt/MOSS-TTS-Nano/models
+- ../../outputs:/app/outputs
+```
+
+To try MOSS CUDA on legacy GPU, manually add `moss-nano-cuda` and set
+`MOSS_CUDA_ENABLED=true`; keep it only if the built-in self-test and listening
+test are clean.
+
+如果要在 legacy GPU 上尝试 MOSS CUDA，需要手动加入 `moss-nano-cuda` 并设置
+`MOSS_CUDA_ENABLED=true`；只有内置自检和人工试听都正常时才建议长期使用。
+
+For Tesla P4 specifically, the modern GPU profile has been validated with
+`onnxruntime-gpu==1.20.2` and `nvidia-cudnn-cu12==9.1.0.70`. Use the legacy
+profile when CUDA 12/cuDNN 9 is not suitable for the host, and keep MOSS on CPU
+unless the CUDA 11.8 path passes validation.
+
+针对 Tesla P4，现代 GPU 画像已用 `onnxruntime-gpu==1.20.2` 和
+`nvidia-cudnn-cu12==9.1.0.70` 验证 MOSS CUDA 可运行。如果宿主机不适合 CUDA 12/cuDNN 9，则使用 legacy 画像，并让 MOSS 保持 CPU；除非 CUDA 11.8 路径已经通过验证。
+
 ## Admin and voice upload / 管理接口与音色上传
 
 Admin APIs are disabled by default. Enable them only with an API key:

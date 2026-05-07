@@ -1,6 +1,6 @@
 # AngeVoice
 
-> Lightweight Chinese TTS self-hosted service. AngeVoice wraps the Kokoro v1.1 Chinese model with OpenAI-compatible APIs, WebSocket segment streaming, refreshed Studio Web UI, Chinese text rules, batch synthesis, cache, metrics, and CPU/GPU/legacy-GPU Docker profiles.
+> Lightweight Chinese TTS self-hosted service. AngeVoice defaults to the Kokoro v1.1 Chinese model and can switch to MOSS-TTS-Nano on demand for low-power devices, NAS boxes, and long-running home services.
 
 English | [中文](README.md)
 
@@ -10,7 +10,7 @@ English | [中文](README.md)
 
 ## What is AngeVoice?
 
-AngeVoice is not a newly trained model. It is a service-oriented wrapper around the Kokoro v1.1 Chinese model, designed to make local deployment, intranet usage, OpenAI-style integration, browser streaming playback, and Docker self-hosting easier.
+AngeVoice is not a newly trained model. It is a local TTS service framework for low-power devices, NAS boxes, and long-running self-hosted environments. Kokoro v1.1 Chinese is the default engine; optional engines are integrated through the runtime model manager, starting with MOSS-TTS-Nano ONNX.
 
 Good fits:
 
@@ -20,7 +20,7 @@ Good fits:
 - Web apps that need segment playback, stop generation, and batch ZIP export
 - CPU, NVIDIA GPU, and legacy/conservative CUDA environments
 
-> Model source: this project is built on Kokoro v1.1 / Kokoro-82M and its Chinese model. Model copyright, license, and restrictions follow the upstream model repositories.
+> Model source: the default engine is built on Kokoro v1.1 / Kokoro-82M Chinese. Optional MOSS-TTS-Nano support uses the official OpenMOSS runtime code. Model copyright, license, and restrictions follow the upstream repositories.
 
 ## Highlights
 
@@ -28,6 +28,8 @@ Good fits:
 |---|---|
 | OpenAI-compatible API | `POST /v1/audio/speech` with `model/input/voice/speed/response_format` |
 | Studio Web UI | Built-in page with light/dark themes, voice filtering, favorites, preview, streaming playback, stop generation, API-key settings, and collapsible metric cards |
+| Multi-model runtime | `/v1/models` lists, loads, unloads, and switches engines; cache keys are isolated by model |
+| MOSS-TTS-Nano | OpenMOSS ONNX runtime adapter with preset voices, reference-audio cloning, CPU baseline, and experimental CUDA mode |
 | Chinese text rules | Auto pause punctuation, jieba-first segmentation, fallback lexicon, and common context-aware polyphone overrides |
 | WebSocket streaming | `ws://.../ws/v1/tts` segment streaming with `cancel` / `stop` control frames |
 | Batch synthesis | `POST /v1/audio/batch` returns a ZIP and `manifest.json` |
@@ -53,7 +55,10 @@ src/kokoro_tts/
 │   └── ws.py             # /ws/v1/tts
 ├── service_extras.py     # batch/admin/mp3 extension routes
 ├── zh_rules.py           # Chinese punctuation, polyphone, and lightweight segmentation rules
+├── audio.py              # WAV / PCM encoding helpers
+├── engine_manager.py     # model registration, loading, switching, and unloading
 ├── engine.py             # Kokoro engine, segmentation, normalization, audio encoding
+├── moss_engine.py        # MOSS-TTS-Nano official ONNX runtime adapter
 ├── config.py             # configuration and environment variables
 ├── templates/index.html  # Studio Web UI shell
 └── static/               # Studio Web UI styles and scripts
@@ -99,6 +104,15 @@ Build locally if needed:
 sudo docker compose up -d --build
 ```
 
+Docker images now preinstall the matching MOSS runtime for each service profile.
+MOSS model assets are downloaded only when a MOSS model is first loaded:
+
+- CPU exposes `kokoro,moss-nano-cpu` and never exposes CUDA MOSS.
+- Modern GPU exposes `kokoro,moss-nano-cpu,moss-nano-cuda`; startup still loads `kokoro`, and users can switch models in the Web UI. MOSS clone mode shows the reference-audio upload only when the selected model supports it.
+- Legacy GPU also preinstalls MOSS GPU dependencies, but its Compose profile exposes only `kokoro,moss-nano-cpu` by default. Add `moss-nano-cuda` and set `MOSS_CUDA_ENABLED=true` only after validating the old card/driver stack.
+
+CUDA mode runs provider and audio-quality self-tests first. A Docker probe on Tesla P4 passed the modern GPU profile with `onnxruntime-gpu==1.20.2` plus `nvidia-cudnn-cu12==9.1.0.70`. If cuDNN 9 is missing or provider self-test fails, AngeVoice falls back to CPU.
+
 ### Editable pip install
 
 ```bash
@@ -114,6 +128,16 @@ angevoice voices
 kokoro-tts serve --port 8000
 ```
 
+Model management:
+
+```bash
+curl http://localhost:8000/v1/models
+
+curl -X POST http://localhost:8000/v1/models/switch \
+  -H "Content-Type: application/json" \
+  -d '{"model":"moss-nano-cpu","unload_previous":true}'
+```
+
 ## API examples
 
 ### OpenAI-compatible TTS
@@ -124,6 +148,20 @@ curl -X POST http://localhost:8000/v1/audio/speech \
   -d '{"model":"kokoro","input":"Hello world","voice":"zm_010","response_format":"wav"}' \
   --output output.wav
 ```
+
+MOSS reference-audio cloning uses multipart upload on `/api/tts`. The Studio Web UI only shows the reference-audio control when the selected model supports `voice_clone`:
+
+```bash
+curl -X POST http://localhost:8000/api/tts \
+  -F model=moss-nano-cpu \
+  -F text="This is a reference-audio clone test." \
+  -F voice=Junhao \
+  -F response_format=wav \
+  -F prompt_audio=@reference.wav \
+  --output clone.wav
+```
+
+Uploading reference audio to a non-clone model such as Kokoro returns 400.
 
 When `KOKORO_API_KEY` is enabled, add:
 
@@ -200,6 +238,18 @@ models/voices/*.pt
 
 A normal `git clone` may only download Git LFS pointer files, not real model weights. Docker Compose profiles persist the Hugging Face cache to avoid repeated downloads after container recreation.
 
+## Docker persistence
+
+All Compose profiles prepare these host mounts:
+
+| Host path | Container path | Purpose |
+|---|---|---|
+| `../../hf_cache` | `/root/.cache/huggingface` | Kokoro/Hugging Face download cache |
+| `../../moss_models` | `/opt/MOSS-TTS-Nano/models` | MOSS ONNX asset cache, preserved after first download |
+| `../../outputs` | `/app/outputs` | HTTP synthesis outputs when `ANGEVOICE_SAVE_OUTPUTS=true` |
+
+Output files are grouped by date and pruned by `ANGEVOICE_OUTPUT_MAX_FILES`. MOSS internal temporary files stay inside the container temp directory and do not pollute the persistent output mount.
+
 ## Common configuration
 
 | Variable | Default | Description |
@@ -222,6 +272,20 @@ A normal `git clone` may only download Git LFS pointer files, not real model wei
 | `KOKORO_MP3_ENABLED` | `false` | Enable MP3 output |
 | `KOKORO_API_KEY` | - | Bearer API key; placeholder values such as `change-me` are rejected |
 | `KOKORO_CORS_ORIGINS` | `http://localhost:8000` | Comma-separated CORS origins |
+| `ANGEVOICE_ENABLED_MODELS` | `kokoro` | Comma-separated enabled model IDs |
+| `ANGEVOICE_DEFAULT_MODEL` | `kokoro` | Model loaded on startup |
+| `ANGEVOICE_MODEL_UNLOAD_ON_SWITCH` | `true` | Unload the previous engine when switching |
+| `ANGEVOICE_SAVE_OUTPUTS` | `false` | Save HTTP synthesis outputs |
+| `ANGEVOICE_OUTPUT_DIR` | `/app/outputs` | Output directory |
+| `ANGEVOICE_OUTPUT_MAX_FILES` | `1000` | Max retained output files; `0` disables pruning |
+| `MOSS_TTS_NANO_PATH` | - | Local path to the official OpenMOSS/MOSS-TTS-Nano repo |
+| `MOSS_MODEL_DIR` | - | MOSS ONNX asset directory; Docker uses `/opt/MOSS-TTS-Nano/models` |
+| `MOSS_EXECUTION_PROVIDER` | `cpu` | MOSS ONNX provider: `cpu` / `cuda` |
+| `MOSS_CUDA_ENABLED` | `true` | Allow registering/switching `moss-nano-cuda`; CPU/legacy profiles disable it |
+| `MOSS_PROMPT_UPLOAD_MAX_BYTES` | `20971520` | Reference-audio upload size limit |
+| `MOSS_APPLY_ANGEVOICE_RULES` | `true` | Apply AngeVoice Chinese semantic, punctuation, and polyphone rules to MOSS/future adapters |
+| `MOSS_AUTO_FALLBACK_CPU` | `true` | Fall back to CPU when CUDA self-test fails |
+| `MOSS_QUALITY_GATE_ENABLED` | `true` | Reject silent, NaN/Inf, or heavily clipped MOSS self-test output |
 
 ## Security notes
 
@@ -235,7 +299,10 @@ See [Security Notes](docs/SECURITY.md).
 
 ## Known limitations
 
-- AngeVoice does not train a new model; quality, license, and language capability follow the upstream Kokoro model.
+- AngeVoice does not train a new model; quality, license, and language capability follow the upstream models.
+- The project is optimized for stable local TTS on low-power devices, NAS boxes, and long-running services. It prioritizes interactive speed, controlled resource usage, and maintainability; audio quality ceilings follow upstream models.
+- Docker profiles preinstall their matching MOSS runtime, but startup still loads Kokoro; MOSS assets are downloaded on demand into the persistent model directory.
+- `moss-nano-cuda` is experimental. Tesla P4 has been verified, but long-running service should still be enabled only after target-host listening tests confirm no crackle, distortion, or clipping.
 - Long-form text is synthesized segment by segment. Very long books should use a batch/task workflow.
 - For GPU deployments, avoid multiple workers loading the model at the same time unless you have enough VRAM.
 - MP3 output depends on ffmpeg.
@@ -262,6 +329,7 @@ N=50 BASE_URL=http://127.0.0.1:8101 ./scripts/loop_test.sh
 - [Security Notes](docs/SECURITY.md)
 - [Troubleshooting](docs/TROUBLESHOOTING.md)
 - [Service Profiles](docs/SERVICE_PROFILES.md)
+- [Multi-Model Runtime](docs/MODEL_RUNTIME.md)
 - [v2.5 Features](docs/V2_5_FEATURES.md)
 - [Roadmap](docs/ROADMAP.md)
 - [Legacy GPU Deployment](docker/legacy-gpu/README.md)

@@ -17,7 +17,6 @@ logger = logging.getLogger(__name__)
 def create_ws_router(state: ServiceState) -> APIRouter:
     router = APIRouter()
     cfg = state.cfg
-    eng = state.eng
 
     @router.websocket("/ws/v1/tts")
     async def ws_tts(websocket: WebSocket):
@@ -30,7 +29,9 @@ def create_ws_router(state: ServiceState) -> APIRouter:
         try:
             msg = await websocket.receive_json()
             text = msg.get("text", "")
-            voice = msg.get("voice", cfg.default_voice)
+            model = state.model_manager.normalize_model_id(msg.get("model"))
+            target_engine = state.model_manager.get_engine(model, load=False)
+            voice = msg.get("voice") or getattr(target_engine, "default_voice", cfg.default_voice)
             speed = msg.get("speed", cfg.default_speed)
             fmt = msg.get("format", cfg.stream_format)
             token = msg.get("token", "")
@@ -95,10 +96,13 @@ def create_ws_router(state: ServiceState) -> APIRouter:
 
             def producer():
                 try:
-                    for chunk in eng.synthesize_stream(text, voice, speed, fmt):
-                        if cancel_flag["cancelled"] or state.is_cancelled(request_id):
-                            break
-                        thread_put(chunk)
+                    with state.model_manager.borrow(model) as eng:
+                        for chunk in eng.synthesize_stream(text, voice, speed, fmt):
+                            if cancel_flag["cancelled"] or state.is_cancelled(request_id):
+                                break
+                            if isinstance(chunk, dict):
+                                chunk.setdefault("model", model)
+                            thread_put(chunk)
                 except Exception:
                     logger.exception("WS TTS producer failed", extra={"request_id": request_id})
                     if not cancel_flag["cancelled"]:
@@ -118,7 +122,7 @@ def create_ws_router(state: ServiceState) -> APIRouter:
             state.inc_stat("requests_total")
             state.inc_stat("characters_total", len(text or ""))
             start = time.perf_counter()
-            state.mark_request(request_id, "queued", voice=voice, format=fmt, chars=len(text or ""), websocket=True)
+            state.mark_request(request_id, "queued", voice=voice, format=fmt, model=model, chars=len(text or ""), websocket=True)
 
             async with state.tts_semaphore:
                 state.mark_request(request_id, "running")

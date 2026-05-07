@@ -3,17 +3,21 @@
 import asyncio
 import hashlib
 import logging
+import re
 import threading
 import time
 import uuid
 from collections import OrderedDict
+from pathlib import Path
 from typing import Callable
 
 from fastapi import HTTPException
 from starlette.concurrency import run_in_threadpool
 
+from .audio import encode_audio_segment
 from .config import TTSConfig
 from .engine import TTSEngine
+from .engine_manager import EngineManager
 
 logger = logging.getLogger(__name__)
 
@@ -21,15 +25,17 @@ logger = logging.getLogger(__name__)
 class ServiceState:
     """Mutable runtime state for one AngeVoice FastAPI application."""
 
-    def __init__(self, cfg: TTSConfig, eng: TTSEngine):
+    def __init__(self, cfg: TTSConfig, eng: TTSEngine | None = None, model_manager: EngineManager | None = None):
         self.cfg = cfg
-        self.eng = eng
+        self.model_manager = model_manager or EngineManager(cfg, initial_engine=eng)
+        self.eng = eng or self.model_manager.get_engine(self.model_manager.current_model_id, load=False)
         self.tts_semaphore = asyncio.Semaphore(max(1, int(cfg.max_concurrent_requests)))
         self.tts_cache: OrderedDict[str, tuple[bytes, str]] = OrderedDict()
         self.cache_lock = threading.Lock()
         self.active_requests: dict[str, dict] = {}
         self.cancelled_requests: set[str] = set()
         self.stats_lock = threading.Lock()
+        self.output_lock = threading.Lock()
         self.stats = {
             "requests_total": 0,
             "requests_ok": 0,
@@ -40,6 +46,7 @@ class ServiceState:
             "audio_bytes_total": 0,
             "synthesis_seconds_total": 0.0,
             "ws_cancelled_total": 0,
+            "outputs_saved_total": 0,
             "started_at": time.time(),
         }
 
@@ -54,9 +61,33 @@ class ServiceState:
     def new_request_id(self) -> str:
         return uuid.uuid4().hex[:12]
 
-    def cache_key(self, text: str, voice: str, speed: float, fmt: str) -> str:
-        payload = f"{voice}\0{float(speed):.3f}\0{fmt}\0{text}".encode("utf-8")
+    def cache_key(self, model_id: str, text: str, voice: str, speed: float, fmt: str, prompt_audio_id: str = "") -> str:
+        payload = f"{model_id}\0{voice}\0{float(speed):.3f}\0{fmt}\0{prompt_audio_id}\0{text}".encode("utf-8")
         return hashlib.sha256(payload).hexdigest()
+
+    def prompt_audio_cache_id(self, model_id: str, prompt_audio_id: str = "") -> str:
+        if prompt_audio_id:
+            return str(prompt_audio_id)
+        if not str(model_id or "").startswith("moss-nano") or not self.cfg.moss_prompt_audio_path:
+            return ""
+        path = Path(self.cfg.moss_prompt_audio_path).expanduser()
+        try:
+            stat = path.stat()
+            return f"path:{path.resolve()}:{stat.st_mtime_ns}:{stat.st_size}"
+        except OSError:
+            return f"path:{path}"
+
+    def engine_supports_voice_clone(self, eng) -> bool:
+        metadata = getattr(eng, "metadata", None)
+        if not callable(metadata):
+            return False
+        try:
+            data = metadata()
+        except Exception:
+            logger.debug("Failed to read engine clone metadata", exc_info=True)
+            return False
+        modes = data.get("modes") if isinstance(data, dict) else []
+        return bool(data.get("voice_clone_supported")) or (isinstance(modes, list) and "voice_clone" in modes)
 
     def cache_get(self, key: str):
         if not self.cfg.cache_enabled or self.cfg.cache_max_items <= 0:
@@ -129,30 +160,133 @@ class ServiceState:
         supported = "wav, pcm" + (", mp3" if getattr(self.cfg, "mp3_enabled", False) else "")
         raise HTTPException(status_code=400, detail=f"Unsupported response_format. Currently supported: {supported}")
 
-    def synthesize_response_bytes(self, text: str, voice: str, speed: float, fmt: str) -> tuple[bytes, str]:
+    def _safe_filename_part(self, value: str, fallback: str = "item") -> str:
+        value = re.sub(r"[^A-Za-z0-9_.-]+", "_", str(value or "").strip()).strip("._")
+        return value[:80] or fallback
+
+    def save_generated_output(
+        self,
+        *,
+        request_id: str,
+        audio_bytes: bytes,
+        response_format: str,
+        media_type: str,
+        model_id: str,
+        voice: str,
+    ) -> Path | None:
+        if not self.cfg.save_outputs:
+            return None
+        if not audio_bytes:
+            return None
+        fmt = self.normalize_response_format(response_format)
+        if media_type == "audio/mpeg":
+            ext = "mp3"
+        elif fmt == "pcm" or media_type == "audio/pcm":
+            ext = "pcm_s16le"
+        else:
+            ext = "wav"
+        day = time.strftime("%Y%m%d")
+        output_dir = Path(self.cfg.output_dir).expanduser() / day
+        timestamp = time.strftime("%H%M%S")
+        filename = "_".join(
+            [
+                timestamp,
+                self._safe_filename_part(request_id, "request"),
+                self._safe_filename_part(model_id, "model"),
+                self._safe_filename_part(voice, "voice"),
+            ]
+        )
+        target = output_dir / f"{filename}.{ext}"
+        with self.output_lock:
+            output_dir.mkdir(parents=True, exist_ok=True)
+            target.write_bytes(audio_bytes)
+            self._prune_outputs_locked()
+        self.inc_stat("outputs_saved_total")
+        return target
+
+    def _prune_outputs_locked(self) -> None:
+        max_files = int(getattr(self.cfg, "output_max_files", 0) or 0)
+        if max_files <= 0:
+            return
+        root = Path(self.cfg.output_dir).expanduser()
+        if not root.exists():
+            return
+        files = [
+            item
+            for item in root.rglob("*")
+            if item.is_file() and item.suffix.lower() in {".wav", ".mp3", ".pcm_s16le"}
+        ]
+        overflow = len(files) - max_files
+        if overflow <= 0:
+            return
+        files.sort(key=lambda item: item.stat().st_mtime)
+        for item in files[:overflow]:
+            try:
+                item.unlink()
+            except OSError:
+                logger.debug("Failed to prune output file %s", item, exc_info=True)
+
+    def synthesize_response_bytes(
+        self,
+        text: str,
+        voice: str,
+        speed: float,
+        fmt: str,
+        model_id: str | None = None,
+        prompt_audio_path: str | None = None,
+        prompt_audio_id: str = "",
+    ) -> tuple[bytes, str]:
         fmt = self.normalize_response_format(fmt)
-        key = self.cache_key(text, voice, speed, fmt)
+        resolved_model = self.model_manager.normalize_model_id(model_id)
+        prompt_key = self.prompt_audio_cache_id(resolved_model, prompt_audio_id)
+        key = self.cache_key(resolved_model, text, voice, speed, fmt, prompt_key)
         cached = self.cache_get(key)
         if cached is not None:
             return cached
 
-        if fmt == "pcm":
-            wav = self.eng.synthesize_array(text=text, voice=voice, speed=speed)
-            result = (self.eng._encode_segment(wav, "pcm_s16le"), "audio/pcm")
-        elif fmt == "mp3":
-            from .service_extras import _wav_to_mp3
-            wav_bytes = self.eng.synthesize(text=text, voice=voice, speed=speed)
-            result = (_wav_to_mp3(wav_bytes, getattr(self.cfg, "mp3_bitrate", "192k")), "audio/mpeg")
-        else:
-            result = (self.eng.synthesize(text=text, voice=voice, speed=speed), "audio/wav")
+        with self.model_manager.borrow(resolved_model) as eng:
+            prompt_kwargs = {}
+            if prompt_audio_path:
+                if not self.engine_supports_voice_clone(eng):
+                    raise HTTPException(status_code=400, detail="当前模型不支持参考音频克隆")
+                prompt_kwargs["prompt_audio_path"] = prompt_audio_path
+            if fmt == "pcm":
+                wav = eng.synthesize_array(text=text, voice=voice, speed=speed, **prompt_kwargs)
+                sample_rate = int(getattr(eng, "sample_rate", self.cfg.sample_rate))
+                result = (encode_audio_segment(wav, "pcm_s16le", sample_rate), "audio/pcm")
+            elif fmt == "mp3":
+                from .service_extras import _wav_to_mp3
+                wav_bytes = eng.synthesize(text=text, voice=voice, speed=speed, **prompt_kwargs)
+                result = (_wav_to_mp3(wav_bytes, getattr(self.cfg, "mp3_bitrate", "192k")), "audio/mpeg")
+            else:
+                result = (eng.synthesize(text=text, voice=voice, speed=speed, **prompt_kwargs), "audio/wav")
         self.cache_set(key, result)
         return result
 
-    async def synthesize_response_threaded(self, text: str, voice: str, speed: float, fmt: str, request_id: str):
+    async def synthesize_response_threaded(
+        self,
+        text: str,
+        voice: str,
+        speed: float,
+        fmt: str,
+        request_id: str,
+        model_id: str | None = None,
+        prompt_audio_path: str | None = None,
+        prompt_audio_id: str = "",
+    ):
         start = time.perf_counter()
+        resolved_model = self.model_manager.normalize_model_id(model_id)
         self.inc_stat("requests_total")
         self.inc_stat("characters_total", len(text or ""))
-        self.mark_request(request_id, "queued", voice=voice, format=fmt, chars=len(text or ""))
+        self.mark_request(
+            request_id,
+            "queued",
+            voice=voice,
+            format=fmt,
+            model=resolved_model,
+            chars=len(text or ""),
+            voice_clone=bool(prompt_audio_path),
+        )
         try:
             async with self.tts_semaphore:
                 if self.is_cancelled(request_id):
@@ -160,14 +294,34 @@ class ServiceState:
                     raise HTTPException(status_code=499, detail="Request cancelled")
                 self.mark_request(request_id, "running")
                 result = await asyncio.wait_for(
-                    run_in_threadpool(self.synthesize_response_bytes, text, voice, speed, fmt),
+                    run_in_threadpool(
+                        self.synthesize_response_bytes,
+                        text,
+                        voice,
+                        speed,
+                        fmt,
+                        resolved_model,
+                        prompt_audio_path,
+                        prompt_audio_id,
+                    ),
                     timeout=self.cfg.request_timeout_seconds,
                 )
             elapsed = time.perf_counter() - start
             self.inc_stat("requests_ok")
             self.inc_stat("audio_bytes_total", len(result[0]))
             self.inc_stat("synthesis_seconds_total", elapsed)
-            self.finish_request(request_id, "done", elapsed_seconds=round(elapsed, 3), bytes=len(result[0]))
+            saved_path = self.save_generated_output(
+                request_id=request_id,
+                audio_bytes=result[0],
+                response_format=fmt,
+                media_type=result[1],
+                model_id=resolved_model,
+                voice=voice,
+            )
+            done_extra = {"elapsed_seconds": round(elapsed, 3), "bytes": len(result[0])}
+            if saved_path is not None:
+                done_extra["output_path"] = str(saved_path)
+            self.finish_request(request_id, "done", **done_extra)
             return result
         except HTTPException as exc:
             self.inc_stat("requests_error")

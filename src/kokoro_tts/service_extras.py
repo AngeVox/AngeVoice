@@ -106,6 +106,7 @@ def register_extra_routes(
 
     class BatchItem(BaseModel):
         text: str = Field(..., description="Text to synthesize")
+        model: Optional[str] = Field(default=None, description="Model id")
         voice: Optional[str] = Field(default=None, description="Voice name")
         speed: Optional[float] = Field(default=None, ge=0.5, le=2.0, description="Speed")
         filename: Optional[str] = Field(default=None, description="File name in zip")
@@ -115,6 +116,7 @@ def register_extra_routes(
         voice: str = "zm_010"
         speed: float = Field(default=1.0, ge=0.5, le=2.0)
         response_format: str = "wav"
+        model: Optional[str] = None
 
     async def verify_admin(_=Depends(verify_api_key)):
         if not cfg.admin_enabled:
@@ -128,11 +130,11 @@ def register_extra_routes(
             return "mp3"
         return normalize_response_format(fmt)
 
-    async def synthesize_optional_mp3(text: str, voice: str, speed: float, fmt: str, request_id: str):
+    async def synthesize_optional_mp3(text: str, voice: str, speed: float, fmt: str, request_id: str, model: str | None = None):
         fmt = normalize_extra_format(fmt)
         if fmt != "mp3":
-            return await synthesize_threaded(text, voice, speed, fmt, request_id)
-        wav_bytes, _ = await synthesize_threaded(text, voice, speed, "wav", request_id)
+            return await synthesize_threaded(text, voice, speed, fmt, request_id, model)
+        wav_bytes, _ = await synthesize_threaded(text, voice, speed, "wav", request_id, model)
         try:
             mp3_bytes = _wav_to_mp3(wav_bytes, getattr(cfg, "mp3_bitrate", "192k"))
         except ValueError as exc:
@@ -167,10 +169,11 @@ def register_extra_routes(
             item_id = f"{batch_id}-{index + 1:03d}"
             voice = item.voice or req.voice
             speed = item.speed if item.speed is not None else req.speed
+            model = item.model or req.model
             filename = _safe_zip_filename(item.filename, index, ext)
             async with batch_sem:
                 try:
-                    audio_bytes, _media_type = await synthesize_optional_mp3(item.text, voice, speed, fmt, item_id)
+                    audio_bytes, _media_type = await synthesize_optional_mp3(item.text, voice, speed, fmt, item_id, model)
                     return index, (filename, audio_bytes), {"index": index, "status": "ok", "filename": filename, "bytes": len(audio_bytes)}
                 except HTTPException as exc:
                     return index, None, {"index": index, "status": "error", "error": exc.detail}

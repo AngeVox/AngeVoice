@@ -11,11 +11,14 @@ RUN for i in 1 2 3; do \
       apt-get update && break || sleep 5; \
     done && \
     apt-get install -y --no-install-recommends \
+      ca-certificates \
+      git \
       python3.10 \
       python3.10-dev \
       python3.10-venv \
       python3-pip \
       libsndfile1 \
+      libgomp1 \
       ffmpeg && \
     apt-get clean && rm -rf /var/lib/apt/lists/*
 
@@ -23,8 +26,28 @@ RUN for i in 1 2 3; do \
 RUN update-alternatives --install /usr/bin/python3 python3 /usr/bin/python3.10 1 && \
     python3.10 -m pip install --upgrade pip
 
-# GPU 版 PyTorch
-RUN python3 -m pip install --no-cache-dir torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu121
+ARG PYTORCH_VERSION=2.5.1
+
+# GPU 版 PyTorch。AngeVoice/MOSS 推理不需要 torchvision，保持镜像更轻。
+RUN python3 -m pip install --no-cache-dir \
+    "torch==${PYTORCH_VERSION}+cu121" \
+    "torchaudio==${PYTORCH_VERSION}+cu121" \
+    --index-url https://download.pytorch.org/whl/cu121
+
+ARG INSTALL_MOSS=true
+ARG MOSS_REPO=https://github.com/OpenMOSS/MOSS-TTS-Nano.git
+ARG MOSS_RUNTIME_PACKAGE=onnxruntime-gpu==1.20.2
+ARG MOSS_CUDNN_PACKAGE=nvidia-cudnn-cu12==9.1.0.70
+ENV MOSS_TTS_NANO_PATH=/opt/MOSS-TTS-Nano
+ENV LD_LIBRARY_PATH=/usr/local/lib/python3.10/dist-packages/nvidia/cudnn/lib:/usr/local/lib/python3.10/dist-packages/nvidia/cublas/lib:/usr/local/cuda/lib64:/usr/local/nvidia/lib:/usr/local/nvidia/lib64:${LD_LIBRARY_PATH}
+
+# MOSS-TTS-Nano ONNX runtime is included by default in the modern GPU image so
+# the Web UI can switch between Kokoro, MOSS CPU, and MOSS CUDA without rebuilds.
+# ONNX Runtime 1.20.x on CUDA 12 requires the cuDNN 9 runtime.
+RUN if [ "$INSTALL_MOSS" = "true" ]; then \
+      git clone --depth 1 "$MOSS_REPO" "$MOSS_TTS_NANO_PATH" && \
+      python3 -m pip install --no-cache-dir "sentencepiece>=0.1.99" "huggingface_hub>=0.23" "$MOSS_RUNTIME_PACKAGE" "$MOSS_CUDNN_PACKAGE"; \
+    fi
 
 # 复制项目
 COPY pyproject.toml README.md ./

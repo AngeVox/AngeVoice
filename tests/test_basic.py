@@ -74,6 +74,30 @@ class TestConfig:
         config = TTSConfig(model_dir=tmp_path)
         assert config.model_file == tmp_path / "kokoro-v1_1-zh.pth"
 
+    def test_moss_prompt_upload_env(self, monkeypatch):
+        monkeypatch.setenv("MOSS_PROMPT_UPLOAD_MAX_BYTES", "4096")
+
+        from kokoro_tts.config import load_config
+
+        config = load_config()
+        assert config.moss_prompt_upload_max_bytes == 4096
+        assert config.moss_apply_angevoice_rules is True
+
+    def test_moss_cuda_can_be_disabled(self):
+        from kokoro_tts.config import TTSConfig
+
+        config = TTSConfig(
+            enabled_models=["kokoro", "moss-nano-cpu", "moss-nano-cuda"],
+            default_model="moss-nano-cuda",
+            moss_execution_provider="cuda",
+            moss_cuda_enabled=False,
+        )
+        config.validate_security()
+
+        assert config.enabled_models == ["kokoro", "moss-nano-cpu"]
+        assert config.default_model == "moss-nano-cpu"
+        assert config.moss_execution_provider == "cpu"
+
     def test_voices_dir_property(self, tmp_path):
         from kokoro_tts.config import TTSConfig
         config = TTSConfig(model_dir=tmp_path)
@@ -181,6 +205,59 @@ class TestEngine:
 
 class TestServiceState:
     """测试服务状态收尾逻辑。"""
+
+    def test_cache_key_includes_model(self):
+        from kokoro_tts.config import TTSConfig
+        from kokoro_tts.service_state import ServiceState
+
+        cfg = TTSConfig()
+        engine = MagicMock()
+        state = ServiceState(cfg, engine)
+
+        kokoro_key = state.cache_key("kokoro", "你好", "zm_010", 1.0, "wav")
+        moss_key = state.cache_key("moss-nano-cpu", "你好", "zm_010", 1.0, "wav")
+
+        assert kokoro_key != moss_key
+
+    def test_cache_key_includes_prompt_audio(self):
+        from kokoro_tts.config import TTSConfig
+        from kokoro_tts.service_state import ServiceState
+
+        state = ServiceState(TTSConfig(), MagicMock())
+
+        base_key = state.cache_key("moss-nano-cpu", "你好", "Junhao", 1.0, "wav")
+        clone_key = state.cache_key("moss-nano-cpu", "你好", "Junhao", 1.0, "wav", "sha256:abc")
+
+        assert base_key != clone_key
+
+    def test_engine_manager_lists_enabled_models(self):
+        from kokoro_tts.config import TTSConfig
+        from kokoro_tts.engine_manager import EngineManager
+
+        cfg = TTSConfig(enabled_models=["kokoro", "moss-nano-cpu", "moss-nano-cuda"])
+        cfg.validate_security()
+        manager = EngineManager(cfg)
+
+        models = manager.list_models()
+        assert [item["id"] for item in models] == ["kokoro", "moss-nano-cpu", "moss-nano-cuda"]
+        assert models[0]["current"] is True
+        assert models[1]["voice_clone_supported"] is True
+        assert "voice_clone" in models[1]["modes"]
+
+    def test_engine_manager_hides_disabled_cuda_moss(self):
+        from kokoro_tts.config import TTSConfig
+        from kokoro_tts.engine_manager import EngineManager
+
+        cfg = TTSConfig(enabled_models=["kokoro", "moss-nano-cpu", "moss-nano-cuda"], moss_cuda_enabled=False)
+        cfg.validate_security()
+        manager = EngineManager(cfg)
+
+        models = manager.list_models()
+        assert [item["id"] for item in models] == ["kokoro", "moss-nano-cpu"]
+        assert manager.normalize_model_id("moss") == "moss-nano-cpu"
+        with pytest.raises(Exception) as exc_info:
+            manager.switch_model("moss-nano-cuda", load=False)
+        assert getattr(exc_info.value, "status_code", None) == 404
 
     @pytest.mark.asyncio
     async def test_http_exception_finishes_request_state(self):

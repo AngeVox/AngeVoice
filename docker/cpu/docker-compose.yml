@@ -7,6 +7,11 @@ services:
     build:
       context: ../..
       dockerfile: docker/cpu/Dockerfile
+      args:
+        # Pin PyTorch for reproducible NAS builds; override only after testing.
+        PYTORCH_VERSION: "2.5.1"
+        # CPU image ships the MOSS CPU runtime; CUDA models stay disabled.
+        INSTALL_MOSS: "true"
     ports:
       # 宿主机端口:容器端口。访问 http://宿主机IP:8100
       - "8100:8000"
@@ -21,6 +26,12 @@ services:
       # 前端资源：持久化到宿主机，改前端无需重建镜像
       - ../../src/kokoro_tts/templates/index.html:/app/src/kokoro_tts/templates/index.html:ro
       - ../../src/kokoro_tts/static:/app/src/kokoro_tts/static:ro
+
+      # MOSS ONNX 模型缓存：持久化到宿主机，避免首次下载后重启丢失
+      - ../../moss_models:/opt/MOSS-TTS-Nano/models
+
+      # 合成音频输出：开启 ANGEVOICE_SAVE_OUTPUTS 后持久化 Kokoro/MOSS HTTP 生成结果
+      - ../../outputs:/app/outputs
 
       # 开发/测试环境热更新源码：取消注释后 git pull + docker compose restart 即可生效
       # 生产环境建议保持注释，通过 docker compose up -d --build 固化进镜像
@@ -54,6 +65,20 @@ services:
       # 默认音色和语速
       - KOKORO_DEFAULT_VOICE=zm_010
       - KOKORO_DEFAULT_SPEED=1.0
+
+      # 多模型框架。CPU 镜像只开放 Kokoro 与 MOSS CPU，默认启动仍是 Kokoro
+      - ANGEVOICE_ENABLED_MODELS=kokoro,moss-nano-cpu
+      - ANGEVOICE_DEFAULT_MODEL=kokoro
+      - ANGEVOICE_OUTPUT_DIR=/app/outputs
+      - ANGEVOICE_SAVE_OUTPUTS=true
+      - ANGEVOICE_OUTPUT_MAX_FILES=1000
+      - MOSS_MODEL_DIR=/opt/MOSS-TTS-Nano/models
+      - MOSS_PROMPT_UPLOAD_MAX_BYTES=20971520
+      - MOSS_EXECUTION_PROVIDER=cpu
+      - MOSS_CUDA_ENABLED=false
+      - MOSS_CPU_THREADS=2
+      - MOSS_MAX_NEW_FRAMES=375
+      - MOSS_VOICE_CLONE_MAX_TEXT_TOKENS=75
 
       # WebSocket 流式配置
       - KOKORO_STREAM_FORMAT=pcm_s16le

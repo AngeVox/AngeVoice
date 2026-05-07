@@ -1,6 +1,6 @@
 # AngeVoice
 
-> 轻量级中文 TTS 自托管服务。AngeVoice 基于 Kokoro v1.1 中文模型做工程化封装，提供 OpenAI 兼容 API、WebSocket 逐段流式、新版 Studio Web UI、中文文本规则、批量合成、缓存、统计和 Docker CPU/GPU/老显卡部署。
+> 轻量级中文 TTS 自托管服务。AngeVoice 默认基于 Kokoro v1.1 中文模型，支持按需切换 MOSS-TTS-Nano 的本地 TTS 框架，提供 OpenAI 兼容 API、WebSocket 逐段流式、Studio Web UI、中文文本规则、批量合成、缓存、统计和 Docker CPU/GPU/老显卡部署。
 
 [English](README_EN.md) | 中文
 
@@ -10,7 +10,7 @@
 
 ## 项目定位
 
-AngeVoice 不是重新训练的新模型，而是围绕 Kokoro v1.1 中文模型做的服务化封装。目标是让本地部署、内网调用、OpenAI 风格接入、网页流式播放和 Docker 自托管更简单。
+AngeVoice 不是重新训练的新模型，而是面向低配设备、NAS 和长期运行环境做的本地 TTS 服务框架。Kokoro v1.1 中文模型是默认引擎；可选模型通过运行时模型管理器接入，第一期适配 MOSS-TTS-Nano ONNX。
 
 适合：
 
@@ -20,7 +20,7 @@ AngeVoice 不是重新训练的新模型，而是围绕 Kokoro v1.1 中文模型
 - 需要逐段播放、停止生成、批量导出 ZIP 的 Web 应用
 - CPU、NVIDIA GPU、Legacy GPU/保守 CUDA 环境
 
-> 模型来源：本项目基于 Kokoro v1.1 / Kokoro-82M 及其中文模型构建。模型版权、许可证与限制请以原模型仓库为准。
+> 模型来源：默认引擎基于 Kokoro v1.1 / Kokoro-82M 中文模型；可选 MOSS-TTS-Nano 集成使用 OpenMOSS 官方运行时代码。模型版权、许可证与限制请以上游仓库为准。
 
 ## 功能亮点
 
@@ -28,6 +28,8 @@ AngeVoice 不是重新训练的新模型，而是围绕 Kokoro v1.1 中文模型
 |---|---|
 | OpenAI 兼容 API | `POST /v1/audio/speech`，兼容 `model/input/voice/speed/response_format` |
 | Studio Web UI | 内置前端页面，支持亮/暗主题、音色筛选、收藏、试听、流式播放、停止生成、API Key 设置和可折叠统计卡片 |
+| 多模型运行时 | `/v1/models` 查看、加载、卸载和切换模型；切换模型时可卸载旧模型并隔离缓存 |
+| MOSS-TTS-Nano | 通过 OpenMOSS 官方 ONNX runtime 接入，支持预设音色、参考音频克隆、CPU 基线和 CUDA 实验模式 |
 | 中文文本规则 | 自动断句标点、jieba 分词优先、内置兜底词典、常见多音字上下文修正 |
 | WebSocket 流式 | `ws://.../ws/v1/tts` 逐段推送，支持 `cancel` / `stop` 控制帧 |
 | 批量合成 | `POST /v1/audio/batch` 返回 ZIP 和 `manifest.json` |
@@ -53,7 +55,10 @@ src/kokoro_tts/
 │   └── ws.py             # /ws/v1/tts
 ├── service_extras.py     # batch/admin/mp3 扩展接口
 ├── zh_rules.py           # 中文自动断句、多音字与轻量分词规则
+├── audio.py              # WAV / PCM 编码工具
+├── engine_manager.py     # 多模型注册、加载、切换和卸载
 ├── engine.py             # Kokoro 引擎、分段、文本规范化、音频编码
+├── moss_engine.py        # MOSS-TTS-Nano 官方 ONNX runtime 适配层
 ├── config.py             # 配置与环境变量
 ├── templates/index.html  # Studio Web UI shell
 └── static/               # Studio Web UI 样式与脚本
@@ -99,6 +104,14 @@ cd docker/legacy-gpu && sudo docker compose up -d
 sudo docker compose up -d --build
 ```
 
+Docker 镜像现在按画像预装 MOSS 运行时，首次切换到 MOSS 时才下载模型资产：
+
+- CPU 画像默认开放 `kokoro,moss-nano-cpu`，不暴露 CUDA MOSS。
+- 通用 GPU 画像默认开放 `kokoro,moss-nano-cpu,moss-nano-cuda`，启动模型仍是 `kokoro`，用户可在 Web UI 里按需切换，MOSS 克隆模式会显示参考音频上传。
+- Legacy GPU 画像也预装 MOSS GPU 依赖，但 Compose 默认只开放 `kokoro,moss-nano-cpu`；确认旧卡/驱动能稳定运行后，再手动加入 `moss-nano-cuda` 并设置 `MOSS_CUDA_ENABLED=true`。
+
+CUDA 模式会先跑 provider/音频质量自检。Tesla P4 已在 Docker 探针中验证可通过 `onnxruntime-gpu==1.20.2` + `nvidia-cudnn-cu12==9.1.0.70` 跑通通用 GPU 画像的 MOSS CUDA 推理；如果目标机器缺 cuDNN 9 或 provider 自检失败，AngeVoice 会回退到 CPU。
+
 ### pip 开发安装
 
 ```bash
@@ -124,6 +137,30 @@ curl -X POST http://localhost:8000/v1/audio/speech \
   -d '{"model":"kokoro","input":"你好世界","voice":"zm_010","response_format":"wav"}' \
   --output output.wav
 ```
+
+模型管理：
+
+```bash
+curl http://localhost:8000/v1/models
+
+curl -X POST http://localhost:8000/v1/models/switch \
+  -H "Content-Type: application/json" \
+  -d '{"model":"moss-nano-cpu","unload_previous":true}'
+```
+
+MOSS 参考音频克隆使用 `/api/tts` multipart 上传；Studio Web UI 只会在 MOSS 模型可用时显示“参考音频”控件：
+
+```bash
+curl -X POST http://localhost:8000/api/tts \
+  -F model=moss-nano-cpu \
+  -F text="这是参考音频克隆测试。" \
+  -F voice=Junhao \
+  -F response_format=wav \
+  -F prompt_audio=@reference.wav \
+  --output clone.wav
+```
+
+参考音频仅对支持 `voice_clone` 的模型生效；对 Kokoro 上传参考音频会返回 400。
 
 启用 `KOKORO_API_KEY` 后增加：
 
@@ -200,6 +237,18 @@ models/voices/*.pt
 
 普通 `git clone` 可能只拿到 Git LFS 指针文件，不一定是真实模型文件。Docker Compose 已持久化 Hugging Face 缓存，避免容器重建后重复下载。
 
+## Docker 持久化
+
+三套 Compose 画像默认准备了这些宿主机挂载：
+
+| 宿主机目录 | 容器目录 | 用途 |
+|---|---|---|
+| `../../hf_cache` | `/root/.cache/huggingface` | Kokoro/Hugging Face 下载缓存 |
+| `../../moss_models` | `/opt/MOSS-TTS-Nano/models` | MOSS ONNX 模型缓存，首次下载后保留 |
+| `../../outputs` | `/app/outputs` | 开启 `ANGEVOICE_SAVE_OUTPUTS=true` 后保存 HTTP 合成结果 |
+
+输出文件按日期目录保存，并受 `ANGEVOICE_OUTPUT_MAX_FILES` 控制。MOSS 内部临时文件写入容器临时目录，不会污染持久化输出目录。
+
 ## 常用配置
 
 | 变量 | 默认值 | 说明 |
@@ -222,6 +271,20 @@ models/voices/*.pt
 | `KOKORO_MP3_ENABLED` | `false` | 是否启用 MP3 输出 |
 | `KOKORO_API_KEY` | - | 设置后启用 Bearer 认证；`change-me` 等占位值会被拒绝 |
 | `KOKORO_CORS_ORIGINS` | `http://localhost:8000` | CORS 允许来源，逗号分隔 |
+| `ANGEVOICE_ENABLED_MODELS` | `kokoro` | 启用的模型 ID，逗号分隔 |
+| `ANGEVOICE_DEFAULT_MODEL` | `kokoro` | 启动时加载的默认模型 |
+| `ANGEVOICE_MODEL_UNLOAD_ON_SWITCH` | `true` | Web UI/API 切换模型时卸载旧模型 |
+| `ANGEVOICE_SAVE_OUTPUTS` | `false` | 是否保存 HTTP 合成结果 |
+| `ANGEVOICE_OUTPUT_DIR` | `/app/outputs` | 生成音频保存目录 |
+| `ANGEVOICE_OUTPUT_MAX_FILES` | `1000` | 输出目录最大保留文件数，`0` 表示不自动清理 |
+| `MOSS_TTS_NANO_PATH` | - | OpenMOSS/MOSS-TTS-Nano 官方仓库路径 |
+| `MOSS_MODEL_DIR` | - | MOSS ONNX 模型目录；Docker 建议 `/opt/MOSS-TTS-Nano/models` |
+| `MOSS_EXECUTION_PROVIDER` | `cpu` | MOSS ONNX provider：`cpu` / `cuda` |
+| `MOSS_CUDA_ENABLED` | `true` | 是否允许注册/切换 `moss-nano-cuda`；CPU/legacy 默认关闭 |
+| `MOSS_PROMPT_UPLOAD_MAX_BYTES` | `20971520` | Web UI/API 参考音频上传大小上限 |
+| `MOSS_APPLY_ANGEVOICE_RULES` | `true` | MOSS 和后续适配器是否使用 AngeVoice 中文语义、断句、多音字规则 |
+| `MOSS_AUTO_FALLBACK_CPU` | `true` | CUDA 自检失败时回退 CPU |
+| `MOSS_QUALITY_GATE_ENABLED` | `true` | 拒绝静音、NaN/Inf 或明显 clipping 的 MOSS 自检输出 |
 
 ## 安全说明
 
@@ -235,7 +298,10 @@ models/voices/*.pt
 
 ## 已知限制
 
-- AngeVoice 不是独立训练的新模型，音质、许可证和语言能力受 Kokoro 上游模型影响。
+- AngeVoice 不是独立训练的新模型，音质、许可证和语言能力受上游模型影响。
+- 项目目标是低配设备、NAS 和长期运行环境里的稳定本地 TTS 服务，优先保证实时交互速度、资源可控和可维护性，音质上限取决于上游模型。
+- Docker 画像预装匹配的 MOSS 运行时，但默认启动仍是 Kokoro；MOSS 模型资产通过持久化目录按需下载。
+- `moss-nano-cuda` 是实验模式；Tesla P4 已验证可跑通，但仍建议在目标机器试听确认无爆音、失真或 clipping 后再长期服务。
 - 长文本依赖分段合成，极长文本建议走批量/任务队列工作流。
 - GPU 场景下不建议多 worker 同时加载模型，容易造成显存占用翻倍。
 - MP3 输出依赖 ffmpeg。
@@ -262,6 +328,7 @@ N=50 BASE_URL=http://127.0.0.1:8101 ./scripts/loop_test.sh
 - [安全说明](docs/SECURITY.md)
 - [排障手册](docs/TROUBLESHOOTING.md)
 - [服务画像](docs/SERVICE_PROFILES.md)
+- [多模型运行时](docs/MODEL_RUNTIME.md)
 - [v2.5 功能说明](docs/V2_5_FEATURES.md)
 - [路线图](docs/ROADMAP.md)
 - [Legacy GPU 部署说明](docker/legacy-gpu/README.md)

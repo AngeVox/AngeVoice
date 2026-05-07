@@ -7,6 +7,14 @@ services:
     build:
       context: ../..
       dockerfile: docker/legacy-gpu/Dockerfile
+      args:
+        # Pin PyTorch for reproducible NAS builds; override only after testing.
+        PYTORCH_VERSION: "2.5.1"
+        # Legacy image preinstalls a CUDA 11.8 compatible MOSS GPU runtime.
+        # Runtime config keeps the MOSS CUDA model hidden until the user enables it.
+        INSTALL_MOSS: "true"
+        MOSS_RUNTIME_PACKAGE: "onnxruntime-gpu==1.20.2"
+        MOSS_RUNTIME_INDEX_URL: "https://aiinfra.pkgs.visualstudio.com/PublicPackages/_packaging/onnxruntime-cuda-11/pypi/simple/"
     ports:
       # Host port:container port. Open http://HOST_IP:8102
       - "8102:8000"
@@ -21,6 +29,12 @@ services:
       # Frontend resources: persist on host, update without rebuild.
       - ../../src/kokoro_tts/templates/index.html:/app/src/kokoro_tts/templates/index.html:ro
       - ../../src/kokoro_tts/static:/app/src/kokoro_tts/static:ro
+
+      # MOSS ONNX model cache. Persist downloads across container restarts.
+      - ../../moss_models:/opt/MOSS-TTS-Nano/models
+
+      # Generated audio output. Enable ANGEVOICE_SAVE_OUTPUTS to persist HTTP synthesis results.
+      - ../../outputs:/app/outputs
 
       # Development hot-reload. Uncomment for git pull + docker compose restart workflows.
       # For production, keep it commented and rebuild the image instead.
@@ -51,6 +65,22 @@ services:
       # Default voice and speed.
       - KOKORO_DEFAULT_VOICE=zm_010
       - KOKORO_DEFAULT_SPEED=1.0
+
+      # Multi-model framework. Default startup remains Kokoro; legacy profile exposes MOSS CPU only.
+      # To try MOSS CUDA after validation, add moss-nano-cuda and set MOSS_CUDA_ENABLED=true.
+      - ANGEVOICE_ENABLED_MODELS=kokoro,moss-nano-cpu
+      - ANGEVOICE_DEFAULT_MODEL=kokoro
+      - ANGEVOICE_OUTPUT_DIR=/app/outputs
+      - ANGEVOICE_SAVE_OUTPUTS=true
+      - ANGEVOICE_OUTPUT_MAX_FILES=1000
+      - MOSS_MODEL_DIR=/opt/MOSS-TTS-Nano/models
+      - MOSS_PROMPT_UPLOAD_MAX_BYTES=20971520
+      - MOSS_EXECUTION_PROVIDER=cpu
+      - MOSS_CUDA_ENABLED=false
+      - MOSS_CPU_THREADS=2
+      - MOSS_AUTO_FALLBACK_CPU=true
+      - MOSS_CUDA_SELF_TEST_ENABLED=true
+      - MOSS_QUALITY_GATE_ENABLED=true
 
       # Prefer JSON/base64 streaming first on older environments; enable binary after validation if needed.
       - KOKORO_STREAM_FORMAT=pcm_s16le

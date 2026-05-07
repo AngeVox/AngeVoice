@@ -26,6 +26,20 @@ PLACEHOLDER_API_KEYS = {
     "your-generated-secret",
     "staging-change-me-to-real-key",
 }
+MOSS_GENERIC_MODEL_IDS = {"moss", "moss-nano", "moss-tts-nano"}
+MOSS_CPU_MODEL_IDS = {"moss-cpu", "moss-nano-cpu", "moss-tts-nano-cpu"}
+MOSS_CUDA_MODEL_IDS = {"moss-cuda", "moss-gpu", "moss-nano-cuda", "moss-tts-nano-cuda"}
+
+
+def _normalize_config_model_id(model_id: str, moss_provider: str) -> str:
+    raw = str(model_id or "").strip().lower()
+    if raw in MOSS_GENERIC_MODEL_IDS:
+        return "moss-nano-cuda" if moss_provider == "cuda" else "moss-nano-cpu"
+    if raw in MOSS_CPU_MODEL_IDS:
+        return "moss-nano-cpu"
+    if raw in MOSS_CUDA_MODEL_IDS:
+        return "moss-nano-cuda"
+    return raw
 
 
 class IntEnvSpec(NamedTuple):
@@ -133,6 +147,35 @@ class TTSConfig:
     mp3_enabled: bool = False
     mp3_bitrate: str = "192k"
 
+    enabled_models: list[str] = field(default_factory=lambda: ["kokoro"])
+    default_model: str = "kokoro"
+    model_switch_enabled: bool = True
+    model_unload_on_switch: bool = True
+    model_switch_timeout_seconds: float = 300.0
+    save_outputs: bool = False
+    output_dir: Path = field(default_factory=lambda: Path("/app/outputs"))
+    output_max_files: int = 1000
+
+    moss_model_dir: Optional[Path] = None
+    moss_repo_path: Optional[Path] = None
+    moss_execution_provider: str = "cpu"
+    moss_cpu_threads: int = 4
+    moss_default_voice: str = "Junhao"
+    moss_prompt_audio_path: Optional[Path] = None
+    moss_prompt_upload_max_bytes: int = 20 * 1024 * 1024
+    moss_max_new_frames: int = 375
+    moss_voice_clone_max_text_tokens: int = 75
+    moss_sample_mode: str = "fixed"
+    moss_cuda_enabled: bool = True
+    moss_enable_wetext_processing: bool = False
+    moss_enable_normalize_tts_text: bool = True
+    moss_apply_angevoice_rules: bool = True
+    moss_realtime_streaming_decode: bool = True
+    moss_cuda_self_test_enabled: bool = True
+    moss_auto_fallback_cpu: bool = True
+    moss_quality_gate_enabled: bool = True
+    moss_max_clip_ratio: float = 0.02
+
     @property
     def model_path(self) -> str:
         return str(self.model_dir)
@@ -160,6 +203,42 @@ class TTSConfig:
             raise ValueError("KOKORO_ADMIN_ENABLED=true requires KOKORO_API_KEY")
         if self.voice_upload_enabled and not self.admin_enabled:
             raise ValueError("KOKORO_VOICE_UPLOAD_ENABLED=true requires KOKORO_ADMIN_ENABLED=true")
+        if not self.enabled_models:
+            raise ValueError("ANGEVOICE_ENABLED_MODELS cannot be empty")
+        self.enabled_models = [str(item).strip().lower() for item in self.enabled_models if str(item).strip()]
+        self.moss_execution_provider = str(self.moss_execution_provider or "cpu").strip().lower()
+        if self.moss_execution_provider not in {"cpu", "cuda"}:
+            raise ValueError("MOSS_EXECUTION_PROVIDER must be cpu or cuda")
+        filtered_models: list[str] = []
+        for item in self.enabled_models:
+            provider = "cpu" if not self.moss_cuda_enabled and item in MOSS_GENERIC_MODEL_IDS else self.moss_execution_provider
+            normalized_item = _normalize_config_model_id(item, provider)
+            if not self.moss_cuda_enabled and normalized_item == "moss-nano-cuda":
+                logger.warning("Ignoring %s because MOSS_CUDA_ENABLED=false", item)
+                continue
+            if normalized_item not in filtered_models:
+                filtered_models.append(normalized_item)
+        self.enabled_models = filtered_models or ["kokoro"]
+        if not self.moss_cuda_enabled:
+            if self.moss_execution_provider == "cuda":
+                logger.warning("MOSS_EXECUTION_PROVIDER=cuda ignored because MOSS_CUDA_ENABLED=false")
+                self.moss_execution_provider = "cpu"
+        default_provider = (
+            "cpu"
+            if not self.moss_cuda_enabled and str(self.default_model or "").strip().lower() in MOSS_GENERIC_MODEL_IDS
+            else self.moss_execution_provider
+        )
+        self.default_model = _normalize_config_model_id(self.default_model or self.enabled_models[0], default_provider)
+        if not self.moss_cuda_enabled and self.default_model == "moss-nano-cuda":
+            replacement = "moss-nano-cpu" if "moss-nano-cpu" in self.enabled_models else self.enabled_models[0]
+            logger.warning("Default model %s is disabled; using %s", self.default_model, replacement)
+            self.default_model = replacement
+        if self.default_model not in self.enabled_models:
+            logger.warning("Default model %s is not enabled; using %s", self.default_model, self.enabled_models[0])
+            self.default_model = self.enabled_models[0]
+        self.moss_sample_mode = str(self.moss_sample_mode or "fixed").strip().lower()
+        if self.moss_sample_mode not in {"greedy", "fixed", "full"}:
+            raise ValueError("MOSS_SAMPLE_MODE must be greedy, fixed, or full")
 
     def resolve_device(self) -> str:
         if self.device != "auto":
@@ -185,6 +264,11 @@ def _apply_env(config: TTSConfig) -> None:
         "KOKORO_DEFAULT_VOICE": "default_voice",
         "KOKORO_STREAM_FORMAT": "stream_format",
         "KOKORO_MP3_BITRATE": "mp3_bitrate",
+        "ANGEVOICE_DEFAULT_MODEL": "default_model",
+        "ANGEVOICE_OUTPUT_DIR": "output_dir",
+        "MOSS_EXECUTION_PROVIDER": "moss_execution_provider",
+        "MOSS_DEFAULT_VOICE": "moss_default_voice",
+        "MOSS_SAMPLE_MODE": "moss_sample_mode",
     }
     int_env: dict[str, IntEnvSpec] = {
         "KOKORO_PORT": IntEnvSpec("port", 1),
@@ -196,10 +280,17 @@ def _apply_env(config: TTSConfig) -> None:
         "KOKORO_BATCH_MAX_ITEMS": IntEnvSpec("batch_max_items", 1),
         "KOKORO_BATCH_CONCURRENCY": IntEnvSpec("batch_concurrency", 1),
         "KOKORO_VOICE_UPLOAD_MAX_BYTES": IntEnvSpec("voice_upload_max_bytes", 1),
+        "ANGEVOICE_OUTPUT_MAX_FILES": IntEnvSpec("output_max_files", 0),
+        "MOSS_CPU_THREADS": IntEnvSpec("moss_cpu_threads", 1),
+        "MOSS_PROMPT_UPLOAD_MAX_BYTES": IntEnvSpec("moss_prompt_upload_max_bytes", 1),
+        "MOSS_MAX_NEW_FRAMES": IntEnvSpec("moss_max_new_frames", 1),
+        "MOSS_VOICE_CLONE_MAX_TEXT_TOKENS": IntEnvSpec("moss_voice_clone_max_text_tokens", 1),
     }
     float_env: dict[str, FloatEnvSpec] = {
         "KOKORO_DEFAULT_SPEED": FloatEnvSpec("default_speed"),
         "KOKORO_REQUEST_TIMEOUT_SECONDS": FloatEnvSpec("request_timeout_seconds", 1.0),
+        "ANGEVOICE_MODEL_SWITCH_TIMEOUT_SECONDS": FloatEnvSpec("model_switch_timeout_seconds", 1.0),
+        "MOSS_MAX_CLIP_RATIO": FloatEnvSpec("moss_max_clip_ratio", 0.0, 1.0),
     }
     bool_env: dict[str, str] = {
         "KOKORO_STREAM_BINARY_ENABLED": "stream_binary_enabled",
@@ -210,11 +301,24 @@ def _apply_env(config: TTSConfig) -> None:
         "KOKORO_ADMIN_ENABLED": "admin_enabled",
         "KOKORO_VOICE_UPLOAD_ENABLED": "voice_upload_enabled",
         "KOKORO_MP3_ENABLED": "mp3_enabled",
+        "ANGEVOICE_MODEL_SWITCH_ENABLED": "model_switch_enabled",
+        "ANGEVOICE_MODEL_UNLOAD_ON_SWITCH": "model_unload_on_switch",
+        "ANGEVOICE_SAVE_OUTPUTS": "save_outputs",
+        "MOSS_CUDA_ENABLED": "moss_cuda_enabled",
+        "MOSS_ENABLE_WETEXT_PROCESSING": "moss_enable_wetext_processing",
+        "MOSS_ENABLE_NORMALIZE_TTS_TEXT": "moss_enable_normalize_tts_text",
+        "MOSS_APPLY_ANGEVOICE_RULES": "moss_apply_angevoice_rules",
+        "MOSS_REALTIME_STREAMING_DECODE": "moss_realtime_streaming_decode",
+        "MOSS_CUDA_SELF_TEST_ENABLED": "moss_cuda_self_test_enabled",
+        "MOSS_AUTO_FALLBACK_CPU": "moss_auto_fallback_cpu",
+        "MOSS_QUALITY_GATE_ENABLED": "moss_quality_gate_enabled",
     }
 
     for env_name, attr in str_env.items():
         if os.environ.get(env_name) is not None:
             setattr(config, attr, os.environ[env_name])
+    if isinstance(config.output_dir, str):
+        config.output_dir = Path(config.output_dir).expanduser()
 
     for env_name, spec in int_env.items():
         if os.environ.get(env_name) is not None:
@@ -234,6 +338,18 @@ def _apply_env(config: TTSConfig) -> None:
         config.api_key = os.environ["KOKORO_API_KEY"]
     if os.environ.get("KOKORO_CORS_ORIGINS"):
         config.cors_origins = [o.strip() for o in os.environ["KOKORO_CORS_ORIGINS"].split(",") if o.strip()]
+    if os.environ.get("ANGEVOICE_ENABLED_MODELS"):
+        config.enabled_models = [
+            item.strip().lower()
+            for item in os.environ["ANGEVOICE_ENABLED_MODELS"].split(",")
+            if item.strip()
+        ]
+    if os.environ.get("MOSS_MODEL_DIR"):
+        config.moss_model_dir = Path(os.environ["MOSS_MODEL_DIR"]).expanduser()
+    if os.environ.get("MOSS_TTS_NANO_PATH"):
+        config.moss_repo_path = Path(os.environ["MOSS_TTS_NANO_PATH"]).expanduser()
+    if os.environ.get("MOSS_PROMPT_AUDIO_PATH"):
+        config.moss_prompt_audio_path = Path(os.environ["MOSS_PROMPT_AUDIO_PATH"]).expanduser()
 
 
 def load_config(
@@ -258,6 +374,8 @@ def load_config(
     for k, v in kwargs.items():
         if v is not None and hasattr(config, k):
             setattr(config, k, v)
+    if isinstance(config.output_dir, str):
+        config.output_dir = Path(config.output_dir).expanduser()
 
     config.validate_security()
     return config

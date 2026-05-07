@@ -1,8 +1,8 @@
 # Roadmap / 长期路线图
 
-This roadmap tracks the long-term direction of Kokoro TTS Zh. Completed items are marked with `√`; planned items are marked with `□`.
+This roadmap tracks the long-term direction of AngeVoice. Completed items are marked with `√`; planned items are marked with `□`.
 
-本文档用于跟踪 Kokoro TTS Zh 的长期更新方向。已实现功能使用 `√` 标记，待实现功能使用 `□` 标记。
+本文档用于跟踪 AngeVoice 的长期更新方向。已实现功能使用 `√` 标记，待实现功能使用 `□` 标记。
 
 ## Core TTS / 核心 TTS 能力
 
@@ -32,6 +32,7 @@ This roadmap tracks the long-term direction of Kokoro TTS Zh. Completed items ar
 - √ `/stats` service metrics / `/stats` 服务统计
 - √ `/requests` recent request status / `/requests` 最近请求状态
 - √ In-memory LRU audio cache / 内存 LRU 音频缓存
+- √ Optional generated-audio persistence / 可选生成音频持久化
 - √ Request timeout control / 请求超时控制
 - √ In-process concurrency guard / 进程内并发控制
 - □ Persistent job queue / 持久化任务队列
@@ -61,6 +62,7 @@ This roadmap tracks the long-term direction of Kokoro TTS Zh. Completed items ar
 - √ Writable voices mount documentation / 可写 voices 挂载说明
 - □ Web UI voice upload page / Web UI 音色上传页面
 - √ Voice preview and favorite voices in Studio UI / Studio UI 音色试听与收藏
+- √ MOSS reference-audio clone upload in Studio UI / Studio UI 中的 MOSS 参考音频克隆上传
 - □ Voice metadata database / 音色元数据数据库
 - □ Role-based admin permissions / 分角色管理权限
 
@@ -86,6 +88,8 @@ This roadmap tracks the long-term direction of Kokoro TTS Zh. Completed items ar
 - √ Docker Compose templates / Docker Compose 模板
 - √ Source hot-reload mount notes / 源码热更新挂载说明
 - √ Writable voices mount notes / voices 可写挂载说明
+- √ MOSS runtime preinstalled per Docker profile / MOSS runtime 按 Docker 画像预装
+- √ MOSS model cache and output persistence mounts / MOSS 模型缓存与输出持久化挂载
 - √ ffmpeg included in Docker images / Docker 镜像内置 ffmpeg
 - √ General and conservative deployment profiles / 通用与保守部署画像
 - □ Published versioned container images / 发布带版本号的容器镜像
@@ -96,11 +100,14 @@ This roadmap tracks the long-term direction of Kokoro TTS Zh. Completed items ar
 ## Multi-engine architecture / 多引擎架构
 
 - √ Kokoro default engine / Kokoro 默认引擎
-- □ Engine interface abstraction / 引擎接口抽象
-- □ Optional MOSS-TTS-Nano engine / 可选 MOSS-TTS-Nano 引擎
+- √ Engine interface abstraction / 引擎接口抽象
+- √ Optional MOSS-TTS-Nano engine with lazy loading / 可选且按需加载的 MOSS-TTS-Nano 引擎
+- √ MOSS preset voice and voice-clone modes / MOSS 预设音色与参考音频克隆模式
+- √ Shared Chinese text rules for Kokoro and MOSS / Kokoro 与 MOSS 共享中文文本规则
+- √ Tesla P4 CUDA probe for MOSS runtime / MOSS 运行时 Tesla P4 CUDA 探针验证
 - □ Optional CosyVoice engine / 可选 CosyVoice 引擎
 - □ Optional GPT-SoVITS engine / 可选 GPT-SoVITS 引擎
-- □ Per-engine capability registry / 按引擎登记能力
+- √ Per-engine capability registry / 按引擎登记能力
 - □ Per-engine dependency isolation / 按引擎隔离依赖
 
 ## Quality and testing / 质量与测试
@@ -133,6 +140,6 @@ This roadmap tracks the long-term direction of Kokoro TTS Zh. Completed items ar
 - √ v2.1.x: streaming and Docker stabilization / 流式与 Docker 稳定化
 - √ v2.3.x: service edition with cache, stats, request tracking / 服务化版本，缓存、统计、请求追踪
 - √ v2.4.x: batch, admin, optional MP3, WebSocket cancel, legacy GPU profile / 批量、管理、可选 MP3、WebSocket 取消、老显卡画像
-- √ v2.5.x: service hardening, Chinese rules, and Studio UI refresh / 服务稳定性、中文规则与 Studio UI 刷新
-- □ v2.6.x: Web UI management and task workflow / Web UI 管理与任务工作流
+- √ v2.5.x: service hardening, Chinese rules, Studio UI refresh, and multi-model MOSS runtime / 服务稳定性、中文规则、Studio UI 刷新与多模型 MOSS 运行时
+- □ v2.6.x: Web UI management, task workflow, and more model adapters / Web UI 管理、任务工作流与更多模型适配
 - □ v3.x: multi-engine plugin architecture / 多引擎插件架构

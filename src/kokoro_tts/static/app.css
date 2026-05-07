@@ -326,6 +326,10 @@ button {
   text-transform: uppercase;
 }
 
+.warn-text {
+  color: var(--warning);
+}
+
 .topbar-actions,
 .button-row,
 .voice-tabs {
@@ -538,10 +542,33 @@ input:focus {
   position: relative;
   z-index: 1;
   display: grid;
-  grid-template-columns: minmax(180px, 1fr) minmax(220px, 1fr) auto;
+  grid-template-columns: minmax(180px, 1fr) minmax(180px, 1fr) minmax(220px, 1fr) auto;
   gap: 12px;
   align-items: end;
   margin: 14px 0;
+}
+
+.clone-panel {
+  position: relative;
+  z-index: 1;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 10px;
+  align-items: end;
+  margin: -2px 0 14px;
+  padding: 12px;
+  border: 1px solid var(--field-line);
+  border-radius: var(--radius);
+  background: var(--control-soft);
+}
+
+.clone-panel[hidden] {
+  display: none;
+}
+
+.file-field input[type="file"] {
+  padding: 9px 12px;
+  cursor: pointer;
 }
 
 .field {
@@ -790,7 +817,8 @@ audio {
 
 @media (max-width: 980px) {
   .workspace,
-  .controls-grid {
+  .controls-grid,
+  .clone-panel {
     grid-template-columns: 1fr;
   }
 

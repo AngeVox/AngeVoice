@@ -12,6 +12,7 @@ from typing import Optional
 
 from .config import TTSConfig, load_config
 from .engine import TTSEngine
+from .engine_manager import EngineManager
 from .routes import create_audio_router, create_status_router, create_ws_router
 from .security import make_verify_api_key
 from .service_state import ServiceState
@@ -41,12 +42,38 @@ _WORKER_ENV_EXPORTS = {
     "KOKORO_ADMIN_ENABLED": "admin_enabled",
     "KOKORO_VOICE_UPLOAD_ENABLED": "voice_upload_enabled",
     "KOKORO_MP3_ENABLED": "mp3_enabled",
+    "ANGEVOICE_ENABLED_MODELS": "enabled_models",
+    "ANGEVOICE_DEFAULT_MODEL": "default_model",
+    "ANGEVOICE_MODEL_SWITCH_ENABLED": "model_switch_enabled",
+    "ANGEVOICE_MODEL_UNLOAD_ON_SWITCH": "model_unload_on_switch",
+    "ANGEVOICE_MODEL_SWITCH_TIMEOUT_SECONDS": "model_switch_timeout_seconds",
+    "ANGEVOICE_OUTPUT_DIR": "output_dir",
+    "ANGEVOICE_SAVE_OUTPUTS": "save_outputs",
+    "ANGEVOICE_OUTPUT_MAX_FILES": "output_max_files",
+    "MOSS_EXECUTION_PROVIDER": "moss_execution_provider",
+    "MOSS_CPU_THREADS": "moss_cpu_threads",
+    "MOSS_DEFAULT_VOICE": "moss_default_voice",
+    "MOSS_PROMPT_UPLOAD_MAX_BYTES": "moss_prompt_upload_max_bytes",
+    "MOSS_MAX_NEW_FRAMES": "moss_max_new_frames",
+    "MOSS_VOICE_CLONE_MAX_TEXT_TOKENS": "moss_voice_clone_max_text_tokens",
+    "MOSS_SAMPLE_MODE": "moss_sample_mode",
+    "MOSS_CUDA_ENABLED": "moss_cuda_enabled",
+    "MOSS_ENABLE_WETEXT_PROCESSING": "moss_enable_wetext_processing",
+    "MOSS_ENABLE_NORMALIZE_TTS_TEXT": "moss_enable_normalize_tts_text",
+    "MOSS_APPLY_ANGEVOICE_RULES": "moss_apply_angevoice_rules",
+    "MOSS_REALTIME_STREAMING_DECODE": "moss_realtime_streaming_decode",
+    "MOSS_CUDA_SELF_TEST_ENABLED": "moss_cuda_self_test_enabled",
+    "MOSS_AUTO_FALLBACK_CPU": "moss_auto_fallback_cpu",
+    "MOSS_QUALITY_GATE_ENABLED": "moss_quality_gate_enabled",
+    "MOSS_MAX_CLIP_RATIO": "moss_max_clip_ratio",
 }
 
 
 def _stringify_env_value(value) -> str:
     if isinstance(value, bool):
         return "true" if value else "false"
+    if isinstance(value, list):
+        return ",".join(str(item) for item in value)
     return str(value)
 
 
@@ -56,6 +83,12 @@ def _export_config_for_workers(cfg: TTSConfig) -> None:
     os.environ["KOKORO_CORS_ORIGINS"] = ",".join(cfg.cors_origins)
     if cfg.api_key:
         os.environ["KOKORO_API_KEY"] = cfg.api_key
+    if cfg.moss_model_dir:
+        os.environ["MOSS_MODEL_DIR"] = str(cfg.moss_model_dir)
+    if cfg.moss_repo_path:
+        os.environ["MOSS_TTS_NANO_PATH"] = str(cfg.moss_repo_path)
+    if cfg.moss_prompt_audio_path:
+        os.environ["MOSS_PROMPT_AUDIO_PATH"] = str(cfg.moss_prompt_audio_path)
 
 
 def create_app(config: Optional[TTSConfig] = None, engine: Optional[TTSEngine] = None):
@@ -67,19 +100,20 @@ def create_app(config: Optional[TTSConfig] = None, engine: Optional[TTSEngine] =
 
     cfg = config or load_config()
     cfg.validate_security()
-    eng = engine or TTSEngine(cfg)
-    state = ServiceState(cfg, eng)
+    manager = EngineManager(cfg, initial_engine=engine)
+    state = ServiceState(cfg, engine, model_manager=manager)
     verify_api_key = make_verify_api_key(cfg)
 
     @asynccontextmanager
     async def lifespan(app):
-        eng.load()
-        logger.info("AngeVoice service started (device=%s)", eng._device)
+        state.model_manager.switch_model(cfg.default_model, load=True)
+        current = state.model_manager.current_snapshot()
+        logger.info("AngeVoice service started (model=%s device=%s)", current.get("id"), current.get("device"))
         yield
 
     app = FastAPI(
         title="AngeVoice",
-        description="Lightweight Chinese TTS service built on Kokoro v1.1 model",
+        description="Lightweight local TTS service with selectable model engines",
         version="2.5.0",
         lifespan=lifespan,
     )
@@ -114,7 +148,7 @@ def create_app(config: Optional[TTSConfig] = None, engine: Optional[TTSEngine] =
     app.include_router(create_ws_router(state))
 
     from .service_extras import register_extra_routes
-    register_extra_routes(app=app, cfg=cfg, eng=eng, verify_api_key=verify_api_key, **state.as_service_extras_kwargs())
+    register_extra_routes(app=app, cfg=cfg, eng=state.eng, verify_api_key=verify_api_key, **state.as_service_extras_kwargs())
     return app
 
 
@@ -134,6 +168,5 @@ def run_server(config: Optional[TTSConfig] = None):
         )
         return
 
-    eng = TTSEngine(cfg)
-    app = create_app(config=cfg, engine=eng)
+    app = create_app(config=cfg)
     uvicorn.run(app, host=cfg.host, port=cfg.port, workers=1)

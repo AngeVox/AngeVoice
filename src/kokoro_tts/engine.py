@@ -12,6 +12,7 @@ from io import BytesIO
 from pathlib import Path
 from typing import Optional
 
+from .audio import encode_audio_segment, normalize_audio_array, write_wav_bytes
 from .config import TTSConfig, load_config
 from .zh_rules import normalize_chinese_rules
 
@@ -176,6 +177,8 @@ def normalize_text_for_tts(text: str) -> str:
 class TTSEngine:
     """Kokoro v1.1 backed TTS engine."""
 
+    engine_id = "kokoro"
+    display_name = "Kokoro v1.1 Chinese"
     HF_REPO = "hexgrad/Kokoro-82M-v1.1-zh"
     SUPPORTED_STREAM_FORMATS = {"pcm_s16le", "wav"}
 
@@ -190,6 +193,53 @@ class TTSEngine:
     @property
     def is_loaded(self) -> bool:
         return self._loaded
+
+    @property
+    def sample_rate(self) -> int:
+        return int(self.config.sample_rate)
+
+    @property
+    def channels(self) -> int:
+        return 1
+
+    @property
+    def device(self) -> str:
+        return self._device or self.config.device
+
+    @property
+    def default_voice(self) -> str:
+        return self.config.default_voice
+
+    def get_voices(self) -> list[str]:
+        return self.config.get_voices()
+
+    def metadata(self) -> dict:
+        return {
+            "id": self.engine_id,
+            "name": self.display_name,
+            "backend": "kokoro",
+            "loaded": self.is_loaded,
+            "device": self.device,
+            "sample_rate": self.sample_rate,
+            "channels": self.channels,
+            "voices": self.get_voices(),
+            "default_voice": self.default_voice,
+            "streaming": True,
+            "speed_supported": True,
+        }
+
+    def unload(self) -> None:
+        self._model = None
+        self._en_pipeline = None
+        self._zh_pipeline = None
+        self._loaded = False
+        try:
+            import torch
+
+            if torch.cuda.is_available():
+                torch.cuda.empty_cache()
+        except Exception:
+            logger.debug("Kokoro CUDA cache cleanup skipped", exc_info=True)
 
     def load(self) -> "TTSEngine":
         if self._loaded:
@@ -241,12 +291,7 @@ class TTSEngine:
 
     def synthesize(self, text: str, voice: str = "zm_010", speed: float = 1.0) -> bytes:
         wav = self.synthesize_array(text=text, voice=voice, speed=speed)
-        import soundfile as sf
-
-        buffer = BytesIO()
-        sf.write(buffer, wav, self.config.sample_rate, format="WAV")
-        buffer.seek(0)
-        return buffer.read()
+        return write_wav_bytes(wav, self.sample_rate)
 
     def synthesize_array(self, text: str, voice: str = "zm_010", speed: float = 1.0):
         self._validate_request(text=text, voice=voice, speed=speed)
@@ -385,11 +430,7 @@ class TTSEngine:
         return audio_array
 
     def _normalize_audio(self, audio_array):
-        import numpy as np
-
-        audio_array = np.asarray(audio_array, dtype=np.float32).reshape(-1)
-        audio_array = np.nan_to_num(audio_array, nan=0.0, posinf=0.0, neginf=0.0)
-        return np.clip(audio_array, -1.0, 1.0)
+        return normalize_audio_array(audio_array).reshape(-1)
 
     def synthesize_stream(self, text, voice="zm_010", speed=1.0, fmt="pcm_s16le"):
         if fmt not in self.SUPPORTED_STREAM_FORMATS:
@@ -438,15 +479,4 @@ class TTSEngine:
         yield {"type": "done", "total_segments": len(segments)}
 
     def _encode_segment(self, audio_array, format="pcm_s16le"):
-        import soundfile as sf
-
-        audio_array = self._normalize_audio(audio_array)
-        if format == "pcm_s16le":
-            audio_int16 = (audio_array * 32767.0).astype("<i2")
-            return audio_int16.tobytes()
-        elif format == "wav":
-            buffer = BytesIO()
-            sf.write(buffer, audio_array, self.config.sample_rate, format="WAV")
-            return buffer.getvalue()
-        else:
-            raise ValueError(f"Unsupported format: {format}")
+        return encode_audio_segment(audio_array, format, self.sample_rate)

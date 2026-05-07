@@ -81,6 +81,10 @@
 
         <div class="controls-grid">
           <label class="field">
+            <span>模型 <b id="model-status">当前</b></span>
+            <select id="model-select"></select>
+          </label>
+          <label class="field">
             <span>音色</span>
             <select id="voice"></select>
           </label>
@@ -92,6 +96,14 @@
             <input type="checkbox" id="stream-toggle" checked />
             <span>流式播放</span>
           </label>
+        </div>
+
+        <div class="clone-panel" id="clone-panel" hidden>
+          <label class="field file-field">
+            <span>参考音频 <b id="clone-status">MOSS 克隆</b></span>
+            <input type="file" id="prompt-audio" accept="audio/*,.wav,.mp3,.flac,.ogg,.m4a,.aac" />
+          </label>
+          <button type="button" class="ghost-button small" id="clear-prompt-audio" disabled>清除</button>
         </div>
 
         <div class="button-row">

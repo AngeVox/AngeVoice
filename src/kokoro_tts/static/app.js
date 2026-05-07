@@ -1,7 +1,19 @@
 const bootstrapEl = document.getElementById('angevoice-bootstrap');
 const bootstrap = bootstrapEl ? JSON.parse(bootstrapEl.textContent || '{}') : {};
+const defaultModels = Array.isArray(bootstrap.models) && bootstrap.models.length ? bootstrap.models : [{
+  id: 'kokoro',
+  name: 'Kokoro v1.1 Chinese',
+  backend: 'kokoro',
+  provider: 'auto',
+  current: true,
+  loaded: true,
+  available: true,
+  speed_supported: true
+}];
 
 const state = {
+  models: defaultModels,
+  selectedModel: bootstrap.currentModel || bootstrap.defaultModel || defaultModels[0]?.id || 'kokoro',
   voices: Array.isArray(bootstrap.voices) ? bootstrap.voices : [],
   selectedVoice: bootstrap.defaultVoice || '',
   activeFilter: 'all',
@@ -17,6 +29,7 @@ const state = {
   currentAbort: null,
   currentPlayer: null,
   lastBlob: null,
+  promptAudioFile: null,
   totalSegments: 0
 };
 
@@ -25,6 +38,8 @@ const els = {
   text: document.getElementById('text'),
   charCount: document.getElementById('char-count'),
   maxCount: document.getElementById('max-count'),
+  model: document.getElementById('model-select'),
+  modelStatus: document.getElementById('model-status'),
   voice: document.getElementById('voice'),
   voiceSearch: document.getElementById('voice-search'),
   voiceTabs: document.getElementById('voice-tabs'),
@@ -33,6 +48,10 @@ const els = {
   speed: document.getElementById('speed'),
   speedValue: document.getElementById('speed-value'),
   streamToggle: document.getElementById('stream-toggle'),
+  clonePanel: document.getElementById('clone-panel'),
+  cloneStatus: document.getElementById('clone-status'),
+  promptAudio: document.getElementById('prompt-audio'),
+  clearPromptAudio: document.getElementById('clear-prompt-audio'),
   generateBtn: document.getElementById('generate-btn'),
   previewBtn: document.getElementById('preview-btn'),
   stopBtn: document.getElementById('stop-btn'),
@@ -73,12 +92,14 @@ class StreamPlayer {
     this.sources = [];
     this.pcmChunks = [];
     this.sampleRate = Number(bootstrap.sampleRate) || 24000;
+    this.channels = 1;
   }
 
-  init(sampleRate = this.sampleRate) {
+  init(sampleRate = this.sampleRate, channels = this.channels) {
     const AudioContextCtor = window.AudioContext || window.webkitAudioContext;
     this.ctx = new AudioContextCtor({ sampleRate });
     this.sampleRate = this.ctx.sampleRate;
+    this.channels = Math.max(1, Number(channels) || 1);
     this.nextStartTime = 0;
     this.pcmChunks = [];
   }
@@ -101,21 +122,24 @@ class StreamPlayer {
     this.nextStartTime = this.ctx ? this.ctx.currentTime : 0;
   }
 
-  enqueuePCM(base64Data) {
+  enqueuePCM(base64Data, sampleRate = this.sampleRate, channels = this.channels) {
     if (!this.ctx) {
-      this.init();
+      this.init(sampleRate, channels);
     }
     this.resume();
+    this.channels = Math.max(1, Number(channels) || 1);
     const bytes = decodeBase64(base64Data);
     this.pcmChunks.push(bytes);
     const samples = new Int16Array(bytes.buffer, bytes.byteOffset, bytes.byteLength / 2);
-    const floats = new Float32Array(samples.length);
-    for (let i = 0; i < samples.length; i += 1) {
-      floats[i] = samples[i] / 32767;
-    }
+    const frameCount = Math.floor(samples.length / this.channels);
 
-    const buffer = this.ctx.createBuffer(1, floats.length, this.sampleRate);
-    buffer.getChannelData(0).set(floats);
+    const buffer = this.ctx.createBuffer(this.channels, frameCount, this.sampleRate);
+    for (let channel = 0; channel < this.channels; channel += 1) {
+      const target = buffer.getChannelData(channel);
+      for (let frame = 0; frame < frameCount; frame += 1) {
+        target[frame] = samples[(frame * this.channels) + channel] / 32767;
+      }
+    }
     const source = this.ctx.createBufferSource();
     source.buffer = buffer;
     source.connect(this.ctx.destination);
@@ -160,10 +184,10 @@ class StreamPlayer {
     write(12, 'fmt ');
     view.setUint32(16, 16, true);
     view.setUint16(20, 1, true);
-    view.setUint16(22, 1, true);
+    view.setUint16(22, this.channels, true);
     view.setUint32(24, this.sampleRate, true);
-    view.setUint32(28, this.sampleRate * 2, true);
-    view.setUint16(32, 2, true);
+    view.setUint32(28, this.sampleRate * this.channels * 2, true);
+    view.setUint16(32, this.channels * 2, true);
     view.setUint16(34, 16, true);
     write(36, 'data');
     view.setUint32(40, pcm.byteLength, true);
@@ -259,11 +283,137 @@ function setBusy(value) {
 function updateButtons() {
   els.generateBtn.disabled = state.busy;
   els.previewBtn.disabled = state.busy;
+  if (els.model) {
+    els.model.disabled = state.busy || bootstrap.modelSwitchEnabled === false;
+  }
   els.stopBtn.disabled = !(state.busy || state.playing || state.currentWs || state.currentAbort);
   els.downloadBtn.disabled = !(state.lastBlob || state.currentPlayer?.pcmChunks.length);
 }
 
+function currentModel() {
+  return state.models.find(model => model.id === state.selectedModel) || state.models.find(model => model.current) || state.models[0] || null;
+}
+
+function modelSupportsVoiceClone(model = currentModel()) {
+  const modes = Array.isArray(model?.modes) ? model.modes : [];
+  return Boolean(
+    model?.voice_clone_supported ||
+    modes.includes('voice_clone') ||
+    model?.backend === 'moss-tts-nano-onnx' ||
+    String(model?.id || '').startsWith('moss-nano')
+  );
+}
+
+function modelLabel(model) {
+  if (!model) return '未知模型';
+  const suffix = model.experimental ? ' · 实验' : '';
+  return `${model.name || model.id}${suffix}`;
+}
+
+function setPromptAudioFile(file) {
+  state.promptAudioFile = file || null;
+  if (els.cloneStatus) {
+    els.cloneStatus.textContent = state.promptAudioFile ? state.promptAudioFile.name : 'MOSS 克隆';
+  }
+  if (els.clearPromptAudio) {
+    els.clearPromptAudio.disabled = !state.promptAudioFile;
+  }
+  applyStreamToggleState();
+}
+
+function applyStreamToggleState() {
+  if (!els.streamToggle) return;
+  const cloneUploadActive = modelSupportsVoiceClone() && Boolean(state.promptAudioFile);
+  if (!bootstrap.streamEnabled || cloneUploadActive) {
+    els.streamToggle.checked = false;
+  }
+  els.streamToggle.disabled = !bootstrap.streamEnabled || cloneUploadActive;
+  els.streamToggle.title = cloneUploadActive ? '参考音频克隆使用上传生成模式' : '';
+}
+
+function applyModelUi() {
+  const model = currentModel();
+  if (!model) return;
+  els.modelStatus.textContent = model.loaded ? (model.actual_provider || model.provider || '已加载') : '未加载';
+  els.modelStatus.className = model.available === false ? 'warn-text' : '';
+  if (els.speed) {
+    const speedSupported = model.speed_supported !== false;
+    els.speed.disabled = !speedSupported;
+    els.speed.title = speedSupported ? '' : '当前模型暂不支持语速调节';
+  }
+  const cloneSupported = modelSupportsVoiceClone(model);
+  if (els.clonePanel) {
+    els.clonePanel.hidden = !cloneSupported;
+  }
+  if (!cloneSupported) {
+    setPromptAudioFile(null);
+    if (els.promptAudio) {
+      els.promptAudio.value = '';
+    }
+  } else {
+    setPromptAudioFile(state.promptAudioFile);
+  }
+  applyStreamToggleState();
+}
+
+function renderModelSelect() {
+  if (!els.model) return;
+  els.model.innerHTML = '';
+  state.models.forEach(model => {
+    const option = document.createElement('option');
+    option.value = model.id;
+    option.textContent = modelLabel(model);
+    option.disabled = model.available === false;
+    els.model.appendChild(option);
+  });
+  if (!state.models.some(model => model.id === state.selectedModel)) {
+    state.selectedModel = state.models.find(model => model.current)?.id || state.models[0]?.id || 'kokoro';
+  }
+  els.model.value = state.selectedModel;
+  applyModelUi();
+}
+
+function updateModelData(models = [], current = '') {
+  if (Array.isArray(models) && models.length) {
+    state.models = models;
+  }
+  if (current) {
+    state.selectedModel = current;
+  }
+  renderModelSelect();
+}
+
+async function switchModel(modelId) {
+  if (!modelId || modelId === state.selectedModel) return;
+  if (!ensureAuthToken()) {
+    renderModelSelect();
+    return;
+  }
+  setBusy(true);
+  setProgress(`正在切换到 ${modelId}...`);
+  try {
+    const response = await apiFetch('/v1/models/switch', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ model: modelId, unload_previous: true })
+    });
+    if (!response.ok) {
+      throw new Error(await readError(response));
+    }
+    const result = await response.json();
+    state.selectedModel = result.current_model || modelId;
+    setProgress(`已切换到 ${state.selectedModel}`);
+    await refreshServiceState();
+  } catch (error) {
+    setProgress(error.message || '模型切换失败', true);
+    renderModelSelect();
+  } finally {
+    setBusy(false);
+  }
+}
+
 function voiceKind(voice) {
+  if (state.selectedModel.startsWith('moss-nano')) return 'MOSS 预设音色';
   if (voice.startsWith('zf_')) return '中文女声';
   if (voice.startsWith('zm_')) return '中文男声';
   if (/^[ab]f_/.test(voice)) return '英文女声';
@@ -416,9 +566,12 @@ function renderRequests(items = []) {
 async function refreshServiceState() {
   try {
     const health = await fetch('/health').then(resp => resp.json());
-    setHealth(health.status === 'ok' ? 'ok' : '', health.auth_required && !state.token ? '需要 Key' : health.status);
-    if (Array.isArray(health.voices) && health.voices.length && health.voices.join('|') !== state.voices.join('|')) {
+    updateModelData(health.models || [], health.current_model || health.model?.id || '');
+    const healthLabel = health.auth_required && !state.token ? '需要 Key' : `${health.status}${health.current_model ? ` · ${health.current_model}` : ''}`;
+    setHealth(health.status === 'ok' ? 'ok' : '', healthLabel);
+    if (Array.isArray(health.voices) && health.voices.join('|') !== state.voices.join('|')) {
       state.voices = health.voices;
+      state.selectedVoice = health.model?.default_voice || state.voices[0] || '';
       renderVoiceSelect();
       renderVoices();
     }
@@ -462,10 +615,14 @@ async function synthesizeHttp(text, voice, speed, autoplay = true) {
 
   try {
     const form = new FormData();
+    form.append('model', state.selectedModel);
     form.append('text', text);
     form.append('voice', voice);
     form.append('speed', speed);
     form.append('response_format', 'wav');
+    if (modelSupportsVoiceClone() && state.promptAudioFile) {
+      form.append('prompt_audio', state.promptAudioFile, state.promptAudioFile.name);
+    }
     const response = await apiFetch('/api/tts', {
       method: 'POST',
       body: form,
@@ -509,6 +666,7 @@ function synthesizeStream(text, voice, speed) {
   state.currentWs.onopen = () => {
     state.currentWs.send(JSON.stringify({
       text,
+      model: state.selectedModel,
       voice,
       speed: Number(speed),
       format: 'pcm_s16le',
@@ -528,7 +686,7 @@ function synthesizeStream(text, voice, speed) {
       setProgress(`流式合成开始，共 ${state.totalSegments} 段`);
     } else if (msg.type === 'audio') {
       setProgress(`已接收 ${msg.index + 1} / ${state.totalSegments} 段`);
-      state.currentPlayer.enqueuePCM(msg.data);
+      state.currentPlayer.enqueuePCM(msg.data, msg.sample_rate, msg.channels);
     } else if (msg.type === 'done') {
       state.lastBlob = state.currentPlayer.buildWavBlob();
       if (state.lastBlob) {
@@ -642,7 +800,7 @@ function bindEvents() {
     if (state.currentWs || state.currentAbort) {
       await stopCurrent();
     }
-    if (els.streamToggle.checked) {
+    if (els.streamToggle.checked && !(modelSupportsVoiceClone() && state.promptAudioFile)) {
       synthesizeStream(text, state.selectedVoice, els.speed.value);
     } else {
       synthesizeHttp(text, state.selectedVoice, els.speed.value, true);
@@ -664,11 +822,23 @@ function bindEvents() {
   });
   els.downloadBtn.addEventListener('click', downloadAudio);
   els.favoriteBtn.addEventListener('click', toggleFavorite);
+  els.model?.addEventListener('change', event => {
+    switchModel(event.target.value);
+  });
   els.voice.addEventListener('change', () => {
     state.selectedVoice = els.voice.value;
     renderVoices();
   });
   els.voiceSearch.addEventListener('input', renderVoices);
+  els.promptAudio?.addEventListener('change', () => {
+    setPromptAudioFile(els.promptAudio.files?.[0] || null);
+  });
+  els.clearPromptAudio?.addEventListener('click', () => {
+    setPromptAudioFile(null);
+    if (els.promptAudio) {
+      els.promptAudio.value = '';
+    }
+  });
   els.speed.addEventListener('input', () => {
     els.speedValue.textContent = Number(els.speed.value).toFixed(1);
   });
@@ -720,12 +890,10 @@ function init() {
     els.speed.value = String(bootstrap.defaultSpeed);
     els.speedValue.textContent = Number(bootstrap.defaultSpeed).toFixed(1);
   }
-  if (!bootstrap.streamEnabled) {
-    els.streamToggle.checked = false;
-    els.streamToggle.disabled = true;
-  }
+  applyStreamToggleState();
   applyTheme(state.theme);
   setMetricsCollapsed(state.metricsCollapsed);
+  renderModelSelect();
   renderVoiceSelect();
   renderVoices();
   updateCounter();

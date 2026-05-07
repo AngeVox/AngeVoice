@@ -60,6 +60,27 @@ curl http://127.0.0.1:8101/health
 curl http://127.0.0.1:8101/v1/audio/formats
 ```
 
+Optional MOSS smoke test / 可选 MOSS 冒烟测试：
+
+```bash
+docker compose up -d --build
+curl http://127.0.0.1:8101/v1/models
+curl -X POST http://127.0.0.1:8101/v1/models/switch \
+  -H "Content-Type: application/json" \
+  -d '{"model":"moss-nano-cpu","unload_previous":true}'
+curl -X POST http://127.0.0.1:8101/api/tts \
+  -F model=moss-nano-cpu \
+  -F text="MOSS 预设音色冒烟测试。" \
+  -F voice=Junhao \
+  -F response_format=wav \
+  --output moss-smoke.wav
+```
+
+For the modern GPU profile, also verify that `/v1/models` lists
+`moss-nano-cuda` while `current_model` remains `kokoro` immediately after
+startup. Legacy GPU should keep `moss-nano-cuda` hidden unless the release test
+explicitly enables `MOSS_CUDA_ENABLED=true`.
+
 ## Creating a tag / 创建 tag
 
 Use annotated tags so release metadata is clear:
@@ -100,13 +121,13 @@ angevoice
 Suggested description:
 
 ```text
-AngeVoice — self-hosted Chinese TTS service built on Kokoro v1.1, with OpenAI-compatible API, WebSocket streaming, Web UI, batch synthesis, and CPU/GPU/legacy-GPU Docker profiles.
+AngeVoice — self-hosted Chinese TTS service built for low-power/NAS environments, with Kokoro v1.1 by default, selectable MOSS-TTS-Nano runtime, OpenAI-compatible API, WebSocket streaming, Studio Web UI, batch synthesis, and CPU/GPU/legacy-GPU Docker profiles.
 ```
 
 中文描述：
 
 ```text
-AngeVoice：基于 Kokoro v1.1 模型构建的中文 TTS 自托管服务，支持 OpenAI 兼容 API、WebSocket 流式播放、Web UI、批量合成和 CPU/GPU/老显卡 Docker 部署。
+AngeVoice：面向低配设备与 NAS 长期运行环境的中文 TTS 自托管服务，默认基于 Kokoro v1.1，可选 MOSS-TTS-Nano 多模型运行时，支持 OpenAI 兼容 API、WebSocket 流式播放、Studio Web UI、批量合成和 CPU/GPU/老显卡 Docker 部署。
 ```
 
 ## Version bump checklist / 版本升级检查

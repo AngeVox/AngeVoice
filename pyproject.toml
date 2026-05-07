@@ -41,6 +41,19 @@ dependencies = [
 gpu = [
     "torch>=2.0.0",
 ]
+moss = [
+    "torchaudio>=2.0.0",
+    "sentencepiece>=0.1.99",
+    "huggingface_hub>=0.23",
+    "onnxruntime>=1.20.0",
+]
+moss-gpu = [
+    "torchaudio>=2.0.0",
+    "sentencepiece>=0.1.99",
+    "huggingface_hub>=0.23",
+    "onnxruntime-gpu==1.20.2",
+    "nvidia-cudnn-cu12==9.1.0.70",
+]
 dev = [
     "pytest>=7.0",
     "pytest-asyncio>=0.23.0",

@@ -5,12 +5,31 @@ WORKDIR /app
 # 系统依赖
 # ffmpeg 用于可选 MP3 转码；未开启 KOKORO_MP3_ENABLED 时不会影响默认路径
 RUN apt-get update && apt-get install -y --no-install-recommends \
+    ca-certificates \
+    git \
     libsndfile1 \
+    libgomp1 \
     ffmpeg \
     && rm -rf /var/lib/apt/lists/*
 
-# CPU 版 PyTorch
-RUN python3 -m pip install --no-cache-dir torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cpu
+ARG INSTALL_MOSS=true
+ARG MOSS_REPO=https://github.com/OpenMOSS/MOSS-TTS-Nano.git
+ARG MOSS_RUNTIME_PACKAGE=onnxruntime>=1.20.0
+ARG PYTORCH_VERSION=2.5.1
+ENV MOSS_TTS_NANO_PATH=/opt/MOSS-TTS-Nano
+
+# CPU 版 PyTorch。AngeVoice/MOSS 推理不需要 torchvision，保持镜像更轻。
+RUN python3 -m pip install --no-cache-dir \
+    "torch==${PYTORCH_VERSION}+cpu" \
+    "torchaudio==${PYTORCH_VERSION}+cpu" \
+    --index-url https://download.pytorch.org/whl/cpu
+
+# MOSS-TTS-Nano CPU ONNX runtime. The official repository remains the source
+# of inference code; AngeVoice only imports it through MOSS_TTS_NANO_PATH.
+RUN if [ "$INSTALL_MOSS" = "true" ]; then \
+      git clone --depth 1 "$MOSS_REPO" "$MOSS_TTS_NANO_PATH" && \
+      python3 -m pip install --no-cache-dir "sentencepiece>=0.1.99" "huggingface_hub>=0.23" "$MOSS_RUNTIME_PACKAGE"; \
+    fi
 
 # 复制项目
 COPY pyproject.toml README.md ./

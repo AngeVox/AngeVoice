@@ -1,3 +1,5 @@
 models/kokoro-v1_1-zh.pth filter=lfs diff=lfs merge=lfs -text
 models/voices/*.pt filter=lfs diff=lfs merge=lfs -text
 models/samples/*.wav filter=lfs diff=lfs merge=lfs -text
+*.sh text eol=lf
+docker/**/Dockerfile text eol=lf

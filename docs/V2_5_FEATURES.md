@@ -1,6 +1,6 @@
 # v2.5 服务功能说明
 
-v2.5 在 v2.4 功能基础上完成服务端模块化重构、中文规则补强、Studio Web UI 刷新和安全启动校验，并统一项目品牌为 AngeVoice。批量合成、管理接口、可选 MP3、WebSocket 取消能力保持兼容。
+v2.5 完成服务端模块化重构、中文规则补强、Studio Web UI 刷新、安全启动校验和多模型运行时，并统一项目品牌为 AngeVoice。批量合成、管理接口、可选 MP3、WebSocket 取消能力保持兼容。
 
 ## v2.5 新增/调整
 
@@ -11,6 +11,9 @@ v2.5 在 v2.4 功能基础上完成服务端模块化重构、中文规则补强
 | 并发缓存修复 | TTS LRU 缓存新增线程锁，避免多请求并发读写 `OrderedDict` |
 | 中文规则 | 新增 `zh_rules.py`，支持自动停顿标点、jieba 分词优先和常见多音字上下文修正 |
 | Studio Web UI | 前端拆分为 `templates/index.html`、`static/app.css`、`static/app.js`，支持亮/暗主题、API Key、流式播放、可折叠统计卡片、音色筛选/收藏 |
+| 多模型运行时 | 新增 `engine_manager.py`，支持 Kokoro 与可选 MOSS-TTS-Nano 的加载、切换、卸载和缓存隔离 |
+| MOSS-TTS-Nano | 通过 OpenMOSS 官方 ONNX runtime 接入，支持预设音色、参考音频克隆、CPU 基线和 CUDA 实验模式；Docker 画像预装匹配 runtime |
+| 输出持久化 | 新增 `ANGEVOICE_SAVE_OUTPUTS` / `ANGEVOICE_OUTPUT_DIR`，Docker 挂载 `outputs` 保存 HTTP 合成结果 |
 | Docker 热更新修复 | Docker 镜像改为 editable install，Compose 挂载模板和 static 目录，CPU/GPU/Legacy GPU 路径一致 |
 | 安全启动校验 | 管理接口必须搭配强 API Key；占位 API Key 会被拒绝 |
 | CLI 品牌统一 | 新增 `angevoice` 命令，保留 `kokoro-tts` alias |
@@ -32,6 +35,9 @@ v2.5 在 v2.4 功能基础上完成服务端模块化重构、中文规则补强
 | 上传 `.pt` 音色 | `POST /admin/voices/upload` | 上传关闭 |
 | MP3 输出 | `response_format=mp3` | 关闭 |
 | WebSocket 取消 | `{"type":"cancel"}` / `{"type":"stop"}` | 开启 |
+| 模型管理 | `/v1/models` / `/v1/models/switch` | 开启 |
+| MOSS 克隆 | `/api/tts` multipart `prompt_audio` | 选择支持克隆的 MOSS 模型后可用 |
+| 输出持久化 | `ANGEVOICE_SAVE_OUTPUTS=true` | Docker Compose 默认开启 |
 
 ## 中文文本规则
 
@@ -54,7 +60,33 @@ v2.5 在 v2.4 功能基础上完成服务端模块化重构、中文规则补强
 - `/` 注入服务端 bootstrap 数据，包含音色、默认音色、采样率、认证和流式能力。
 - `/static/app.css` 提供液态玻璃背景、亮/暗主题、启动动画、面板 spotlight/glare 效果。
 - `/static/app.js` 负责 API Key、WebSocket 流式播放、HTTP 兜底合成、取消、统计和音色库交互。
+- 所选模型支持 `voice_clone` 时才显示参考音频上传控件；选择参考音频后自动使用 HTTP multipart 合成。
 - 启用 `KOKORO_API_KEY` 后，前端可在设置面板保存 Bearer Token，并同时用于 HTTP 与 WebSocket 首包。
+
+## 多模型与 MOSS
+
+默认启动模型仍是 Kokoro。Docker 画像预装匹配的 MOSS runtime，但 MOSS 引擎和模型资产只在用户通过 Web UI/API 切换时加载。CPU 画像只开放 `moss-nano-cpu`；通用 GPU 画像默认开放 `moss-nano-cpu` 和 `moss-nano-cuda`；legacy GPU 镜像预装 MOSS GPU 依赖，但默认隐藏 `moss-nano-cuda`。
+
+```bash
+ANGEVOICE_ENABLED_MODELS=kokoro,moss-nano-cpu
+ANGEVOICE_DEFAULT_MODEL=kokoro
+MOSS_CUDA_ENABLED=false
+MOSS_MODEL_DIR=/opt/MOSS-TTS-Nano/models
+```
+
+MOSS 参考音频克隆示例：
+
+```bash
+curl -X POST http://localhost:8000/api/tts \
+  -F model=moss-nano-cpu \
+  -F text="这是参考音频克隆测试。" \
+  -F voice=Junhao \
+  -F response_format=wav \
+  -F prompt_audio=@reference.wav \
+  --output clone.wav
+```
+
+AngeVoice 中文规则默认也会作用到 MOSS：自动断句、时间读法、轻量语义匹配和常见多音字修正都会在进入模型前处理。Tesla P4 已通过 Docker 探针验证可使用通用 GPU 画像的 `onnxruntime-gpu==1.20.2` + `nvidia-cudnn-cu12==9.1.0.70` 跑通 MOSS CUDA 推理。缺 cuDNN 9 时会回退为 CPU session，AngeVoice 会拒绝该 CUDA 加载并按配置回退 CPU。
 
 ## 批量合成 ZIP
 
