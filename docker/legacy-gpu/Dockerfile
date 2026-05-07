@@ -32,7 +32,7 @@ RUN python3 -m pip install --no-cache-dir \
 
 ARG INSTALL_MOSS=true
 ARG MOSS_REPO=https://github.com/OpenMOSS/MOSS-TTS-Nano.git
-ARG MOSS_RUNTIME_PACKAGE=onnxruntime-gpu==1.20.2
+ARG MOSS_RUNTIME_PACKAGE=onnxruntime-gpu==1.20.1
 ARG MOSS_RUNTIME_INDEX_URL=https://aiinfra.pkgs.visualstudio.com/PublicPackages/_packaging/onnxruntime-cuda-11/pypi/simple/
 ENV MOSS_TTS_NANO_PATH=/opt/MOSS-TTS-Nano
 ENV LD_LIBRARY_PATH=/usr/local/cuda/lib64:/usr/local/nvidia/lib:/usr/local/nvidia/lib64:${LD_LIBRARY_PATH}

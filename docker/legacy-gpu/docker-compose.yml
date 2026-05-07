@@ -13,7 +13,7 @@ services:
         # Legacy image preinstalls a CUDA 11.8 compatible MOSS GPU runtime.
         # Runtime config keeps the MOSS CUDA model hidden until the user enables it.
         INSTALL_MOSS: "true"
-        MOSS_RUNTIME_PACKAGE: "onnxruntime-gpu==1.20.2"
+        MOSS_RUNTIME_PACKAGE: "onnxruntime-gpu==1.20.1"
         MOSS_RUNTIME_INDEX_URL: "https://aiinfra.pkgs.visualstudio.com/PublicPackages/_packaging/onnxruntime-cuda-11/pypi/simple/"
     ports:
       # Host port:container port. Open http://HOST_IP:8102
