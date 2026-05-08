@@ -4,6 +4,7 @@
 模型加载测试需要在有模型文件的环境中运行。
 """
 
+import base64
 import os
 import sys
 import tempfile
@@ -76,11 +77,19 @@ class TestConfig:
 
     def test_moss_prompt_upload_env(self, monkeypatch):
         monkeypatch.setenv("MOSS_PROMPT_UPLOAD_MAX_BYTES", "4096")
+        monkeypatch.setenv("MOSS_PROMPT_AUDIO_MAX_SECONDS", "6.5")
+        monkeypatch.setenv("MOSS_PROMPT_CACHE_MAX_ITEMS", "3")
+        monkeypatch.setenv("MOSS_OUTPUT_TARGET_PEAK", "0.88")
+        monkeypatch.setenv("MOSS_OUTPUT_GAIN", "0.9")
 
         from kokoro_tts.config import load_config
 
         config = load_config()
         assert config.moss_prompt_upload_max_bytes == 4096
+        assert config.moss_prompt_audio_max_seconds == 6.5
+        assert config.moss_prompt_cache_max_items == 3
+        assert config.moss_output_target_peak == 0.88
+        assert config.moss_output_gain == 0.9
         assert config.moss_apply_angevoice_rules is True
 
     def test_moss_cuda_can_be_disabled(self):
@@ -102,6 +111,46 @@ class TestConfig:
         from kokoro_tts.config import TTSConfig
         config = TTSConfig(model_dir=tmp_path)
         assert config.voices_dir == tmp_path / "voices"
+
+
+class TestPromptAudio:
+    """测试参考音频工具和 MOSS 后处理。"""
+
+    def test_prompt_audio_base64_accepts_data_url(self):
+        from kokoro_tts.prompt_audio import decode_prompt_audio_base64
+
+        payload = base64.b64encode(b"fake-wav").decode("ascii")
+
+        assert decode_prompt_audio_base64(payload) == b"fake-wav"
+        assert decode_prompt_audio_base64(f"data:audio/wav;base64,{payload}") == b"fake-wav"
+
+    def test_moss_output_postprocess_limits_peak(self):
+        import numpy as np
+
+        from kokoro_tts.config import TTSConfig
+        from kokoro_tts.moss_engine import MossNanoEngine
+
+        engine = MossNanoEngine(TTSConfig(moss_output_target_peak=0.5))
+        output = engine._postprocess_waveform(np.asarray([[1.2, -1.2], [0.1, -0.1]], dtype=np.float32))
+
+        assert output.shape == (2, 2)
+        assert float(np.max(np.abs(output))) <= 0.5001
+        assert engine.metadata()["last_output_quality"]["scale"] < 1.0
+
+
+class TestOpenApi:
+    """确保可选路由不会破坏 OpenAPI schema。"""
+
+    def test_openapi_schema_builds_with_batch_and_admin_routes(self, tmp_path):
+        from kokoro_tts.config import TTSConfig
+        from kokoro_tts.server import create_app
+
+        app = create_app(config=TTSConfig(model_dir=tmp_path, enabled_models=["kokoro"], default_model="kokoro"))
+        schema = app.openapi()
+
+        assert schema["info"]["version"] == "2.6.3"
+        assert "/v1/audio/batch" in schema["paths"]
+        assert "/admin/voices/upload" in schema["paths"]
 
 
 class TestTextNormalization:

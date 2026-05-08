@@ -17,10 +17,30 @@ from io import BytesIO
 from pathlib import Path
 from typing import Callable, Optional
 
+from fastapi import Depends, File, HTTPException, UploadFile
+from fastapi.responses import StreamingResponse
+from pydantic import BaseModel, Field
+
 logger = logging.getLogger(__name__)
 
 ALLOWED_MP3_BITRATES = {"64k", "96k", "128k", "160k", "192k", "256k", "320k"}
 _fallback_stats_lock = threading.Lock()
+
+
+class BatchItem(BaseModel):
+    text: str = Field(..., description="Text to synthesize")
+    model: Optional[str] = Field(default=None, description="Model id")
+    voice: Optional[str] = Field(default=None, description="Voice name")
+    speed: Optional[float] = Field(default=None, ge=0.5, le=2.0, description="Speed")
+    filename: Optional[str] = Field(default=None, description="File name in zip")
+
+
+class BatchTTSRequest(BaseModel):
+    items: list[BatchItem]
+    voice: str = "zm_010"
+    speed: float = Field(default=1.0, ge=0.5, le=2.0)
+    response_format: str = "wav"
+    model: Optional[str] = None
 
 
 def _safe_zip_filename(name: Optional[str], index: int, ext: str) -> str:
@@ -93,30 +113,12 @@ def register_extra_routes(
     cache_size: Callable[[], int] | None = None,
 ):
     """Register optional AngeVoice service routes on the existing FastAPI app."""
-    from fastapi import Depends, File, HTTPException, UploadFile
-    from fastapi.responses import StreamingResponse
-    from pydantic import BaseModel, Field
-
     def inc_stat(name: str, delta=1) -> None:
         if increment_stat is not None:
             increment_stat(name, delta)
             return
         with _fallback_stats_lock:
             stats[name] = stats.get(name, 0) + delta
-
-    class BatchItem(BaseModel):
-        text: str = Field(..., description="Text to synthesize")
-        model: Optional[str] = Field(default=None, description="Model id")
-        voice: Optional[str] = Field(default=None, description="Voice name")
-        speed: Optional[float] = Field(default=None, ge=0.5, le=2.0, description="Speed")
-        filename: Optional[str] = Field(default=None, description="File name in zip")
-
-    class BatchTTSRequest(BaseModel):
-        items: list[BatchItem]
-        voice: str = "zm_010"
-        speed: float = Field(default=1.0, ge=0.5, le=2.0)
-        response_format: str = "wav"
-        model: Optional[str] = None
 
     async def verify_admin(_=Depends(verify_api_key)):
         if not cfg.admin_enabled:

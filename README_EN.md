@@ -163,6 +163,23 @@ curl -X POST http://localhost:8000/api/tts \
 
 Uploading reference audio to a non-clone model such as Kokoro returns 400.
 
+WebSocket streaming also supports MOSS clone mode. The first JSON message can
+carry `prompt_audio.data` as base64 or a data URL. The Studio UI does this
+automatically when a reference file is selected and streaming is enabled:
+
+```json
+{
+  "model": "moss-nano-cpu",
+  "text": "This is a streamed reference-audio clone test.",
+  "voice": "Junhao",
+  "format": "pcm_s16le",
+  "prompt_audio": {
+    "filename": "reference.wav",
+    "data": "<base64>"
+  }
+}
+```
+
 When `KOKORO_API_KEY` is enabled, add:
 
 ```bash
@@ -282,10 +299,16 @@ Output files are grouped by date and pruned by `ANGEVOICE_OUTPUT_MAX_FILES`. MOS
 | `MOSS_MODEL_DIR` | - | MOSS ONNX asset directory; Docker uses `/opt/MOSS-TTS-Nano/models` |
 | `MOSS_EXECUTION_PROVIDER` | `cpu` | MOSS ONNX provider: `cpu` / `cuda` |
 | `MOSS_CUDA_ENABLED` | `true` | Allow registering/switching `moss-nano-cuda`; CPU/legacy profiles disable it |
+| `MOSS_CPU_THREADS` | `4` | MOSS CPU ONNX thread count; 2-4 is usually safer on NAS boxes |
 | `MOSS_PROMPT_UPLOAD_MAX_BYTES` | `20971520` | Reference-audio upload size limit |
+| `MOSS_PROMPT_AUDIO_MAX_SECONDS` | `10` | Trim clone reference audio to reduce VRAM use and latency |
+| `MOSS_PROMPT_CACHE_MAX_ITEMS` | `8` | Cache encoded reference audio codes for repeated clone requests |
 | `MOSS_APPLY_ANGEVOICE_RULES` | `true` | Apply AngeVoice Chinese semantic, punctuation, and polyphone rules to MOSS/future adapters |
 | `MOSS_AUTO_FALLBACK_CPU` | `true` | Fall back to CPU when CUDA self-test fails |
 | `MOSS_QUALITY_GATE_ENABLED` | `true` | Reject silent, NaN/Inf, or heavily clipped MOSS self-test output |
+| `MOSS_OUTPUT_PEAK_NORMALIZE_ENABLED` | `true` | Peak-normalize MOSS output to reduce clipping/crackle risk |
+| `MOSS_OUTPUT_TARGET_PEAK` | `0.92` | MOSS output target peak |
+| `MOSS_OUTPUT_GAIN` | `1.0` | Extra MOSS output gain; do not raise it when debugging artifacts |
 
 ## Security notes
 
@@ -306,7 +329,7 @@ See [Security Notes](docs/SECURITY.md).
 - Long-form text is synthesized segment by segment. Very long books should use a batch/task workflow.
 - For GPU deployments, avoid multiple workers loading the model at the same time unless you have enough VRAM.
 - MP3 output depends on ffmpeg.
-- WebSocket streaming is segment-level streaming, not true model-internal token streaming.
+- WebSocket streaming is segment-level streaming. MOSS clone mode can upload reference audio in the first message, but it is still not true model-internal token streaming.
 
 ## Testing
 

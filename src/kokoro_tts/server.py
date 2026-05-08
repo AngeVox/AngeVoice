@@ -54,6 +54,8 @@ _WORKER_ENV_EXPORTS = {
     "MOSS_CPU_THREADS": "moss_cpu_threads",
     "MOSS_DEFAULT_VOICE": "moss_default_voice",
     "MOSS_PROMPT_UPLOAD_MAX_BYTES": "moss_prompt_upload_max_bytes",
+    "MOSS_PROMPT_AUDIO_MAX_SECONDS": "moss_prompt_audio_max_seconds",
+    "MOSS_PROMPT_CACHE_MAX_ITEMS": "moss_prompt_cache_max_items",
     "MOSS_MAX_NEW_FRAMES": "moss_max_new_frames",
     "MOSS_VOICE_CLONE_MAX_TEXT_TOKENS": "moss_voice_clone_max_text_tokens",
     "MOSS_SAMPLE_MODE": "moss_sample_mode",
@@ -66,6 +68,9 @@ _WORKER_ENV_EXPORTS = {
     "MOSS_AUTO_FALLBACK_CPU": "moss_auto_fallback_cpu",
     "MOSS_QUALITY_GATE_ENABLED": "moss_quality_gate_enabled",
     "MOSS_MAX_CLIP_RATIO": "moss_max_clip_ratio",
+    "MOSS_OUTPUT_PEAK_NORMALIZE_ENABLED": "moss_output_peak_normalize_enabled",
+    "MOSS_OUTPUT_TARGET_PEAK": "moss_output_target_peak",
+    "MOSS_OUTPUT_GAIN": "moss_output_gain",
 }
 
 
@@ -114,7 +119,7 @@ def create_app(config: Optional[TTSConfig] = None, engine: Optional[TTSEngine] =
     app = FastAPI(
         title="AngeVoice",
         description="Lightweight local TTS service with selectable model engines",
-        version="2.6.2",
+        version="2.6.3",
         lifespan=lifespan,
     )
     app.state.angevoice = state

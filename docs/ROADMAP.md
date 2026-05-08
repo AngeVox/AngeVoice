@@ -48,6 +48,7 @@ This roadmap tracks the long-term direction of AngeVoice. Completed items are ma
 - √ `cancel` / `stop` control frames / `cancel` / `stop` 控制帧
 - √ Stream metadata: sample rate, channel count, format / 流式元信息：采样率、声道、格式
 - √ Browser streaming playback in Studio UI / Studio UI 浏览器流式播放
+- √ MOSS clone reference audio in WebSocket first message / WebSocket 首包支持 MOSS 克隆参考音频
 - □ Standalone browser playback helper library / 独立浏览器播放辅助库
 - □ Reconnect/resume strategy for long text / 长文本断线重连与续传策略
 - □ True model-level streaming if upstream supports it / 上游支持后接入真正模型级流式
@@ -105,6 +106,7 @@ This roadmap tracks the long-term direction of AngeVoice. Completed items are ma
 - √ MOSS preset voice and voice-clone modes / MOSS 预设音色与参考音频克隆模式
 - √ Shared Chinese text rules for Kokoro and MOSS / Kokoro 与 MOSS 共享中文文本规则
 - √ Tesla P4 CUDA probe for MOSS runtime / MOSS 运行时 Tesla P4 CUDA 探针验证
+- √ MOSS prompt audio trimming/cache and output peak normalization / MOSS 参考音频裁剪缓存与输出削峰
 - □ Optional CosyVoice engine / 可选 CosyVoice 引擎
 - □ Optional GPT-SoVITS engine / 可选 GPT-SoVITS 引擎
 - √ Per-engine capability registry / 按引擎登记能力
@@ -133,7 +135,7 @@ This roadmap tracks the long-term direction of AngeVoice. Completed items are ma
 - √ Roadmap / 长期路线图
 - □ API reference generated from OpenAPI / 基于 OpenAPI 生成 API 参考
 - √ Troubleshooting cookbook / 排障手册
-- □ Performance tuning guide / 性能调优指南
+- √ Performance tuning notes / 性能调优说明
 
 ## Version direction / 版本方向
 
@@ -141,5 +143,6 @@ This roadmap tracks the long-term direction of AngeVoice. Completed items are ma
 - √ v2.3.x: service edition with cache, stats, request tracking / 服务化版本，缓存、统计、请求追踪
 - √ v2.4.x: batch, admin, optional MP3, WebSocket cancel, legacy GPU profile / 批量、管理、可选 MP3、WebSocket 取消、老显卡画像
 - √ v2.5.x: service hardening, Chinese rules, Studio UI refresh / 服务稳定性、中文规则与 Studio UI 刷新
-- □ v2.6.x: multi-model MOSS runtime, model switcher, output persistence / Web UI 管理、任务工作流与更多模型适配
+- √ v2.6.x: multi-model MOSS runtime, model switcher, output persistence / 多模型 MOSS runtime、模型切换与输出持久化
+- □ v2.7.x: Web UI admin settings, job workflow, and more engine adapters / Web UI 管理、任务工作流与更多模型适配
 - □ v3.x: multi-engine plugin architecture / 多引擎插件架构

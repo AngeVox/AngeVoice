@@ -1,9 +1,7 @@
 """HTTP audio synthesis routes."""
 
 import asyncio
-import hashlib
 import logging
-import tempfile
 from contextlib import suppress
 from io import BytesIO
 from pathlib import Path
@@ -12,12 +10,10 @@ from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import StreamingResponse
 
 from ..api_models import TTSRequest
+from ..prompt_audio import save_prompt_audio_bytes
 from ..service_state import ServiceState
 
 logger = logging.getLogger(__name__)
-
-PROMPT_AUDIO_SUFFIXES = {".wav", ".mp3", ".flac", ".ogg", ".m4a", ".aac"}
-
 
 async def _run_tts_call(callable_, request_id: str):
     try:
@@ -36,25 +32,17 @@ async def _run_tts_call(callable_, request_id: str):
 async def _save_prompt_audio_upload(upload, request_id: str, max_bytes: int) -> tuple[str | None, str]:
     if not upload or not getattr(upload, "filename", "") or not callable(getattr(upload, "read", None)):
         return None, ""
-    filename = str(upload.filename or "prompt.wav")
-    suffix = Path(filename).suffix.lower() or ".wav"
-    if suffix not in PROMPT_AUDIO_SUFFIXES:
-        raise HTTPException(status_code=400, detail="参考音频仅支持 wav/mp3/flac/ogg/m4a/aac")
-
     content = await upload.read(int(max_bytes) + 1)
     with suppress(Exception):
         await upload.close()
     if not content:
         raise HTTPException(status_code=400, detail="参考音频为空")
-    if len(content) > int(max_bytes):
-        raise HTTPException(status_code=413, detail=f"参考音频不能超过 {int(max_bytes) // 1024 // 1024}MB")
-
-    digest = hashlib.sha256(content).hexdigest()
-    temp_dir = Path(tempfile.gettempdir()) / "angevoice_prompt_audio"
-    temp_dir.mkdir(parents=True, exist_ok=True)
-    target = temp_dir / f"{request_id}_{digest[:16]}{suffix}"
-    target.write_bytes(content)
-    return str(target), f"sha256:{digest}"
+    return save_prompt_audio_bytes(
+        content=content,
+        filename=str(upload.filename or "prompt.wav"),
+        request_id=request_id,
+        max_bytes=max_bytes,
+    )
 
 
 def create_audio_router(state: ServiceState, verify_api_key) -> APIRouter:

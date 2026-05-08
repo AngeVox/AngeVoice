@@ -52,7 +52,7 @@ src/kokoro_tts/
 
 ### WebSocket 流式
 
-1. `routes/ws.py` 接收首个 JSON 消息，读取 `text/voice/speed/format/binary/token`。
+1. `routes/ws.py` 接收首个 JSON 消息，读取 `text/voice/speed/format/binary/token`，并在 MOSS 克隆请求中接收可选 `prompt_audio` base64。
 2. `security.py` 校验 WebSocket token 或 Authorization header。
 3. `service_state.py` 用同一个并发信号量保护推理。
 4. `engine_manager.py` 借用目标模型，当前模型不匹配且启用卸载策略时会先切换并卸载旧模型。
@@ -89,6 +89,8 @@ src/kokoro_tts/
 
 MOSS capability metadata 会声明 `modes=["preset_voice","voice_clone"]` 和 `voice_clone_supported=true`。Studio Web UI 根据该能力显示参考音频上传控件；非克隆模型收到 `prompt_audio` 时会返回 400。HTTP 缓存 key 包含模型 ID 和参考音频指纹，避免不同 prompt audio 误命中同一条缓存。
 
+MOSS 适配层不会直接改写上游仓库代码。AngeVoice 在适配层中做三件事：复用单个 MOSS executor 并用 runtime lock 保护官方 runtime；对 clone 参考音频做时长裁剪和 prompt code LRU 缓存；对输出做削峰归一化，降低 8GB 显存环境下 clone OOM、爆音和削波的概率。
+
 MOSS CUDA 依赖目标环境的 ONNX Runtime/CUDA/cuDNN 组合。Tesla P4 在通用 GPU Docker 画像中已通过 `onnxruntime-gpu==1.20.2` + `nvidia-cudnn-cu12==9.1.0.70` 探针测试；缺 cuDNN 9 时官方 runtime 会创建 CPU session，AngeVoice 会拒绝该 CUDA 加载并按配置回退 CPU。老架构GPU 镜像通过 ONNX Runtime CUDA 11 feed 预装了 CUDA 11.8 兼容的 MOSS GPU 依赖，但默认只开放 MOSS CPU，方便用户先稳定运行 Kokoro。
 
 ## Studio Web UI
@@ -97,7 +99,7 @@ MOSS CUDA 依赖目标环境的 ONNX Runtime/CUDA/cuDNN 组合。Tesla P4 在通
 
 启用 `KOKORO_API_KEY` 时，Studio 设置面板保存的 Bearer Token 会同时用于 HTTP 请求和 WebSocket 首个 JSON 消息。
 
-当所选模型支持 `voice_clone` 时，Studio 显示参考音频上传控件。选择文件后前端会自动使用 HTTP multipart 生成，并关闭 WebSocket 流式开关，因为 WebSocket 首包不承载音频文件。
+当所选模型支持 `voice_clone` 时，Studio 显示参考音频上传控件。HTTP 合成使用 multipart 上传；WebSocket 流式会把参考音频转成 base64 放入首个 JSON 消息，后端复用同一套校验、临时文件和 MOSS prompt 缓存逻辑。
 
 ## 包名与模型加载关系
 

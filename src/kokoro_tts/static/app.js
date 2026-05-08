@@ -324,11 +324,11 @@ function setPromptAudioFile(file) {
 function applyStreamToggleState() {
   if (!els.streamToggle) return;
   const cloneUploadActive = modelSupportsVoiceClone() && Boolean(state.promptAudioFile);
-  if (!bootstrap.streamEnabled || cloneUploadActive) {
+  if (!bootstrap.streamEnabled) {
     els.streamToggle.checked = false;
   }
-  els.streamToggle.disabled = !bootstrap.streamEnabled || cloneUploadActive;
-  els.streamToggle.title = cloneUploadActive ? '参考音频克隆使用上传生成模式' : '';
+  els.streamToggle.disabled = !bootstrap.streamEnabled;
+  els.streamToggle.title = cloneUploadActive ? '参考音频会随流式首包发送' : '';
 }
 
 function applyModelUi() {
@@ -653,18 +653,54 @@ async function synthesizeHttp(text, voice, speed, autoplay = true) {
   }
 }
 
-function synthesizeStream(text, voice, speed) {
+function readFileAsBase64(file) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onerror = () => reject(new Error('参考音频读取失败'));
+    reader.onload = () => {
+      const value = String(reader.result || '');
+      resolve(value.includes(',') ? value.split(',', 2)[1] : value);
+    };
+    reader.readAsDataURL(file);
+  });
+}
+
+async function buildPromptAudioPayload() {
+  if (!modelSupportsVoiceClone() || !state.promptAudioFile) {
+    return null;
+  }
+  const file = state.promptAudioFile;
+  return {
+    filename: file.name || 'prompt.wav',
+    mime_type: file.type || 'application/octet-stream',
+    data: await readFileAsBase64(file)
+  };
+}
+
+async function synthesizeStream(text, voice, speed) {
+  setBusy(true);
+  setProgress('正在建立流式连接...');
+  let promptAudio = null;
+  try {
+    if (modelSupportsVoiceClone() && state.promptAudioFile) {
+      setProgress('正在读取参考音频...');
+      promptAudio = await buildPromptAudioPayload();
+    }
+  } catch (error) {
+    setProgress(error.message || '参考音频读取失败', true);
+    setBusy(false);
+    return;
+  }
+
   const protocol = location.protocol === 'https:' ? 'wss:' : 'ws:';
   state.currentWs = new WebSocket(`${protocol}//${location.host}/ws/v1/tts`);
   state.currentPlayer = new StreamPlayer();
   state.currentRequestId = '';
   state.lastBlob = null;
   state.totalSegments = 0;
-  setBusy(true);
-  setProgress('正在建立流式连接...');
 
   state.currentWs.onopen = () => {
-    state.currentWs.send(JSON.stringify({
+    const payload = {
       text,
       model: state.selectedModel,
       voice,
@@ -672,7 +708,11 @@ function synthesizeStream(text, voice, speed) {
       format: 'pcm_s16le',
       binary: false,
       token: state.token
-    }));
+    };
+    if (promptAudio) {
+      payload.prompt_audio = promptAudio;
+    }
+    state.currentWs.send(JSON.stringify(payload));
   };
 
   state.currentWs.onmessage = event => {
@@ -685,7 +725,9 @@ function synthesizeStream(text, voice, speed) {
       state.totalSegments = msg.segments || 0;
       setProgress(`流式合成开始，共 ${state.totalSegments} 段`);
     } else if (msg.type === 'audio') {
-      setProgress(`已接收 ${msg.index + 1} / ${state.totalSegments} 段`);
+      const doneCount = msg.index + 1;
+      const totalText = state.totalSegments && doneCount <= state.totalSegments ? ` / ${state.totalSegments}` : '';
+      setProgress(`已接收 ${doneCount}${totalText} 段`);
       state.currentPlayer.enqueuePCM(msg.data, msg.sample_rate, msg.channels);
     } else if (msg.type === 'done') {
       state.lastBlob = state.currentPlayer.buildWavBlob();
@@ -800,8 +842,8 @@ function bindEvents() {
     if (state.currentWs || state.currentAbort) {
       await stopCurrent();
     }
-    if (els.streamToggle.checked && !(modelSupportsVoiceClone() && state.promptAudioFile)) {
-      synthesizeStream(text, state.selectedVoice, els.speed.value);
+    if (els.streamToggle.checked) {
+      await synthesizeStream(text, state.selectedVoice, els.speed.value);
     } else {
       synthesizeHttp(text, state.selectedVoice, els.speed.value, true);
     }

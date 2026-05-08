@@ -81,12 +81,14 @@ KOKORO_VOICE_UPLOAD_ENABLED=false
 
 ## MOSS 参考音频上传
 
-MOSS 参考音频克隆使用 `/api/tts` multipart 字段 `prompt_audio`，只在模型声明支持 `voice_clone` 时生效。上传文件会写入容器临时目录，合成结束后删除；合成结果是否保存由 `ANGEVOICE_SAVE_OUTPUTS` 控制。CPU 和老架构GPU 画像默认不暴露 MOSS CUDA，避免误切到未验证的 GPU 推理路径。
+MOSS 参考音频克隆使用 `/api/tts` multipart 字段 `prompt_audio`，或 WebSocket 首包中的 `prompt_audio.data` base64，只在模型声明支持 `voice_clone` 时生效。上传文件会写入容器临时目录，合成结束后删除；MOSS 适配层会按 `MOSS_PROMPT_AUDIO_MAX_SECONDS` 裁剪后再编码，并缓存少量 prompt audio codes。合成结果是否保存由 `ANGEVOICE_SAVE_OUTPUTS` 控制。CPU 和老架构GPU 画像默认不暴露 MOSS CUDA，避免误切到未验证的 GPU 推理路径。
 
 默认限制：
 
 ```bash
 MOSS_PROMPT_UPLOAD_MAX_BYTES=20971520
+MOSS_PROMPT_AUDIO_MAX_SECONDS=10
+MOSS_PROMPT_CACHE_MAX_ITEMS=8
 ```
 
 支持后缀：`wav/mp3/flac/ogg/m4a/aac`。公网部署时建议在反向代理层同步设置请求体大小限制，避免上传占满内存或磁盘。

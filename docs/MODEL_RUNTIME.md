@@ -20,7 +20,7 @@ aliases resolve to the CPU model.
 MOSS models expose two modes:
 
 - `preset_voice`: use built-in MOSS voices such as `Junhao`.
-- `voice_clone`: upload a short reference audio file through `/api/tts`.
+- `voice_clone`: upload a short reference audio file through `/api/tts` or the WebSocket first message.
 
 All model adapters use the shared AngeVoice text-normalization path by default.
 That means Chinese punctuation insertion, lightweight semantic matching,
@@ -64,6 +64,24 @@ The request cache includes a reference-audio fingerprint, so different prompt
 audio files cannot collide with each other. Uploading `prompt_audio` to a model
 without `voice_clone` returns 400.
 
+For WebSocket streaming, put the reference audio into the first JSON message as
+base64 or a data URL. The server writes it to a temporary file, applies the same
+size/suffix checks, trims it for inference, and removes the upload after the
+request:
+
+```json
+{
+  "model": "moss-nano-cpu",
+  "text": "这是参考音频克隆的流式测试。",
+  "voice": "Junhao",
+  "format": "pcm_s16le",
+  "prompt_audio": {
+    "filename": "reference.wav",
+    "data": "<base64>"
+  }
+}
+```
+
 ## Environment
 
 | Variable | Default | Notes |
@@ -83,10 +101,38 @@ without `voice_clone` returns 400.
 | `MOSS_DEFAULT_VOICE` | `Junhao` | Built-in MOSS voice preset |
 | `MOSS_PROMPT_AUDIO_PATH` | - | Optional reference audio for voice cloning |
 | `MOSS_PROMPT_UPLOAD_MAX_BYTES` | `20971520` | `/api/tts` reference-audio upload limit |
+| `MOSS_PROMPT_AUDIO_MAX_SECONDS` | `10` | Trim uploaded/reference audio before codec encoding |
+| `MOSS_PROMPT_CACHE_MAX_ITEMS` | `8` | LRU cache size for encoded prompt audio codes |
 | `MOSS_APPLY_ANGEVOICE_RULES` | `true` | Apply AngeVoice Chinese rules before MOSS inference |
 | `MOSS_AUTO_FALLBACK_CPU` | `true` | Fall back to CPU if CUDA load/self-test fails |
 | `MOSS_CUDA_SELF_TEST_ENABLED` | `true` | Warm up CUDA provider before serving |
 | `MOSS_QUALITY_GATE_ENABLED` | `true` | Reject silent/clipped/invalid test output |
+| `MOSS_OUTPUT_PEAK_NORMALIZE_ENABLED` | `true` | Scale MOSS output down when it exceeds the target peak |
+| `MOSS_OUTPUT_TARGET_PEAK` | `0.92` | MOSS output peak target |
+| `MOSS_OUTPUT_GAIN` | `1.0` | Extra gain before peak normalization |
+
+## Runtime Tuning
+
+MOSS-TTS-Nano is small, but the official runtime still spends noticeable time
+in text generation and codec encode/decode. AngeVoice keeps one executor per
+loaded MOSS engine, serializes access to the mutable official runtime, and
+caches encoded prompt-audio codes. This avoids per-request thread-pool churn and
+prevents multiple requests from mutating the runtime manifest or codec streaming
+session at the same time.
+
+For NAS/low-power deployments, keep:
+
+```bash
+KOKORO_MAX_CONCURRENT_REQUESTS=1
+MOSS_CPU_THREADS=2
+MOSS_PROMPT_AUDIO_MAX_SECONDS=8
+MOSS_PROMPT_CACHE_MAX_ITEMS=6
+MOSS_OUTPUT_PEAK_NORMALIZE_ENABLED=true
+```
+
+For modern GPUs with 8 GB VRAM, keep reference audio short. Long clone samples
+can make the codec encoder allocate multi-GB buffers even though the acoustic
+model itself is small.
 
 ## Docker Notes
 

@@ -150,6 +150,10 @@ MOSS_EXECUTION_PROVIDER=cpu
 MOSS_CUDA_ENABLED=false
 MOSS_MODEL_DIR=/opt/MOSS-TTS-Nano/models
 MOSS_PROMPT_UPLOAD_MAX_BYTES=20971520
+MOSS_PROMPT_AUDIO_MAX_SECONDS=8
+MOSS_PROMPT_CACHE_MAX_ITEMS=6
+MOSS_OUTPUT_PEAK_NORMALIZE_ENABLED=true
+MOSS_OUTPUT_TARGET_PEAK=0.90
 ```
 
 Generated HTTP audio and MOSS ONNX assets are persisted by the Compose mounts:
@@ -175,6 +179,13 @@ unless the CUDA 11.8 path passes validation.
 
 针对 Tesla P4，现代 GPU 画像已用 `onnxruntime-gpu==1.20.2` 和
 `nvidia-cudnn-cu12==9.1.0.70` 验证 MOSS CUDA 可运行。如果宿主机不适合 CUDA 12/cuDNN 9，则使用 legacy 画像，并让 MOSS 保持 CPU；除非 CUDA 11.8 路径已经通过验证。
+
+MOSS clone mode should keep reference audio short. This profile trims prompt
+audio to 8 seconds and caches encoded prompt codes to reduce repeated codec
+encoder work. If you still hear crackle or see OOM, lower
+`MOSS_PROMPT_AUDIO_MAX_SECONDS` before increasing concurrency.
+
+MOSS 克隆模式建议使用较短参考音频。本画像默认把参考音频裁剪到 8 秒，并缓存编码后的 prompt codes，以减少重复 codec encoder 开销。如果仍出现爆音或 OOM，先继续降低 `MOSS_PROMPT_AUDIO_MAX_SECONDS`，不要优先提高并发。
 
 ## Admin and voice upload / 管理接口与音色上传
 

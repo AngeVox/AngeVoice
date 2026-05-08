@@ -52,6 +52,10 @@ ANGEVOICE_ENABLED_MODELS=kokoro,moss-nano-cpu
 MOSS_EXECUTION_PROVIDER=cpu
 MOSS_CUDA_ENABLED=false
 ANGEVOICE_SAVE_OUTPUTS=true
+MOSS_PROMPT_AUDIO_MAX_SECONDS=8
+MOSS_PROMPT_CACHE_MAX_ITEMS=6
+MOSS_OUTPUT_PEAK_NORMALIZE_ENABLED=true
+MOSS_OUTPUT_TARGET_PEAK=0.90
 ```
 
 建议：
@@ -79,8 +83,12 @@ MOSS_CUDA_ENABLED=false
 MOSS_CPU_THREADS=2
 MOSS_MODEL_DIR=/opt/MOSS-TTS-Nano/models
 MOSS_PROMPT_UPLOAD_MAX_BYTES=20971520
+MOSS_PROMPT_AUDIO_MAX_SECONDS=10
+MOSS_PROMPT_CACHE_MAX_ITEMS=8
 MOSS_AUTO_FALLBACK_CPU=true
 MOSS_QUALITY_GATE_ENABLED=true
+MOSS_OUTPUT_PEAK_NORMALIZE_ENABLED=true
+MOSS_OUTPUT_TARGET_PEAK=0.92
 ```
 
 通用 GPU 画像默认：
@@ -93,6 +101,8 @@ MOSS_CUDA_ENABLED=true
 ```
 
 Tesla P4 已用 Docker 探针验证可在通用 GPU 画像的 `onnxruntime-gpu==1.20.2` + `nvidia-cudnn-cu12==9.1.0.70` 下跑通 MOSS CUDA 推理；如果缺 cuDNN 9，ONNX Runtime 会退成 CPU session，AngeVoice 会拒绝该 CUDA 加载并回退 CPU。长期运行前仍要人工试听，确认无静音、爆音、失真或 clipping。
+
+MOSS 克隆参考音频会被裁剪到 `MOSS_PROMPT_AUDIO_MAX_SECONDS`，并缓存编码后的 prompt audio codes。这样可以降低 clone 模式在 8GB 显存和低功耗 CPU 上的重复开销；如果仍然出现 OOM 或爆音，优先缩短参考音频而不是提高并发。
 
 持久化建议：
 

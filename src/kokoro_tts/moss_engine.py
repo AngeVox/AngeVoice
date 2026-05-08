@@ -9,10 +9,14 @@ from __future__ import annotations
 import base64
 import concurrent.futures
 import gc
+import hashlib
 import logging
 import sys
 import tempfile
 import time
+import threading
+from collections import OrderedDict
+from contextlib import suppress
 from pathlib import Path
 from typing import Optional
 
@@ -41,6 +45,11 @@ class MossNanoEngine:
         self._actual_provider = self.execution_provider
         self._load_error = ""
         self._self_test = None
+        self._last_output_quality = None
+        self._runtime_lock = threading.Lock()
+        self._prompt_cache_lock = threading.Lock()
+        self._prompt_audio_code_cache: OrderedDict[str, list[list[int]]] = OrderedDict()
+        self._executor = concurrent.futures.ThreadPoolExecutor(max_workers=1, thread_name_prefix=f"{engine_id}-worker")
 
     @property
     def is_loaded(self) -> bool:
@@ -98,6 +107,9 @@ class MossNanoEngine:
             "experimental": self.execution_provider == "cuda",
             "error": self._load_error,
             "self_test": self._self_test,
+            "last_output_quality": self._last_output_quality,
+            "prompt_audio_max_seconds": self.config.moss_prompt_audio_max_seconds,
+            "output_target_peak": self.config.moss_output_target_peak,
         }
 
     def load(self) -> "MossNanoEngine":
@@ -128,8 +140,11 @@ class MossNanoEngine:
         return self
 
     def unload(self) -> None:
-        self._runtime = None
-        self._loaded = False
+        with self._runtime_lock:
+            self._runtime = None
+            self._loaded = False
+            with self._prompt_cache_lock:
+                self._prompt_audio_code_cache.clear()
         gc.collect()
         try:
             import torch
@@ -144,66 +159,33 @@ class MossNanoEngine:
         return write_wav_bytes(waveform, self.sample_rate)
 
     def synthesize_array(self, text: str, voice: str = "", speed: float = 1.0, prompt_audio_path: str | None = None):
-        import numpy as np
-
         self._validate_request(text=text, voice=voice, speed=speed)
         prepared_text = self._clean_text(text)
         segments = self._segment_text(prepared_text)
-        prompt_audio = prompt_audio_path or (str(self.config.moss_prompt_audio_path) if self.config.moss_prompt_audio_path else None)
+        prompt_audio = prompt_audio_path or (
+            str(self.config.moss_prompt_audio_path) if self.config.moss_prompt_audio_path else None
+        )
         timeout = self.config.request_timeout_seconds
 
         logger.info("MOSS synthesize: segments=%d, voice=%s", len(segments), voice or self.default_voice)
 
-        all_waveforms = []
-
         def _run():
-            for i, seg in enumerate(segments):
-                if not seg.strip():
-                    continue
-                t0 = time.monotonic()
-                result = self._runtime.synthesize(
-                    text=seg,
-                    voice=voice or self.default_voice,
-                    prompt_audio_path=prompt_audio,
-                    output_audio_path=self._temp_output_path(),
-                    sample_mode=self.config.moss_sample_mode,
-                    do_sample=self.config.moss_sample_mode != "greedy",
-                    streaming=bool(self.config.moss_realtime_streaming_decode),
-                    max_new_frames=self.config.moss_max_new_frames,
-                    voice_clone_max_text_tokens=self.config.moss_voice_clone_max_text_tokens,
-                    enable_wetext=bool(self.config.moss_enable_wetext_processing),
-                    enable_normalize_tts_text=bool(self.config.moss_enable_normalize_tts_text),
-                )
-                waveform = normalize_audio_array(result["waveform"])
-                all_waveforms.append(waveform)
-                elapsed = time.monotonic() - t0
-                logger.info("MOSS segment %d/%d done (%.1fs, %d samples)", i + 1, len(segments), elapsed, waveform.shape[0])
-
-            if not all_waveforms:
-                raise RuntimeError("MOSS: all segments produced empty audio")
-
-            # Concatenate with inter-segment silence
-            sr = self.sample_rate
-            silence = np.zeros((int(sr * _SEGMENT_SILENCE_SECONDS), all_waveforms[0].shape[-1]), dtype=np.float32) if all_waveforms[0].ndim == 2 else np.zeros(int(sr * _SEGMENT_SILENCE_SECONDS), dtype=np.float32)
-            parts = []
-            for idx, wf in enumerate(all_waveforms):
-                parts.append(wf)
-                if idx < len(all_waveforms) - 1:
-                    parts.append(silence)
-            return np.concatenate(parts)
-
-        with concurrent.futures.ThreadPoolExecutor(max_workers=1) as pool:
-            future = pool.submit(_run)
-            try:
-                return future.result(timeout=timeout)
-            except concurrent.futures.TimeoutError:
-                future.cancel()
-                raise RuntimeError(
-                    f"MOSS inference timed out ({timeout}s). "
-                    "CUDA inference may be stuck. Try switching to CPU or restarting."
+            with self._runtime_lock:
+                return self._concat_waveforms(
+                    list(self._iter_waveforms(segments=segments, voice=voice, prompt_audio_path=prompt_audio))
                 )
 
-    def synthesize_stream(self, text, voice="", speed=1.0, fmt="pcm_s16le"):
+        future = self._executor.submit(_run)
+        try:
+            return future.result(timeout=timeout)
+        except concurrent.futures.TimeoutError:
+            future.cancel()
+            raise RuntimeError(
+                f"MOSS inference timed out ({timeout}s). "
+                "CUDA inference may be stuck. Try switching to CPU or restarting."
+            )
+
+    def synthesize_stream(self, text, voice="", speed=1.0, fmt="pcm_s16le", prompt_audio_path: str | None = None):
         if fmt not in self.SUPPORTED_STREAM_FORMATS:
             yield {"type": "error", "message": f"Unsupported format: {fmt}"}
             return
@@ -215,6 +197,9 @@ class MossNanoEngine:
 
         prepared_text = self._clean_text(text)
         segments = self._segment_text(prepared_text)
+        prompt_audio = prompt_audio_path or (
+            str(self.config.moss_prompt_audio_path) if self.config.moss_prompt_audio_path else None
+        )
 
         yield {
             "type": "started",
@@ -224,47 +209,229 @@ class MossNanoEngine:
             "format": fmt,
             "dtype": "s16le" if fmt == "pcm_s16le" else "wav",
             "model": self.engine_id,
+            "voice_clone": bool(prompt_audio),
         }
 
-        prompt_audio = str(self.config.moss_prompt_audio_path) if self.config.moss_prompt_audio_path else None
         total_done = 0
 
-        for i, seg in enumerate(segments):
-            if not seg.strip():
-                continue
-            try:
-                t0 = time.monotonic()
-                result = self._runtime.synthesize(
-                    text=seg,
-                    voice=voice or self.default_voice,
-                    prompt_audio_path=prompt_audio,
-                    output_audio_path=self._temp_output_path(),
-                    sample_mode=self.config.moss_sample_mode,
-                    do_sample=self.config.moss_sample_mode != "greedy",
-                    streaming=bool(self.config.moss_realtime_streaming_decode),
-                    max_new_frames=self.config.moss_max_new_frames,
-                    voice_clone_max_text_tokens=self.config.moss_voice_clone_max_text_tokens,
-                    enable_wetext=bool(self.config.moss_enable_wetext_processing),
-                    enable_normalize_tts_text=bool(self.config.moss_enable_normalize_tts_text),
-                )
-                waveform = normalize_audio_array(result["waveform"])
-                audio_bytes = encode_audio_segment(waveform, fmt, self.sample_rate)
-                elapsed = time.monotonic() - t0
-                logger.info("MOSS stream segment %d/%d (%.1fs)", i + 1, len(segments), elapsed)
-                yield {
-                    "type": "audio",
-                    "index": i,
-                    "data": base64.b64encode(audio_bytes).decode("ascii"),
-                    "format": fmt,
-                    "sample_rate": self.sample_rate,
-                    "channels": self.channels,
-                }
-                total_done += 1
-            except Exception as exc:
-                logger.warning("MOSS stream segment %d failed: %s", i + 1, exc)
-                yield {"type": "segment_error", "index": i, "message": str(exc), "model": self.engine_id}
+        try:
+            with self._runtime_lock:
+                for i, waveform in enumerate(self._iter_waveforms(segments=segments, voice=voice, prompt_audio_path=prompt_audio)):
+                    audio_bytes = encode_audio_segment(waveform, fmt, self.sample_rate)
+                    yield {
+                        "type": "audio",
+                        "index": i,
+                        "data": base64.b64encode(audio_bytes).decode("ascii"),
+                        "format": fmt,
+                        "sample_rate": self.sample_rate,
+                        "channels": self.channels,
+                    }
+                    total_done += 1
+        except Exception as exc:
+            logger.warning("MOSS stream failed: %s", exc)
+            yield {"type": "segment_error", "index": total_done, "message": str(exc), "model": self.engine_id}
 
         yield {"type": "done", "total_segments": total_done}
+
+    def _iter_waveforms(self, *, segments: list[str], voice: str = "", prompt_audio_path: str | None = None):
+        prompt_audio_codes = self._resolve_prompt_audio_codes_cached(voice=voice, prompt_audio_path=prompt_audio_path)
+        self._configure_runtime_generation()
+        total_segments = len([item for item in segments if item.strip()])
+        emitted = 0
+        for seg in segments:
+            if not seg.strip():
+                continue
+            emitted += 1
+            t0 = time.monotonic()
+            for waveform in self._iter_runtime_chunks(seg, voice=voice, prompt_audio_codes=prompt_audio_codes):
+                processed = self._postprocess_waveform(waveform)
+                logger.info(
+                    "MOSS segment %d/%d chunk done (%.1fs, %d samples)",
+                    emitted,
+                    total_segments,
+                    time.monotonic() - t0,
+                    processed.shape[0],
+                )
+                yield processed
+            if emitted < total_segments:
+                silence = self._silence_array(_SEGMENT_SILENCE_SECONDS)
+                if silence.size:
+                    yield silence
+
+    def _iter_runtime_chunks(self, text: str, *, voice: str = "", prompt_audio_codes: list[list[int]]):
+        import numpy as np
+
+        prepared_texts = self._runtime.prepare_synthesis_text(
+            text=text,
+            voice=voice or self.default_voice,
+            enable_wetext=bool(self.config.moss_enable_wetext_processing),
+            enable_normalize_tts_text=bool(self.config.moss_enable_normalize_tts_text),
+        )
+        prepared_text = str(prepared_texts["text"])
+        text_chunks = self._runtime.split_voice_clone_text(
+            prepared_text,
+            max_tokens=int(self.config.moss_voice_clone_max_text_tokens),
+        )
+        if not text_chunks:
+            return
+        for chunk_index, chunk_text in enumerate(text_chunks):
+            chunk_result = self._runtime.synthesize_single_chunk(
+                text=chunk_text,
+                prompt_audio_codes=prompt_audio_codes,
+                streaming=bool(self.config.moss_realtime_streaming_decode),
+            )
+            yield np.asarray(chunk_result["waveform"], dtype=np.float32)
+            if chunk_index < len(text_chunks) - 1:
+                pause_seconds = float(self._runtime.estimate_voice_clone_inter_chunk_pause_seconds(chunk_text))
+                silence = self._silence_array(pause_seconds)
+                if silence.size:
+                    yield silence
+
+    def _configure_runtime_generation(self) -> None:
+        generation = self._runtime.manifest["generation_defaults"]
+        generation["max_new_frames"] = int(self.config.moss_max_new_frames)
+        generation["sample_mode"] = self.config.moss_sample_mode
+        generation["do_sample"] = self.config.moss_sample_mode != "greedy"
+
+    def _concat_waveforms(self, waveforms: list):
+        import numpy as np
+
+        parts = [item for item in waveforms if getattr(item, "size", 0)]
+        if not parts:
+            raise RuntimeError("MOSS: all segments produced empty audio")
+        return np.concatenate(parts)
+
+    def _silence_array(self, seconds: float):
+        import numpy as np
+
+        samples = max(0, int(self.sample_rate * max(0.0, float(seconds))))
+        if samples <= 0:
+            return np.zeros((0, self.channels), dtype=np.float32)
+        return np.zeros((samples, self.channels), dtype=np.float32)
+
+    def _resolve_prompt_audio_codes_cached(self, *, voice: str = "", prompt_audio_path: str | None = None) -> list[list[int]]:
+        key = self._prompt_audio_cache_key(voice=voice, prompt_audio_path=prompt_audio_path)
+        with self._prompt_cache_lock:
+            cached = self._prompt_audio_code_cache.get(key)
+            if cached is not None:
+                self._prompt_audio_code_cache.move_to_end(key)
+                return cached
+
+        prepared_path, cleanup_path = self._prepare_prompt_audio(prompt_audio_path)
+        try:
+            codes = self._runtime.resolve_prompt_audio_codes(
+                voice=voice or self.default_voice,
+                prompt_audio_path=prepared_path,
+            )
+        finally:
+            if cleanup_path:
+                with suppress(OSError):
+                    Path(cleanup_path).unlink()
+
+        max_items = int(self.config.moss_prompt_cache_max_items)
+        if max_items > 0:
+            with self._prompt_cache_lock:
+                self._prompt_audio_code_cache[key] = codes
+                self._prompt_audio_code_cache.move_to_end(key)
+                while len(self._prompt_audio_code_cache) > max_items:
+                    self._prompt_audio_code_cache.popitem(last=False)
+        return codes
+
+    def _prompt_audio_cache_key(self, *, voice: str = "", prompt_audio_path: str | None = None) -> str:
+        if not prompt_audio_path:
+            return f"voice:{voice or self.default_voice}"
+        path = Path(prompt_audio_path).expanduser()
+        digest = hashlib.sha256()
+        try:
+            with path.open("rb") as handle:
+                for chunk in iter(lambda: handle.read(1024 * 1024), b""):
+                    digest.update(chunk)
+        except OSError:
+            digest.update(str(path).encode("utf-8", "ignore"))
+        return (
+            f"prompt:{digest.hexdigest()}:"
+            f"voice:{voice or self.default_voice}:"
+            f"maxsec:{float(self.config.moss_prompt_audio_max_seconds):.3f}:"
+            f"sr:{self.sample_rate}:ch:{self.channels}"
+        )
+
+    def _prepare_prompt_audio(self, prompt_audio_path: str | None) -> tuple[str | None, str | None]:
+        if not prompt_audio_path:
+            return None, None
+        max_seconds = float(self.config.moss_prompt_audio_max_seconds or 0)
+        if max_seconds <= 0:
+            return prompt_audio_path, None
+        try:
+            import torch
+            import torchaudio
+        except Exception:
+            logger.debug("torchaudio unavailable; using original prompt audio", exc_info=True)
+            return prompt_audio_path, None
+
+        source = Path(prompt_audio_path).expanduser().resolve()
+        try:
+            waveform, sample_rate = torchaudio.load(str(source))
+        except Exception:
+            logger.debug("Failed to load prompt audio for trimming; using original", exc_info=True)
+            return prompt_audio_path, None
+
+        target_sr = self.sample_rate
+        waveform = waveform.to(torch.float32)
+        if sample_rate != target_sr:
+            waveform = torchaudio.functional.resample(waveform, sample_rate, target_sr)
+        max_samples = int(target_sr * max_seconds)
+        if max_samples > 0 and int(waveform.shape[-1]) > max_samples:
+            logger.info(
+                "Trimming MOSS prompt audio from %.2fs to %.2fs",
+                float(waveform.shape[-1]) / float(target_sr),
+                max_seconds,
+            )
+            waveform = waveform[..., :max_samples]
+        if int(waveform.shape[0]) > self.channels:
+            waveform = waveform.mean(dim=0, keepdim=True)
+        if int(waveform.shape[0]) < self.channels:
+            waveform = waveform.repeat(self.channels, 1)
+        waveform = torch.clamp(waveform, -1.0, 1.0)
+        temp_dir = Path(tempfile.gettempdir()) / "angevoice_moss_prompt"
+        temp_dir.mkdir(parents=True, exist_ok=True)
+        target = temp_dir / f"{source.stem}_{hashlib.sha1(str(source).encode()).hexdigest()[:10]}_{int(max_seconds * 1000)}ms.wav"
+        torchaudio.save(str(target), waveform.cpu(), target_sr)
+        return str(target), str(target)
+
+    def _postprocess_waveform(self, waveform):
+        import numpy as np
+
+        audio = np.asarray(waveform, dtype=np.float32)
+        if audio.ndim == 0:
+            audio = audio.reshape(1)
+        elif audio.ndim > 2:
+            audio = audio.reshape(-1, audio.shape[-1])
+        if audio.ndim == 1:
+            audio = audio.reshape(-1, 1)
+        if audio.ndim == 2 and int(audio.shape[1]) != self.channels:
+            if int(audio.shape[1]) > self.channels:
+                audio = audio.mean(axis=1, keepdims=True)
+            if self.channels > int(audio.shape[1]):
+                audio = np.repeat(audio[:, :1], self.channels, axis=1)
+        audio = np.nan_to_num(audio, nan=0.0, posinf=0.0, neginf=0.0)
+        gain = float(self.config.moss_output_gain)
+        if gain != 1.0:
+            audio = audio * gain
+        max_abs_before = float(np.max(np.abs(audio))) if audio.size else 0.0
+        target_peak = float(self.config.moss_output_target_peak)
+        scale = 1.0
+        if self.config.moss_output_peak_normalize_enabled and max_abs_before > target_peak > 0:
+            scale = target_peak / max_abs_before
+            audio = audio * scale
+        clipped = np.clip(audio, -1.0, 1.0)
+        clip_ratio = float(np.mean(np.abs(clipped) >= 0.999)) if clipped.size else 0.0
+        self._last_output_quality = {
+            "max_abs_before": round(max_abs_before, 6),
+            "scale": round(scale, 6),
+            "max_abs_after": round(float(np.max(np.abs(clipped))) if clipped.size else 0.0, 6),
+            "clip_ratio": round(clip_ratio, 6),
+        }
+        return clipped.astype(np.float32, copy=False)
 
     def _ensure_import_path(self) -> None:
         repo_path = self.config.moss_repo_path

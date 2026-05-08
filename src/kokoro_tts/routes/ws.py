@@ -4,10 +4,13 @@ import asyncio
 import base64
 import logging
 import time
+from contextlib import suppress
+from pathlib import Path
 
-from fastapi import APIRouter, WebSocket
+from fastapi import APIRouter, HTTPException, WebSocket
 from starlette.websockets import WebSocketDisconnect
 
+from ..prompt_audio import decode_prompt_audio_base64, save_prompt_audio_bytes
 from ..security import verify_ws_key
 from ..service_state import ServiceState
 
@@ -24,6 +27,8 @@ def create_ws_router(state: ServiceState) -> APIRouter:
         request_id = state.new_request_id()
         producer_task = None
         control_task = None
+        prompt_audio_path: str | None = None
+        prompt_audio_id = ""
         saw_stream_error = False
         stream_error_counted = False
         try:
@@ -49,6 +54,27 @@ def create_ws_router(state: ServiceState) -> APIRouter:
             if len(text) > cfg.max_text_length:
                 await websocket.send_json({"type": "error", "message": f"文本过长，上限 {cfg.max_text_length}", "request_id": request_id})
                 return
+
+            prompt_payload = msg.get("prompt_audio") if isinstance(msg.get("prompt_audio"), dict) else {}
+            prompt_audio_data = (
+                (prompt_payload or {}).get("data")
+                or msg.get("prompt_audio_data")
+                or msg.get("reference_audio_data")
+            )
+            if prompt_audio_data:
+                if not state.engine_supports_voice_clone(target_engine):
+                    await websocket.send_json({"type": "error", "message": "当前模型不支持参考音频克隆", "request_id": request_id})
+                    return
+                try:
+                    prompt_audio_path, prompt_audio_id = save_prompt_audio_bytes(
+                        content=decode_prompt_audio_base64(str(prompt_audio_data)),
+                        filename=str((prompt_payload or {}).get("filename") or msg.get("prompt_audio_filename") or "prompt.wav"),
+                        request_id=request_id,
+                        max_bytes=cfg.moss_prompt_upload_max_bytes,
+                    )
+                except HTTPException as exc:
+                    await websocket.send_json({"type": "error", "message": str(exc.detail), "request_id": request_id})
+                    return
 
             queue: asyncio.Queue = asyncio.Queue(maxsize=1)
             loop = asyncio.get_running_loop()
@@ -97,7 +123,8 @@ def create_ws_router(state: ServiceState) -> APIRouter:
             def producer():
                 try:
                     with state.model_manager.borrow(model) as eng:
-                        for chunk in eng.synthesize_stream(text, voice, speed, fmt):
+                        prompt_kwargs = {"prompt_audio_path": prompt_audio_path} if prompt_audio_path else {}
+                        for chunk in eng.synthesize_stream(text, voice, speed, fmt, **prompt_kwargs):
                             if cancel_flag["cancelled"] or state.is_cancelled(request_id):
                                 break
                             if isinstance(chunk, dict):
@@ -122,7 +149,17 @@ def create_ws_router(state: ServiceState) -> APIRouter:
             state.inc_stat("requests_total")
             state.inc_stat("characters_total", len(text or ""))
             start = time.perf_counter()
-            state.mark_request(request_id, "queued", voice=voice, format=fmt, model=model, chars=len(text or ""), websocket=True)
+            state.mark_request(
+                request_id,
+                "queued",
+                voice=voice,
+                format=fmt,
+                model=model,
+                chars=len(text or ""),
+                websocket=True,
+                voice_clone=bool(prompt_audio_path),
+                prompt_audio_id=prompt_audio_id,
+            )
 
             async with state.tts_semaphore:
                 state.mark_request(request_id, "running")
@@ -182,6 +219,9 @@ def create_ws_router(state: ServiceState) -> APIRouter:
             except Exception:
                 pass
         finally:
+            if prompt_audio_path:
+                with suppress(OSError):
+                    Path(prompt_audio_path).unlink()
             try:
                 await websocket.close()
             except Exception:

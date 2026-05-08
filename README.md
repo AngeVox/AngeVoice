@@ -207,6 +207,21 @@ curl -X POST http://localhost:8000/api/tts \
 
 参考音频仅对支持 `voice_clone` 的模型生效；对 Kokoro 上传参考音频会返回 400。
 
+WebSocket 也支持 MOSS 克隆的逐段流式输出。首个 JSON 消息可携带 `prompt_audio.data`（base64 或 data URL）；Studio Web UI 会在你选择参考音频并开启流式时自动完成这一步：
+
+```json
+{
+  "model": "moss-nano-cpu",
+  "text": "这是参考音频克隆的流式测试。",
+  "voice": "Junhao",
+  "format": "pcm_s16le",
+  "prompt_audio": {
+    "filename": "reference.wav",
+    "data": "<base64>"
+  }
+}
+```
+
 启用 `KOKORO_API_KEY` 后增加：
 
 ```bash
@@ -326,10 +341,16 @@ models/voices/*.pt
 | `MOSS_MODEL_DIR` | - | MOSS ONNX 模型目录；Docker 建议 `/opt/MOSS-TTS-Nano/models` |
 | `MOSS_EXECUTION_PROVIDER` | `cpu` | MOSS ONNX provider：`cpu` / `cuda` |
 | `MOSS_CUDA_ENABLED` | `true` | 是否允许注册/切换 `moss-nano-cuda`；CPU/legacy 默认关闭 |
+| `MOSS_CPU_THREADS` | `4` | MOSS CPU ONNX 线程数；NAS 建议 2-4 |
 | `MOSS_PROMPT_UPLOAD_MAX_BYTES` | `20971520` | Web UI/API 参考音频上传大小上限 |
+| `MOSS_PROMPT_AUDIO_MAX_SECONDS` | `10` | 克隆参考音频裁剪时长，降低显存和延迟 |
+| `MOSS_PROMPT_CACHE_MAX_ITEMS` | `8` | 参考音频编码缓存条目数，减少重复 clone 开销 |
 | `MOSS_APPLY_ANGEVOICE_RULES` | `true` | MOSS 和后续适配器是否使用 AngeVoice 中文语义、断句、多音字规则 |
 | `MOSS_AUTO_FALLBACK_CPU` | `true` | CUDA 自检失败时回退 CPU |
 | `MOSS_QUALITY_GATE_ENABLED` | `true` | 拒绝静音、NaN/Inf 或明显 clipping 的 MOSS 自检输出 |
+| `MOSS_OUTPUT_PEAK_NORMALIZE_ENABLED` | `true` | 对 MOSS 输出做削峰，降低爆音/削波风险 |
+| `MOSS_OUTPUT_TARGET_PEAK` | `0.92` | MOSS 输出削峰目标峰值 |
+| `MOSS_OUTPUT_GAIN` | `1.0` | MOSS 输出额外增益；出现爆音时不要调高 |
 
 ## 安全说明
 
@@ -350,7 +371,7 @@ models/voices/*.pt
 - 长文本依赖分段合成，极长文本建议走批量/任务队列工作流。
 - GPU 场景下不建议多 worker 同时加载模型，容易造成显存占用翻倍。
 - MP3 输出依赖 ffmpeg。
-- WebSocket 是逐段流式，不是模型内部 token 级真实流式。
+- WebSocket 是逐段流式；MOSS 克隆可通过首包上传参考音频，但仍不是模型内部 token 级真实流式。
 
 ## 测试
 

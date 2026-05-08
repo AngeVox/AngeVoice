@@ -163,6 +163,8 @@ class TTSConfig:
     moss_default_voice: str = "Junhao"
     moss_prompt_audio_path: Optional[Path] = None
     moss_prompt_upload_max_bytes: int = 20 * 1024 * 1024
+    moss_prompt_audio_max_seconds: float = 10.0
+    moss_prompt_cache_max_items: int = 8
     moss_max_new_frames: int = 375
     moss_voice_clone_max_text_tokens: int = 75
     moss_sample_mode: str = "fixed"
@@ -175,6 +177,9 @@ class TTSConfig:
     moss_auto_fallback_cpu: bool = True
     moss_quality_gate_enabled: bool = True
     moss_max_clip_ratio: float = 0.02
+    moss_output_peak_normalize_enabled: bool = True
+    moss_output_target_peak: float = 0.92
+    moss_output_gain: float = 1.0
 
     @property
     def model_path(self) -> str:
@@ -283,6 +288,7 @@ def _apply_env(config: TTSConfig) -> None:
         "ANGEVOICE_OUTPUT_MAX_FILES": IntEnvSpec("output_max_files", 0),
         "MOSS_CPU_THREADS": IntEnvSpec("moss_cpu_threads", 1),
         "MOSS_PROMPT_UPLOAD_MAX_BYTES": IntEnvSpec("moss_prompt_upload_max_bytes", 1),
+        "MOSS_PROMPT_CACHE_MAX_ITEMS": IntEnvSpec("moss_prompt_cache_max_items", 0),
         "MOSS_MAX_NEW_FRAMES": IntEnvSpec("moss_max_new_frames", 1),
         "MOSS_VOICE_CLONE_MAX_TEXT_TOKENS": IntEnvSpec("moss_voice_clone_max_text_tokens", 1),
     }
@@ -290,7 +296,10 @@ def _apply_env(config: TTSConfig) -> None:
         "KOKORO_DEFAULT_SPEED": FloatEnvSpec("default_speed"),
         "KOKORO_REQUEST_TIMEOUT_SECONDS": FloatEnvSpec("request_timeout_seconds", 1.0),
         "ANGEVOICE_MODEL_SWITCH_TIMEOUT_SECONDS": FloatEnvSpec("model_switch_timeout_seconds", 1.0),
+        "MOSS_PROMPT_AUDIO_MAX_SECONDS": FloatEnvSpec("moss_prompt_audio_max_seconds", 0.0),
         "MOSS_MAX_CLIP_RATIO": FloatEnvSpec("moss_max_clip_ratio", 0.0, 1.0),
+        "MOSS_OUTPUT_TARGET_PEAK": FloatEnvSpec("moss_output_target_peak", 0.1, 1.0),
+        "MOSS_OUTPUT_GAIN": FloatEnvSpec("moss_output_gain", 0.1, 2.0),
     }
     bool_env: dict[str, str] = {
         "KOKORO_STREAM_BINARY_ENABLED": "stream_binary_enabled",
@@ -312,6 +321,7 @@ def _apply_env(config: TTSConfig) -> None:
         "MOSS_CUDA_SELF_TEST_ENABLED": "moss_cuda_self_test_enabled",
         "MOSS_AUTO_FALLBACK_CPU": "moss_auto_fallback_cpu",
         "MOSS_QUALITY_GATE_ENABLED": "moss_quality_gate_enabled",
+        "MOSS_OUTPUT_PEAK_NORMALIZE_ENABLED": "moss_output_peak_normalize_enabled",
     }
 
     for env_name, attr in str_env.items():
