@@ -134,9 +134,11 @@ class GlobalQueueMiddleware(BaseHTTPMiddleware):
         self._max = max(1, int(max_concurrent))
 
     async def dispatch(self, request: Request, call_next):  # noqa: ANN201
-        try:
-            await asyncio.wait_for(self._semaphore.acquire(), timeout=0)
-        except asyncio.TimeoutError:
+        # asyncio.Semaphore has no public acquire_nowait(). In ASGI's event loop,
+        # checking and decrementing _value without an await in between is atomic
+        # enough for this non-blocking capacity gate and avoids wait_for(..., 0)
+        # false negatives on some Python/event-loop combinations.
+        if self._semaphore._value <= 0:  # noqa: SLF001 - no public non-blocking API
             logger.warning("Global queue full (%d/%d)", self._max, self._max)
             return JSONResponse(
                 status_code=429,
@@ -146,6 +148,7 @@ class GlobalQueueMiddleware(BaseHTTPMiddleware):
                 },
                 headers={"Retry-After": "1"},
             )
+        await self._semaphore.acquire()
         try:
             return await call_next(request)
         finally:
