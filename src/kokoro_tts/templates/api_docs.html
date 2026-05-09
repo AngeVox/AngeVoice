@@ -1,0 +1,661 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>AngeVoice API 文档</title>
+  <script>
+    const savedTheme = localStorage.getItem('angevoice.theme.v1');
+    document.documentElement.dataset.theme = savedTheme || (matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light');
+  </script>
+  <link rel="stylesheet" href="/static/app.css" />
+  <style>
+    .docs-shell {
+      width: min(1180px, calc(100% - 32px));
+      margin: 0 auto;
+      padding: 24px 0 48px;
+    }
+    .docs-hero {
+      display: grid;
+      grid-template-columns: 1fr auto;
+      gap: 18px;
+      align-items: center;
+      margin-bottom: 18px;
+      padding: 22px;
+      border: 1px solid var(--line);
+      border-radius: var(--radius);
+      background: var(--panel);
+      box-shadow: var(--shadow);
+      backdrop-filter: blur(18px);
+    }
+    .docs-hero h1 {
+      margin: 0;
+      font-size: clamp(28px, 4vw, 46px);
+      line-height: 1.05;
+    }
+    .docs-hero p {
+      max-width: 760px;
+      margin: 10px 0 0;
+      color: var(--muted);
+      line-height: 1.75;
+    }
+    .docs-actions {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+      justify-content: flex-end;
+    }
+    .docs-actions a {
+      display: inline-flex;
+      min-height: 40px;
+      align-items: center;
+      justify-content: center;
+      padding: 0 14px;
+      border: 1px solid var(--line);
+      border-radius: var(--radius);
+      color: var(--text);
+      background: var(--control-soft);
+      font-weight: 820;
+      text-decoration: none;
+    }
+    .docs-grid {
+      display: grid;
+      grid-template-columns: 260px minmax(0, 1fr);
+      gap: 16px;
+      align-items: start;
+    }
+    .docs-nav {
+      position: sticky;
+      top: 16px;
+      display: grid;
+      gap: 8px;
+      padding: 14px;
+      border: 1px solid var(--line);
+      border-radius: var(--radius);
+      background: var(--panel);
+      box-shadow: var(--shadow);
+      backdrop-filter: blur(18px);
+    }
+    .docs-nav a {
+      padding: 9px 10px;
+      border-radius: var(--radius);
+      color: var(--muted);
+      text-decoration: none;
+      font-weight: 760;
+    }
+    .docs-nav a:hover {
+      color: var(--text);
+      background: var(--control-soft);
+    }
+    .docs-content {
+      display: grid;
+      gap: 14px;
+    }
+    .doc-card {
+      padding: 18px;
+      border: 1px solid var(--line);
+      border-radius: var(--radius);
+      background: var(--panel);
+      box-shadow: var(--shadow);
+      backdrop-filter: blur(18px);
+    }
+    .doc-card h2 {
+      margin: 0 0 10px;
+      font-size: 24px;
+    }
+    .doc-card h3 {
+      margin: 18px 0 8px;
+      font-size: 17px;
+    }
+    .doc-card p,
+    .doc-card li {
+      color: var(--muted);
+      line-height: 1.75;
+    }
+    .doc-card code {
+      padding: 2px 5px;
+      border-radius: 6px;
+      color: var(--text);
+      background: var(--control-soft);
+    }
+    .table-wrap {
+      overflow-x: auto;
+      border: 1px solid var(--line);
+      border-radius: var(--radius);
+    }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      min-width: 640px;
+    }
+    th,
+    td {
+      padding: 10px 12px;
+      border-bottom: 1px solid var(--line);
+      color: var(--muted);
+      text-align: left;
+      vertical-align: top;
+    }
+    th {
+      color: var(--text);
+      background: var(--control-soft);
+    }
+    tr:last-child td {
+      border-bottom: 0;
+    }
+    .callout {
+      margin: 12px 0;
+      padding: 12px 14px;
+      border: 1px solid rgba(22, 160, 133, 0.22);
+      border-radius: var(--radius);
+      color: var(--text);
+      background: rgba(22, 160, 133, 0.08);
+      line-height: 1.75;
+    }
+    .callout.warn {
+      border-color: rgba(183, 121, 31, 0.28);
+      background: rgba(183, 121, 31, 0.10);
+    }
+    .code-block {
+      position: relative;
+      margin: 12px 0;
+      overflow: hidden;
+      border: 1px solid var(--line);
+      border-radius: var(--radius);
+      background: rgba(10, 18, 28, 0.92);
+    }
+    .code-block pre {
+      margin: 0;
+      padding: 16px;
+      overflow-x: auto;
+      color: #e8eef8;
+      font-size: 13px;
+      line-height: 1.65;
+    }
+    .copy-btn {
+      position: absolute;
+      top: 8px;
+      right: 8px;
+      min-height: 30px;
+      padding: 0 10px;
+      border: 1px solid rgba(255,255,255,.16);
+      border-radius: 7px;
+      color: #fff;
+      background: rgba(255,255,255,.10);
+      cursor: pointer;
+      font-size: 12px;
+      font-weight: 800;
+    }
+    .pill-row {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      margin: 12px 0 0;
+    }
+    .pill-row span {
+      display: inline-flex;
+      align-items: center;
+      min-height: 30px;
+      padding: 0 10px;
+      border: 1px solid var(--line);
+      border-radius: 999px;
+      color: var(--muted);
+      background: var(--control-soft);
+      font-size: 13px;
+      font-weight: 760;
+    }
+    @media (max-width: 900px) {
+      .docs-hero,
+      .docs-grid {
+        grid-template-columns: 1fr;
+      }
+      .docs-nav {
+        position: static;
+      }
+      .docs-actions {
+        justify-content: flex-start;
+      }
+    }
+  </style>
+</head>
+<body>
+  <script id="angevoice-docs-bootstrap" type="application/json">{{ bootstrap | tojson }}</script>
+
+  <main class="docs-shell">
+    <section class="docs-hero">
+      <div>
+        <p class="eyebrow">AngeVoice API Docs</p>
+        <h1>API 调用文档与 MOSS 语音克隆示例</h1>
+        <p>
+          这里是给普通用户和接入方看的可复制 API 文档。默认服务端口请按部署画像替换：
+          pip 为 <code>8000</code>，Docker CPU 为 <code>8100</code>，Docker GPU 为 <code>8101</code>，
+          老架构 GPU 为 <code>8102</code>。
+        </p>
+        <div class="pill-row">
+          <span id="auth-pill">鉴权状态检测中</span>
+          <span>HTTP: /v1/audio/speech、/api/tts</span>
+          <span>WebSocket: /ws/v1/tts</span>
+        </div>
+      </div>
+      <div class="docs-actions">
+        <a href="/">返回 Studio</a>
+        <a href="/docs">Swagger</a>
+        <a href="/redoc">ReDoc</a>
+        <a href="/health">Health</a>
+      </div>
+    </section>
+
+    <section class="docs-grid">
+      <nav class="docs-nav" aria-label="API 文档导航">
+        <a href="#quick">快速开始</a>
+        <a href="#models">模型与端点</a>
+        <a href="#openai">OpenAI 兼容合成</a>
+        <a href="#moss-clone">MOSS 克隆：音频放哪</a>
+        <a href="#moss-http">MOSS HTTP 克隆</a>
+        <a href="#moss-ws">MOSS WebSocket 流式克隆</a>
+        <a href="#server-default">服务端默认参考音频</a>
+        <a href="#errors">常见错误</a>
+      </nav>
+
+      <div class="docs-content">
+        <article class="doc-card" id="quick">
+          <h2>快速开始</h2>
+          <p>
+            页面中的示例默认使用 <code>BASE_URL=http://localhost:8000</code>。
+            Docker 部署时把端口替换成你的画像端口即可。
+          </p>
+
+          <div class="code-block">
+            <button class="copy-btn" type="button">复制</button>
+            <pre><code>BASE_URL=http://localhost:8000
+
+curl "$BASE_URL/health"
+curl "$BASE_URL/v1/models"
+curl "$BASE_URL/v1/audio/voices"</code></pre>
+          </div>
+
+          <div class="callout">
+            如果设置了 <code>KOKORO_API_KEY</code>，HTTP 请求要加
+            <code>Authorization: Bearer YOUR_TOKEN</code>；WebSocket 可在首包 JSON 里传
+            <code>token</code>。
+          </div>
+        </article>
+
+        <article class="doc-card" id="models">
+          <h2>模型与端点</h2>
+          <div class="table-wrap">
+            <table>
+              <thead>
+                <tr><th>模型 ID</th><th>用途</th><th>是否支持参考音频克隆</th></tr>
+              </thead>
+              <tbody>
+                <tr><td><code>kokoro</code></td><td>Kokoro v1.1 中文，默认启动，资源占用低</td><td>否，只支持 .pt 音色</td></tr>
+                <tr><td><code>moss-nano-cpu</code></td><td>MOSS-TTS-Nano ONNX CPU，适合 NAS/兼容性优先</td><td>是</td></tr>
+                <tr><td><code>moss-nano-cuda</code></td><td>MOSS-TTS-Nano ONNX CUDA，实验模式</td><td>是</td></tr>
+              </tbody>
+            </table>
+          </div>
+
+          <h3>切换到 MOSS</h3>
+          <div class="code-block">
+            <button class="copy-btn" type="button">复制</button>
+            <pre><code>curl -X POST "$BASE_URL/v1/models/switch" \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer YOUR_TOKEN" \
+  -d '{"model":"moss-nano-cpu","unload_previous":true}'</code></pre>
+          </div>
+        </article>
+
+        <article class="doc-card" id="openai">
+          <h2>OpenAI 兼容合成</h2>
+          <p>
+            <code>/v1/audio/speech</code> 用 JSON 调用，适合普通 TTS。它不走 multipart，
+            所以 <strong>MOSS 参考音频上传请用 <code>/api/tts</code></strong>。
+          </p>
+
+          <div class="code-block">
+            <button class="copy-btn" type="button">复制</button>
+            <pre><code>curl -X POST "$BASE_URL/v1/audio/speech" \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer YOUR_TOKEN" \
+  -d '{"model":"kokoro","input":"你好世界","voice":"zm_010","speed":1.0,"response_format":"wav"}' \
+  --output kokoro.wav</code></pre>
+          </div>
+
+          <div class="code-block">
+            <button class="copy-btn" type="button">复制</button>
+            <pre><code>curl -X POST "$BASE_URL/v1/audio/speech" \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer YOUR_TOKEN" \
+  -d '{"model":"moss-nano-cpu","input":"这是 MOSS 预设音色测试。","voice":"Junhao","response_format":"wav"}' \
+  --output moss.wav</code></pre>
+          </div>
+        </article>
+
+        <article class="doc-card" id="moss-clone">
+          <h2>MOSS 克隆：参考音频到底放哪？</h2>
+          <p>
+            很多人会把 MOSS 的参考音频误放到 <code>models/voices</code>。
+            这个目录是 Kokoro 的 <code>.pt</code> 音色目录，不是 MOSS 克隆参考音频目录。
+          </p>
+
+          <div class="table-wrap">
+            <table>
+              <thead>
+                <tr><th>使用方式</th><th>参考音频放置位置</th><th>适合场景</th></tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <td>HTTP multipart 上传</td>
+                  <td>放在调用客户端本机任意路径，例如 <code>./reference.wav</code>，curl 用 <code>-F prompt_audio=@reference.wav</code> 上传</td>
+                  <td>最推荐，最直观，一次请求带一次参考音频</td>
+                </tr>
+                <tr>
+                  <td>WebSocket base64</td>
+                  <td>前端/客户端读取本地文件，转成 base64，放进首个 JSON 的 <code>prompt_audio.data</code></td>
+                  <td>流式克隆、网页上传、实时播放</td>
+                </tr>
+                <tr>
+                  <td>服务端默认参考音频</td>
+                  <td>把文件挂载到容器内，例如 <code>/app/prompts/reference.wav</code>，设置 <code>MOSS_PROMPT_AUDIO_PATH</code></td>
+                  <td>固定一个默认克隆音色，客户端无需每次上传</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+
+          <div class="callout warn">
+            推荐参考音频：3-10 秒、单人、清晰、少背景噪音。过长音频会被
+            <code>MOSS_PROMPT_AUDIO_MAX_SECONDS</code> 裁剪，也可能增加显存和延迟压力。
+          </div>
+        </article>
+
+        <article class="doc-card" id="moss-http">
+          <h2>MOSS HTTP 参考音频克隆</h2>
+          <p>
+            使用 <code>POST /api/tts</code> 的 multipart 表单。字段名可以是
+            <code>prompt_audio</code>，也兼容 <code>reference_audio</code>。
+          </p>
+
+          <div class="code-block">
+            <button class="copy-btn" type="button">复制</button>
+            <pre><code>BASE_URL=http://localhost:8000
+
+curl -X POST "$BASE_URL/api/tts" \
+  -H "Authorization: Bearer YOUR_TOKEN" \
+  -F model=moss-nano-cpu \
+  -F text="这是参考音频克隆测试。" \
+  -F voice=Junhao \
+  -F response_format=wav \
+  -F prompt_audio=@reference.wav \
+  --output clone.wav</code></pre>
+          </div>
+
+          <h3>字段说明</h3>
+          <div class="table-wrap">
+            <table>
+              <thead>
+                <tr><th>字段</th><th>说明</th></tr>
+              </thead>
+              <tbody>
+                <tr><td><code>model</code></td><td><code>moss-nano-cpu</code> 或 <code>moss-nano-cuda</code></td></tr>
+                <tr><td><code>text</code></td><td>要合成的文本</td></tr>
+                <tr><td><code>voice</code></td><td>MOSS 内置说话人名，例如 <code>Junhao</code>；有参考音频时仍作为 prompt 解析的 voice 参数</td></tr>
+                <tr><td><code>response_format</code></td><td><code>wav</code>、<code>pcm</code>，或启用 ffmpeg 后的 <code>mp3</code></td></tr>
+                <tr><td><code>prompt_audio</code></td><td>参考音频文件上传字段，支持 wav/mp3/flac/ogg/m4a/aac</td></tr>
+              </tbody>
+            </table>
+          </div>
+
+          <h3>Python requests 示例</h3>
+          <div class="code-block">
+            <button class="copy-btn" type="button">复制</button>
+            <pre><code>import requests
+
+base_url = "http://localhost:8000"
+headers = {"Authorization": "Bearer YOUR_TOKEN"}
+
+with open("reference.wav", "rb") as audio:
+    files = {"prompt_audio": ("reference.wav", audio, "audio/wav")}
+    data = {
+        "model": "moss-nano-cpu",
+        "text": "这是 Python 上传参考音频克隆测试。",
+        "voice": "Junhao",
+        "response_format": "wav",
+    }
+    resp = requests.post(f"{base_url}/api/tts", headers=headers, data=data, files=files)
+    resp.raise_for_status()
+
+with open("clone.wav", "wb") as out:
+    out.write(resp.content)</code></pre>
+          </div>
+        </article>
+
+        <article class="doc-card" id="moss-ws">
+          <h2>MOSS WebSocket 流式克隆</h2>
+          <p>
+            WebSocket 不能像 HTTP 一样用 multipart。参考音频需要在第一个 JSON 消息里传：
+            <code>prompt_audio.filename</code> 和 <code>prompt_audio.data</code>。
+            <code>data</code> 可以是纯 base64，也可以是浏览器 FileReader 生成的 data URL。
+          </p>
+
+          <h3>首包 JSON 结构</h3>
+          <div class="code-block">
+            <button class="copy-btn" type="button">复制</button>
+            <pre><code>{
+  "model": "moss-nano-cpu",
+  "text": "这是参考音频克隆的流式测试。",
+  "voice": "Junhao",
+  "format": "pcm_s16le",
+  "binary": false,
+  "prompt_audio": {
+    "filename": "reference.wav",
+    "data": "&lt;base64-or-data-url&gt;"
+  },
+  "token": "YOUR_TOKEN"
+}</code></pre>
+          </div>
+
+          <h3>浏览器 FileReader 示例</h3>
+          <div class="code-block">
+            <button class="copy-btn" type="button">复制</button>
+            <pre><code>async function fileToDataUrl(file) {
+  return await new Promise((resolve, reject) =&gt; {
+    const reader = new FileReader();
+    reader.onload = () =&gt; resolve(reader.result);
+    reader.onerror = reject;
+    reader.readAsDataURL(file);
+  });
+}
+
+async function startMossCloneStream(file) {
+  const promptData = await fileToDataUrl(file);
+  const ws = new WebSocket("ws://localhost:8000/ws/v1/tts");
+
+  ws.onopen = () =&gt; {
+    ws.send(JSON.stringify({
+      model: "moss-nano-cpu",
+      text: "这是网页端 MOSS 克隆流式测试。",
+      voice: "Junhao",
+      format: "pcm_s16le",
+      binary: false,
+      token: "YOUR_TOKEN",
+      prompt_audio: {
+        filename: file.name || "reference.wav",
+        data: promptData
+      }
+    }));
+  };
+
+  ws.onmessage = (event) =&gt; {
+    const msg = JSON.parse(event.data);
+    if (msg.type === "started") {
+      console.log("stream started", msg);
+    }
+    if (msg.type === "audio") {
+      const bytes = Uint8Array.from(atob(msg.data), c =&gt; c.charCodeAt(0));
+      // bytes 是 PCM s16le；接到 AudioWorklet、播放器队列或后端转封装即可。
+      console.log("audio chunk", bytes.byteLength);
+    }
+    if (msg.type === "done") {
+      ws.close();
+    }
+    if (msg.type === "error" || msg.type === "segment_error") {
+      console.error(msg.message);
+    }
+  };
+
+  return ws;
+}</code></pre>
+          </div>
+
+          <h3>Python websockets 示例</h3>
+          <div class="code-block">
+            <button class="copy-btn" type="button">复制</button>
+            <pre><code>import asyncio
+import base64
+import json
+import websockets
+
+async def main():
+    with open("reference.wav", "rb") as f:
+        prompt_b64 = base64.b64encode(f.read()).decode("ascii")
+
+    async with websockets.connect("ws://localhost:8000/ws/v1/tts") as ws:
+        await ws.send(json.dumps({
+            "model": "moss-nano-cpu",
+            "text": "这是 Python WebSocket 克隆流式测试。",
+            "voice": "Junhao",
+            "format": "pcm_s16le",
+            "binary": False,
+            "token": "YOUR_TOKEN",
+            "prompt_audio": {
+                "filename": "reference.wav",
+                "data": prompt_b64
+            }
+        }, ensure_ascii=False))
+
+        with open("stream.pcm", "wb") as out:
+            async for raw in ws:
+                msg = json.loads(raw)
+                if msg.get("type") == "audio":
+                    out.write(base64.b64decode(msg["data"]))
+                elif msg.get("type") in {"done", "cancelled"}:
+                    break
+                elif msg.get("type") in {"error", "segment_error"}:
+                    raise RuntimeError(msg.get("message"))
+
+asyncio.run(main())</code></pre>
+          </div>
+
+          <div class="callout">
+            上面的 Python 示例保存的是原始 PCM s16le。要直接得到 wav，可以请求
+            <code>format:"wav"</code>，或者把 PCM 按返回的 <code>sample_rate</code>、
+            <code>channels</code> 自行封装成 wav。
+          </div>
+        </article>
+
+        <article class="doc-card" id="server-default">
+          <h2>服务端默认参考音频</h2>
+          <p>
+            如果你想固定一个参考音频，让所有 MOSS clone 请求默认使用它，可以设置
+            <code>MOSS_PROMPT_AUDIO_PATH</code>。这适合“单一默认克隆音色”的服务。
+          </p>
+
+          <h3>Docker Compose 挂载示例</h3>
+          <div class="code-block">
+            <button class="copy-btn" type="button">复制</button>
+            <pre><code>volumes:
+  - ../../prompts:/app/prompts:ro
+
+environment:
+  - MOSS_PROMPT_AUDIO_PATH=/app/prompts/reference.wav
+  - MOSS_PROMPT_AUDIO_MAX_SECONDS=10
+  - MOSS_PROMPT_CACHE_MAX_ITEMS=8</code></pre>
+          </div>
+
+          <h3>调用时不用再上传文件</h3>
+          <div class="code-block">
+            <button class="copy-btn" type="button">复制</button>
+            <pre><code>curl -X POST "$BASE_URL/api/tts" \
+  -H "Authorization: Bearer YOUR_TOKEN" \
+  -F model=moss-nano-cpu \
+  -F text="这次请求会使用服务端默认参考音频。" \
+  -F voice=Junhao \
+  -F response_format=wav \
+  --output clone-default.wav</code></pre>
+          </div>
+
+          <div class="callout warn">
+            这种方式不会把音频保存到 <code>models/voices</code>，也不会生成 Kokoro 的
+            <code>.pt</code> 音色。它只是 MOSS 每次推理时读取/缓存的一段 prompt audio。
+          </div>
+        </article>
+
+        <article class="doc-card" id="errors">
+          <h2>常见错误</h2>
+          <div class="table-wrap">
+            <table>
+              <thead>
+                <tr><th>现象</th><th>原因</th><th>处理</th></tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <td><code>当前模型不支持参考音频克隆</code></td>
+                  <td>请求打到了 <code>kokoro</code>，或模型没有 voice_clone 能力</td>
+                  <td>切换/指定 <code>moss-nano-cpu</code> 或 <code>moss-nano-cuda</code></td>
+                </tr>
+                <tr>
+                  <td>MOSS 模型不可选</td>
+                  <td>MOSS runtime 没装，或当前画像没有启用该模型</td>
+                  <td>查看 <code>/v1/models</code>，检查 <code>ANGEVOICE_ENABLED_MODELS</code> 和 <code>MOSS_CUDA_ENABLED</code></td>
+                </tr>
+                <tr>
+                  <td>WebSocket 连接成功但没音频</td>
+                  <td>首包缺 <code>text</code>、鉴权 token、或代理没转发 WebSocket upgrade</td>
+                  <td>先本地直连 <code>ws://host:port/ws/v1/tts</code> 测试，再检查代理</td>
+                </tr>
+                <tr>
+                  <td>clone OOM / 爆音 / 失真</td>
+                  <td>参考音频太长、CUDA provider 不稳定、显存紧张</td>
+                  <td>把 <code>MOSS_PROMPT_AUDIO_MAX_SECONDS</code> 降到 5-8，先试 <code>moss-nano-cpu</code></td>
+                </tr>
+                <tr>
+                  <td>401 Unauthorized</td>
+                  <td>服务端设置了 <code>KOKORO_API_KEY</code></td>
+                  <td>HTTP 加 Bearer；WebSocket 首包加 <code>token</code></td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </article>
+      </div>
+    </section>
+  </main>
+
+  <script>
+    const docsBootstrap = JSON.parse(document.getElementById('angevoice-docs-bootstrap')?.textContent || '{}');
+    const authPill = document.getElementById('auth-pill');
+    if (authPill) {
+      authPill.textContent = docsBootstrap.authRequired
+        ? '已启用 API Key：示例里保留 Bearer Token'
+        : '未启用 API Key：本地调用可省略 Bearer Token';
+    }
+
+    document.querySelectorAll('.copy-btn').forEach((button) => {
+      button.addEventListener('click', async () => {
+        const code = button.parentElement?.querySelector('code')?.innerText || '';
+        try {
+          await navigator.clipboard.writeText(code);
+          const old = button.textContent;
+          button.textContent = '已复制';
+          setTimeout(() => { button.textContent = old; }, 1100);
+        } catch (err) {
+          button.textContent = '复制失败';
+          setTimeout(() => { button.textContent = '复制'; }, 1100);
+        }
+      });
+    });
+  </script>
+</body>
+</html>
