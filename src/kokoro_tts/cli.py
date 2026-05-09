@@ -9,6 +9,8 @@ import logging
 import sys
 from pathlib import Path
 
+from . import __version__
+
 
 def main():
     prog = Path(sys.argv[0]).name or "angevoice"
@@ -16,7 +18,7 @@ def main():
         prog=prog,
         description="AngeVoice — 轻量级中文 TTS 服务，基于 Kokoro v1.1 模型构建",
     )
-    parser.add_argument("--version", action="version", version="AngeVoice 2.6.4.2")
+    parser.add_argument("--version", action="version", version=f"AngeVoice {__version__}")
     sub = parser.add_subparsers(dest="command", help="子命令")
 
     serve_p = sub.add_parser("serve", help="启动 HTTP 服务")
