@@ -10,6 +10,7 @@ import os
 from pathlib import Path
 from typing import Optional
 
+from . import __version__
 from .config import TTSConfig, load_config
 from .engine import TTSEngine
 from .engine_manager import EngineManager
@@ -135,7 +136,7 @@ def create_app(config: Optional[TTSConfig] = None, engine: Optional[TTSEngine] =
     app = FastAPI(
         title="AngeVoice",
         description="Lightweight local TTS service with selectable model engines",
-        version="2.6.4.2",
+        version=__version__,
         lifespan=lifespan,
     )
     app.state.angevoice = state
@@ -149,7 +150,6 @@ def create_app(config: Optional[TTSConfig] = None, engine: Optional[TTSEngine] =
         allow_headers=["*"],
     )
 
-    # --- Rate limiting middleware (after CORS, before routes) ---
     if cfg.rate_limit_qps > 0:
         logger.info("Rate limiting enabled: %.1f QPS, burst=%d", cfg.rate_limit_qps, cfg.rate_limit_burst)
         app.add_middleware(RateLimitMiddleware, qps=cfg.rate_limit_qps, burst=cfg.rate_limit_burst)
