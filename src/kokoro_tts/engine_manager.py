@@ -44,6 +44,7 @@ class EngineManager:
         self._engines: dict[str, object] = {}
         self._current_model_id = self.normalize_model_id(cfg.default_model)
         self._last_used: dict[str, float] = {}
+        self._active_counts: dict[str, int] = {}
         if initial_engine is not None:
             self._engines["kokoro"] = initial_engine
             self._current_model_id = "kokoro"
@@ -100,6 +101,13 @@ class EngineManager:
                     continue
                 engine = self._engines.get(model_id)
                 if engine is None or not getattr(engine, "is_loaded", False):
+                    continue
+                active = self._active_counts.get(model_id, 0)
+                if active > 0:
+                    logger.debug(
+                        "Skipping idle unload for %s: %d active borrow(s)",
+                        model_id, active,
+                    )
                     continue
                 last = self._last_used.get(model_id, 0)
                 if now - last >= timeout:
@@ -208,9 +216,23 @@ class EngineManager:
             if target_id != self._current_model_id and self.cfg.model_unload_on_switch:
                 self.switch_model(target_id, unload_previous=True, load=True)
             engine = self.get_engine(target_id, load=True)
+            # Auto-reload if engine is marked unhealthy (e.g. after timeout)
+            if getattr(engine, "_unhealthy", False):
+                logger.info("Engine %s is unhealthy, triggering reload", target_id)
+                try:
+                    engine.unload()
+                    engine.load()
+                except Exception:
+                    logger.exception("Failed to reload unhealthy engine %s", target_id)
+            self._active_counts[target_id] = self._active_counts.get(target_id, 0) + 1
         # Lock released before yield — synthesis must NOT hold the model lock,
         # otherwise a stuck inference blocks all endpoints (health, stats, etc.).
-        yield engine
+        try:
+            yield engine
+        finally:
+            with self._lock:
+                current = self._active_counts.get(target_id, 0)
+                self._active_counts[target_id] = max(0, current - 1)
 
     def get_engine(self, model_id: str | None = None, *, load: bool = True):
         target_id = self.normalize_model_id(model_id)
@@ -266,8 +288,10 @@ class EngineManager:
     def _model_snapshot(self, spec: EngineSpec) -> dict:
         engine = self._engines.get(spec.id)
         loaded = bool(getattr(engine, "is_loaded", False)) if engine is not None else False
+        healthy = bool(getattr(engine, "is_healthy", True)) if engine is not None else True
         runtime = self._engine_metadata(engine) if loaded and engine is not None else {}
         static_capabilities = self._static_capabilities(spec)
+        active_count = self._active_counts.get(spec.id, 0)
         return {
             "id": spec.id,
             "name": spec.name,
@@ -277,7 +301,9 @@ class EngineManager:
             "enabled": True,
             "current": spec.id == self._current_model_id,
             "loaded": loaded,
+            "healthy": healthy,
             "available": self._runtime_available(spec),
+            "active_count": active_count,
             **static_capabilities,
             **runtime,
         }

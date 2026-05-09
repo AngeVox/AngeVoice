@@ -10,6 +10,31 @@ from starlette.concurrency import run_in_threadpool
 from ..service_state import ServiceState
 
 
+def _get_vram_usage() -> dict:
+    """Return GPU VRAM info if available, else status='unavailable'."""
+    try:
+        import torch  # noqa: F811
+        if torch.cuda.is_available():
+            device = torch.cuda.current_device()
+            total = torch.cuda.get_device_properties(device).total_mem
+            used = torch.cuda.memory_allocated(device)
+            reserved = torch.cuda.memory_reserved(device)
+            return {
+                "available": True,
+                "device_name": torch.cuda.get_device_name(device),
+                "total_bytes": total,
+                "used_bytes": used,
+                "reserved_bytes": reserved,
+                "free_bytes": total - reserved,
+                "used_percent": round(used / total * 100, 1) if total > 0 else 0.0,
+            }
+        return {"available": False, "status": "no_cuda_device"}
+    except ImportError:
+        return {"available": False, "status": "torch_not_installed"}
+    except Exception as exc:
+        return {"available": False, "status": "error", "error": str(exc)}
+
+
 class ModelSwitchRequest(BaseModel):
     model: str
     unload_previous: bool | None = None
@@ -18,6 +43,10 @@ class ModelSwitchRequest(BaseModel):
 def create_status_router(state: ServiceState, verify_api_key, templates=None) -> APIRouter:
     router = APIRouter()
     cfg = state.cfg
+
+    def _admin_required():
+        if not cfg.metrics_enabled:
+            raise HTTPException(status_code=404, detail="Metrics disabled")
 
     @router.get("/", response_class=HTMLResponse)
     async def index(request: Request):
@@ -78,8 +107,20 @@ def create_status_router(state: ServiceState, verify_api_key, templates=None) ->
     async def health():
         current_model = state.model_manager.current_snapshot()
         voices = current_model.get("voices") or []
+        # Check if any loaded model is unhealthy
+        all_models = state.model_manager.list_models()
+        unhealthy_models = [
+            m["id"] for m in all_models
+            if m.get("loaded") and not m.get("healthy", True)
+        ]
+        is_healthy = not unhealthy_models
+        status = "ok" if current_model.get("loaded") and is_healthy else (
+            "degraded" if unhealthy_models else "loading"
+        )
         return {
-            "status": "ok" if current_model.get("loaded") else "loading",
+            "status": status,
+            "healthy": is_healthy,
+            "unhealthy_models": unhealthy_models,
             "name": "AngeVoice",
             "model_base": current_model.get("name") or "unknown",
             "model": current_model,
@@ -167,15 +208,41 @@ def create_status_router(state: ServiceState, verify_api_key, templates=None) ->
 
     @router.get("/stats")
     async def get_stats(_=Depends(verify_api_key)):
-        if not cfg.metrics_enabled:
-            raise HTTPException(status_code=404, detail="Metrics disabled")
+        _admin_required()
         snapshot = state.snapshot_stats()
         uptime = time.time() - snapshot["started_at"]
+
+        # Queue / concurrency info
+        active = [r for r in state.active_requests.values() if r.get("status") in {"queued", "running", "cancelling"}]
+        queued = [r for r in active if r.get("status") == "queued"]
+
+        # Latency percentiles
+        latency = state.latency_tracker.summary()
+
+        # Model info
+        all_models = state.model_manager.list_models()
+        current_model = state.model_manager.current_snapshot()
+
+        # VRAM
+        vram = _get_vram_usage()
+
         return {
-            **snapshot,
             "uptime_seconds": round(uptime, 3),
+            "requests": {
+                "total": snapshot.get("requests_total", 0),
+                "ok": snapshot.get("requests_ok", 0),
+                "error": snapshot.get("requests_error", 0),
+            },
+            "active_requests": len(active),
+            "queue_length": len(queued),
+            "latency": latency,
+            "models": {
+                "current": current_model,
+                "available": all_models,
+            },
+            "vram": vram,
             "cache_items": state.cache_size(),
-            "active_requests": len([r for r in state.active_requests.values() if r.get("status") in {"queued", "running", "cancelling"}]),
+            "cache_enabled": cfg.cache_enabled,
         }
 
     @router.get("/requests")

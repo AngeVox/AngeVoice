@@ -236,7 +236,7 @@ class TestOpenApi:
         app = create_app(config=TTSConfig(model_dir=tmp_path, enabled_models=["kokoro"], default_model="kokoro"))
         schema = app.openapi()
 
-        assert schema["info"]["version"] == "2.6.4.1"
+        assert schema["info"]["version"] == "2.6.4.2"
         assert "/v1/audio/batch" in schema["paths"]
         assert "/admin/voices/upload" in schema["paths"]
 

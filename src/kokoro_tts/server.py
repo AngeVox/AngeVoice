@@ -16,6 +16,7 @@ from .engine_manager import EngineManager
 from .routes import create_audio_router, create_status_router, create_ws_router
 from .security import make_verify_api_key
 from .service_state import ServiceState
+from .rate_limit import GlobalQueueMiddleware, RateLimitMiddleware
 
 logger = logging.getLogger(__name__)
 
@@ -82,6 +83,9 @@ _WORKER_ENV_EXPORTS = {
     "MOSS_STREAM_CHUNK_MIN_FLOOR": "moss_stream_chunk_min_floor",
     "ANGEVOICE_IDLE_TIMEOUT_SECONDS": "model_idle_timeout_seconds",
     "ANGEVOICE_IDLE_CHECK_INTERVAL": "model_idle_check_interval",
+    "KOKORO_RATE_LIMIT_QPS": "rate_limit_qps",
+    "KOKORO_RATE_LIMIT_BURST": "rate_limit_burst",
+    "KOKORO_MAX_QUEUE_LENGTH": "max_queue_length",
 }
 
 
@@ -131,7 +135,7 @@ def create_app(config: Optional[TTSConfig] = None, engine: Optional[TTSEngine] =
     app = FastAPI(
         title="AngeVoice",
         description="Lightweight local TTS service with selectable model engines",
-        version="2.6.4.1",
+        version="2.6.4.2",
         lifespan=lifespan,
     )
     app.state.angevoice = state
@@ -144,6 +148,14 @@ def create_app(config: Optional[TTSConfig] = None, engine: Optional[TTSEngine] =
         allow_methods=["*"],
         allow_headers=["*"],
     )
+
+    # --- Rate limiting middleware (after CORS, before routes) ---
+    if cfg.rate_limit_qps > 0:
+        logger.info("Rate limiting enabled: %.1f QPS, burst=%d", cfg.rate_limit_qps, cfg.rate_limit_burst)
+        app.add_middleware(RateLimitMiddleware, qps=cfg.rate_limit_qps, burst=cfg.rate_limit_burst)
+    if cfg.max_queue_length > 0:
+        logger.info("Global queue limit enabled: %d concurrent requests", cfg.max_queue_length)
+        app.add_middleware(GlobalQueueMiddleware, max_concurrent=cfg.max_queue_length)
 
     static_dir = Path(__file__).parent / "static"
     if static_dir.exists():

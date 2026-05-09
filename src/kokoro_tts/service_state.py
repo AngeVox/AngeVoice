@@ -11,6 +11,8 @@ from collections import OrderedDict
 from pathlib import Path
 from typing import Callable
 
+from .latency_tracker import LatencyTracker
+
 from fastapi import HTTPException
 from starlette.concurrency import run_in_threadpool
 
@@ -36,6 +38,7 @@ class ServiceState:
         self.cancelled_requests: set[str] = set()
         self.stats_lock = threading.Lock()
         self.output_lock = threading.Lock()
+        self.latency_tracker = LatencyTracker()
         self.stats = {
             "requests_total": 0,
             "requests_ok": 0,
@@ -310,6 +313,7 @@ class ServiceState:
             self.inc_stat("requests_ok")
             self.inc_stat("audio_bytes_total", len(result[0]))
             self.inc_stat("synthesis_seconds_total", elapsed)
+            self.latency_tracker.record(elapsed)
             saved_path = self.save_generated_output(
                 request_id=request_id,
                 audio_bytes=result[0],

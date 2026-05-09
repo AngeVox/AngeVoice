@@ -68,6 +68,8 @@ curl http://127.0.0.1:8101/health
 curl http://127.0.0.1:8101/v1/models
 ```
 
+> **容器健康状态**：每个 Docker 镜像内置 `HEALTHCHECK`，每 30 秒自动请求 `/health` 端点。返回 `{"status":"ok"}` 判定为 healthy；否则标记为 unhealthy。`start-period=60s` 确保模型加载期间不会误判。可用 `docker inspect --format='{{json .State.Health}}' <container>` 查看。
+
 ### Docker CPU / 老架构 GPU
 
 ```bash
@@ -256,6 +258,11 @@ environment:
 - 公网部署建议设置 `KOKORO_API_KEY`，并在反向代理层限制来源。
 - 管理接口默认关闭；开启 `KOKORO_ADMIN_ENABLED=true` 时必须设置强 API Key，否则服务会拒绝启动。
 - `.pt` 音色上传默认关闭。只上传可信来源文件；PyTorch 权重文件不应来自不可信渠道。
+
+⚠️ **安全警告**：公网环境**不建议**开启 `KOKORO_VOICE_UPLOAD_ENABLED`。
+仅允许上传自己生成或完全可信来源的 `.pt` 文件。
+如果必须开放，建议只在内网管理端使用，并配合反代 IP 白名单。
+`.pt` 文件是 PyTorch 序列化格式，理论上可执行任意代码。
 - 不建议把 `/admin/*` 直接暴露到公网。
 
 详见 [`docs/SECURITY.md`](docs/SECURITY.md)。

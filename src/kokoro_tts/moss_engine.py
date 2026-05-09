@@ -56,10 +56,17 @@ class MossNanoEngine:
         self._prompt_cache_lock = threading.Lock()
         self._prompt_audio_code_cache: OrderedDict[str, list[list[int]]] = OrderedDict()
         self._executor = concurrent.futures.ThreadPoolExecutor(max_workers=1, thread_name_prefix=f"{engine_id}-worker")
+        self._unhealthy = False
+        self._executor_lock = threading.Lock()
+        self._consecutive_timeouts = 0
 
     @property
     def is_loaded(self) -> bool:
         return self._loaded
+
+    @property
+    def is_healthy(self) -> bool:
+        return self._loaded and not self._unhealthy
 
     @property
     def sample_rate(self) -> int:
@@ -121,6 +128,9 @@ class MossNanoEngine:
             "sample_mode": self.config.moss_sample_mode,
             "seed": self.config.moss_seed,
             "cuda_memory_limit_mb": self.config.moss_cuda_memory_limit_mb,
+            "healthy": self.is_healthy,
+            "unhealthy": self._unhealthy,
+            "consecutive_timeouts": self._consecutive_timeouts,
         }
 
     def load(self) -> "MossNanoEngine":
@@ -150,12 +160,34 @@ class MossNanoEngine:
         logger.info("MOSS-TTS-Nano loaded (requested=%s actual=%s)", self.execution_provider, self._actual_provider)
         return self
 
+    def _rebuild_executor(self) -> None:
+        """Shutdown the current executor and create a fresh one.
+
+        Called after a timeout to discard a potentially stuck worker thread.
+        The old executor is shut down with ``wait=False`` so that a genuinely
+        stuck CUDA kernel is left to die in the background while the new
+        executor can accept work immediately.
+        """
+        with self._executor_lock:
+            old = self._executor
+            self._executor = concurrent.futures.ThreadPoolExecutor(
+                max_workers=1,
+                thread_name_prefix=f"{self.engine_id}-worker",
+            )
+        try:
+            old.shutdown(wait=False)
+        except Exception:
+            logger.debug("Failed to shut down old executor", exc_info=True)
+
     def unload(self) -> None:
         with self._runtime_lock:
             self._runtime = None
             self._loaded = False
+            self._unhealthy = False
+            self._consecutive_timeouts = 0
             with self._prompt_cache_lock:
                 self._prompt_audio_code_cache.clear()
+        self._rebuild_executor()
         gc.collect()
         try:
             import torch
@@ -191,9 +223,18 @@ class MossNanoEngine:
             return future.result(timeout=timeout)
         except concurrent.futures.TimeoutError:
             future.cancel()
+            self._consecutive_timeouts += 1
+            self._unhealthy = True
+            self._rebuild_executor()
+            logger.warning(
+                "MOSS inference timed out (%.0fs) — executor rebuilt, engine marked unhealthy (consecutive=%d)",
+                timeout, self._consecutive_timeouts,
+            )
             raise RuntimeError(
                 f"MOSS inference timed out ({timeout}s). "
-                "CUDA inference may be stuck. Try switching to CPU or restarting."
+                "Engine marked unhealthy and executor rebuilt. "
+                "The next request will trigger a full reload. "
+                "If this persists, try switching to CPU or restarting the container."
             )
 
     def synthesize_stream(

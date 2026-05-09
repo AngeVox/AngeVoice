@@ -576,7 +576,17 @@ curl -X POST "$BASE_URL/admin/voices/upload" \
 KOKORO_VOICE_UPLOAD_ENABLED=true
 ```
 
-> 请勿将 `/admin/*` 接口暴露到公网。
+ > 请勿将 `/admin/*` 接口暴露到公网。
+
+⚠️ **安全警告 / Security Warning**：公网环境**不建议**开启 `KOKORO_VOICE_UPLOAD_ENABLED`。
+仅允许上传自己生成或完全可信来源的 `.pt` 文件。
+如果必须开放，建议只在内网管理端使用，并配合反代 IP 白名单。
+`.pt` 文件是 PyTorch 序列化格式，理论上可执行任意代码。
+
+Enabling `KOKORO_VOICE_UPLOAD_ENABLED` on public-facing servers is **strongly discouraged**.
+Only upload `.pt` files you generated yourself or from fully trusted sources.
+If upload must be enabled, restrict to internal network admin endpoints with reverse-proxy IP whitelisting.
+`.pt` files use PyTorch serialization which can theoretically execute arbitrary code.
 
 ## 输出格式
 

@@ -186,6 +186,12 @@ class TTSConfig:
     moss_output_target_peak: float = 0.92
     moss_output_gain: float = 1.0
 
+    # Rate limiting (per-client token bucket + global queue)
+    # 0 = disabled (no middleware overhead)
+    rate_limit_qps: float = 0.0
+    rate_limit_burst: int = 5
+    max_queue_length: int = 0
+
     # Stream decode frame budget thresholds (Issue #10)
     # Lead seconds below each threshold determine how many frames to decode at once
     moss_stream_budget_threshold_low: float = 0.20
@@ -312,6 +318,8 @@ def _apply_env(config: TTSConfig) -> None:
         "MOSS_SEED": IntEnvSpec("moss_seed", -1),
         "MOSS_CUDA_MEMORY_LIMIT_MB": IntEnvSpec("moss_cuda_memory_limit_mb", 0),
         "MOSS_STREAM_QUEUE_MAX_ITEMS": IntEnvSpec("moss_stream_queue_max_items", 1, 64),
+        "KOKORO_RATE_LIMIT_BURST": IntEnvSpec("rate_limit_burst", 0),
+        "KOKORO_MAX_QUEUE_LENGTH": IntEnvSpec("max_queue_length", 0),
     }
     float_env: dict[str, FloatEnvSpec] = {
         "KOKORO_DEFAULT_SPEED": FloatEnvSpec("default_speed"),
@@ -323,6 +331,7 @@ def _apply_env(config: TTSConfig) -> None:
         "MOSS_MAX_CLIP_RATIO": FloatEnvSpec("moss_max_clip_ratio", 0.0, 1.0),
         "MOSS_OUTPUT_TARGET_PEAK": FloatEnvSpec("moss_output_target_peak", 0.1, 1.0),
         "MOSS_OUTPUT_GAIN": FloatEnvSpec("moss_output_gain", 0.1, 2.0),
+        "KOKORO_RATE_LIMIT_QPS": FloatEnvSpec("rate_limit_qps", 0.0),
         "MOSS_STREAM_BUDGET_THRESHOLD_LOW": FloatEnvSpec("moss_stream_budget_threshold_low", 0.0),
         "MOSS_STREAM_BUDGET_THRESHOLD_MID": FloatEnvSpec("moss_stream_budget_threshold_mid", 0.0),
         "MOSS_STREAM_BUDGET_THRESHOLD_HIGH": FloatEnvSpec("moss_stream_budget_threshold_high", 0.0),

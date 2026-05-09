@@ -68,6 +68,8 @@ curl http://127.0.0.1:8101/health
 curl http://127.0.0.1:8101/v1/models
 ```
 
+> **Container health status**: Every Docker image includes a built-in `HEALTHCHECK` that hits `/health` every 30 seconds. A `{"status":"ok"}` response marks the container as **healthy**; any other response marks it **unhealthy**. The 60-second start period allows model loading before the first check. Inspect with `docker inspect --format='{{json .State.Health}}' <container>`.
+
 ### Docker CPU / Legacy GPU
 
 ```bash
@@ -254,6 +256,11 @@ environment:
 - Set `KOKORO_API_KEY` for public or semi-public deployments.
 - Admin APIs are disabled by default. If enabled, a strong API key is required or the service refuses to start.
 - `.pt` voice upload is disabled by default. Only upload trusted files.
+
+⚠️ **Security Warning**: Enabling `KOKORO_VOICE_UPLOAD_ENABLED` on public-facing servers is **strongly discouraged**.
+Only upload `.pt` files you generated yourself or from fully trusted sources.
+If upload must be enabled, restrict to internal network admin endpoints with reverse-proxy IP whitelisting.
+`.pt` files use PyTorch serialization which can theoretically execute arbitrary code.
 - Do not expose `/admin/*` directly to the public internet.
 
 See [`docs/SECURITY.md`](docs/SECURITY.md).
