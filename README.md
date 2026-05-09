@@ -283,7 +283,16 @@ pip install -e '.[dev]'
 pytest -q --cov=kokoro_tts --cov-report=term-missing
 ```
 
-服务冒烟测试：
+服务端到端测试（需服务已启动）：
+
+```bash
+# 完整端到端循环测试：health / voices / 合成 / websocket / cancel / 空闲卸载 / 压测
+chmod +x scripts/e2e_loop_test.sh
+./scripts/e2e_loop_test.sh http://127.0.0.1:8101              # 无认证，10轮
+./scripts/e2e_loop_test.sh http://127.0.0.1:8101 my-key 50    # 带认证，50轮压测
+```
+
+轻量冒烟测试：
 
 ```bash
 chmod +x scripts/smoke_test.sh scripts/loop_test.sh

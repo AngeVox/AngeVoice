@@ -404,3 +404,52 @@ Python import 包名仍是：
 ```python
 from kokoro_tts import TTSEngine
 ```
+
+## 16. 请求返回 429 Too Many Requests
+
+出现 429 说明触发了内置限流或并发队列上限。
+
+**两种情况：**
+
+| 响应体 `error` 字段 | 原因 | 处理 |
+|---|---|---|
+| `rate_limit_exceeded` | 单客户端 QPS 超限 | 降低请求频率，客户端读取 `Retry-After` 头退避重试 |
+| `queue_full` | 全局并发请求已达上限 | 等待正在处理的请求完成后再发新请求 |
+
+**查看当前限流配置：**
+
+```bash
+curl -s http://localhost:8101/health | python3 -m json.tool
+```
+
+**调整限流参数：**
+
+```bash
+# 放宽 QPS（仅公网部署时谨慎调整）
+KOKORO_RATE_LIMIT_QPS=20
+KOKORO_RATE_LIMIT_BURST=40
+
+# 放宽全局并发
+KOKORO_MAX_QUEUE_LENGTH=50
+```
+
+设为 0 可完全禁用对应限制（仅建议本地/可信环境）。
+
+**客户端最佳实践：**
+
+```python
+import time, requests
+
+def tts_with_retry(url, payload, max_retries=3):
+    for attempt in range(max_retries):
+        resp = requests.post(url, json=payload)
+        if resp.status_code == 429:
+            wait = int(resp.headers.get("Retry-After", 1))
+            time.sleep(wait)
+            continue
+        resp.raise_for_status()
+        return resp.content
+    raise RuntimeError("Rate limited after retries")
+```
+
+详见 [安全说明](SECURITY.md) 中的速率限制配置。

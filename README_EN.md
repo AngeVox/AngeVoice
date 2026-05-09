@@ -281,7 +281,16 @@ pip install -e '.[dev]'
 pytest -q --cov=kokoro_tts --cov-report=term-missing
 ```
 
-Service smoke tests:
+End-to-end testing (requires a running service):
+
+```bash
+# Full E2E loop test: health / voices / synthesis / websocket / cancel / idle unload / stress
+chmod +x scripts/e2e_loop_test.sh
+./scripts/e2e_loop_test.sh http://127.0.0.1:8101              # no auth, 10 loops
+./scripts/e2e_loop_test.sh http://127.0.0.1:8101 my-key 50    # with auth, 50 loops
+```
+
+Lightweight smoke tests:
 
 ```bash
 chmod +x scripts/smoke_test.sh scripts/loop_test.sh

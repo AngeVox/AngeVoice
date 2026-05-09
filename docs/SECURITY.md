@@ -111,6 +111,27 @@ KOKORO_CORS_ORIGINS=https://tts.example.com,https://app.example.com
 
 如果确实配置 `KOKORO_CORS_ORIGINS=*`，服务会关闭 credential CORS 模式，避免浏览器拒绝通配来源和凭据组合。
 
+## 速率限制与并发控制
+
+公网部署建议启用内置限流，防止单客户端或异常脚本打满 GPU：
+
+```bash
+# 每客户端每秒最多 10 个请求，突发允许 20 个
+KOKORO_RATE_LIMIT_QPS=10
+KOKORO_RATE_LIMIT_BURST=20
+
+# 全局最大并发请求（含排队），0=不限
+KOKORO_MAX_QUEUE_LENGTH=20
+```
+
+- `KOKORO_RATE_LIMIT_QPS` — 基于令牌桶的 per-IP/per-API-key QPS 限制。设为 0 禁用。
+- `KOKORO_RATE_LIMIT_BURST` — 令牌桶突发容量。
+- `KOKORO_MAX_QUEUE_LENGTH` — 全局并发请求上限，超出立即返回 429。设为 0 禁用。
+
+> ⚠️ 不要将限流设得过高。TTS 推理是 GPU 密集型操作，过高的并发会导致延迟飙升甚至 OOM。建议 `KOKORO_MAX_CONCURRENT_REQUESTS=1` + `KOKORO_MAX_QUEUE_LENGTH` 设为 CPU 核心数的 2-4 倍。
+
+超出限流时，客户端会收到 `429 Too Many Requests` 响应和 `Retry-After` 头。客户端应据此退避重试。
+
 ## 资源消耗
 
 TTS 推理是高成本操作。建议：
