@@ -24,24 +24,15 @@ from starlette.responses import JSONResponse
 logger = logging.getLogger(__name__)
 
 
-# ---------------------------------------------------------------------------
-# Token bucket (thread-safe, for per-client QPS limiting)
-# ---------------------------------------------------------------------------
-
 class TokenBucket:
-    """Classic token-bucket rate limiter, one instance per client key.
-
-    Tokens refill continuously at *qps* tokens/second up to *burst*.
-    ``acquire()`` returns ``True`` when a token is consumed, ``False`` when
-    the bucket is empty (request should be rejected).
-    """
+    """Classic token-bucket rate limiter, one instance per client key."""
 
     __slots__ = ("_qps", "_burst", "_tokens", "_last_refill", "_lock")
 
     def __init__(self, qps: float, burst: int) -> None:
-        self._qps = qps
-        self._burst = burst
-        self._tokens = float(burst)  # start full
+        self._qps = max(0.0, float(qps))
+        self._burst = max(1, int(burst))
+        self._tokens = float(self._burst)
         self._last_refill = time.monotonic()
         self._lock = threading.Lock()
 
@@ -58,29 +49,36 @@ class TokenBucket:
 
     @property
     def retry_after(self) -> float:
-        """Seconds until the next token becomes available (approximate)."""
         with self._lock:
             if self._tokens >= 1.0:
                 return 0.0
             return (1.0 - self._tokens) / self._qps if self._qps > 0 else 1.0
 
+    @property
+    def idle(self) -> bool:
+        with self._lock:
+            return self._tokens >= float(self._burst)
 
-# ---------------------------------------------------------------------------
-# Per-client bucket registry
-# ---------------------------------------------------------------------------
 
 class _BucketRegistry:
     """Manages per-key ``TokenBucket`` instances with automatic cleanup."""
 
-    __slots__ = ("_qps", "_burst", "_buckets", "_lock")
+    __slots__ = (
+        "_qps",
+        "_burst",
+        "_buckets",
+        "_lock",
+        "_last_cleanup",
+        "_cleanup_interval",
+    )
 
     def __init__(self, qps: float, burst: int) -> None:
-        self._qps = qps
-        self._burst = burst
+        self._qps = max(0.0, float(qps))
+        self._burst = max(1, int(burst))
         self._buckets: dict[str, TokenBucket] = {}
         self._lock = threading.Lock()
         self._last_cleanup = time.monotonic()
-        self._cleanup_interval = 60.0  # seconds
+        self._cleanup_interval = 60.0
 
     def get_bucket(self, key: str) -> TokenBucket:
         with self._lock:
@@ -96,31 +94,13 @@ class _BucketRegistry:
         if now - self._last_cleanup < self._cleanup_interval:
             return
         self._last_cleanup = now
-        # Evict buckets that are at full capacity (idle clients)
-        stale = [
-            k
-            for k, b in self._buckets.items()
-            if b._tokens >= b._burst  # noqa: SLF001 – intentional access
-        ]
-        for k in stale:
-            del self._buckets[k]
+        stale = [key for key, bucket in self._buckets.items() if bucket.idle]
+        for key in stale:
+            del self._buckets[key]
 
-
-# ---------------------------------------------------------------------------
-# Rate-limit middleware  (per-IP / per-API-key QPS)
-# ---------------------------------------------------------------------------
 
 class RateLimitMiddleware(BaseHTTPMiddleware):
-    """Token-bucket rate limiter applied per client IP or API key.
-
-    Extracts the client identity from (in order of priority):
-      1. ``X-API-Key`` / ``Authorization: Bearer <key>`` header
-      2. ``X-Forwarded-For`` / ``X-Real-IP`` header
-      3. ``request.client.host``
-
-    Returns **429 Too Many Requests** with a ``Retry-After`` header when the
-    client's bucket is empty.
-    """
+    """Token-bucket rate limiter applied per client IP or API key."""
 
     def __init__(self, app, qps: float, burst: int) -> None:  # noqa: ANN001
         super().__init__(app)
@@ -145,23 +125,18 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
         )
 
 
-# ---------------------------------------------------------------------------
-# Global queue-length middleware (max concurrent in-flight requests)
-# ---------------------------------------------------------------------------
-
 class GlobalQueueMiddleware(BaseHTTPMiddleware):
-    """Limits total concurrent in-flight requests via an ``asyncio.Semaphore``.
-
-    Returns **429 Too Many Requests** when the semaphore is fully saturated.
-    """
+    """Limits total concurrent in-flight requests via an ``asyncio.Semaphore``."""
 
     def __init__(self, app, max_concurrent: int) -> None:  # noqa: ANN001
         super().__init__(app)
-        self._semaphore = asyncio.Semaphore(max_concurrent)
-        self._max = max_concurrent
+        self._semaphore = asyncio.Semaphore(max(1, int(max_concurrent)))
+        self._max = max(1, int(max_concurrent))
 
     async def dispatch(self, request: Request, call_next):  # noqa: ANN201
-        if self._semaphore.locked():
+        try:
+            await asyncio.wait_for(self._semaphore.acquire(), timeout=0)
+        except asyncio.TimeoutError:
             logger.warning("Global queue full (%d/%d)", self._max, self._max)
             return JSONResponse(
                 status_code=429,
@@ -171,17 +146,14 @@ class GlobalQueueMiddleware(BaseHTTPMiddleware):
                 },
                 headers={"Retry-After": "1"},
             )
-        async with self._semaphore:
+        try:
             return await call_next(request)
+        finally:
+            self._semaphore.release()
 
-
-# ---------------------------------------------------------------------------
-# Helpers
-# ---------------------------------------------------------------------------
 
 def _extract_client_key(request: Request) -> str:
     """Return a string key identifying the client for rate-limit bucketing."""
-    # Prefer explicit API key if present
     api_key: Optional[str] = request.headers.get("x-api-key")
     if not api_key:
         auth = request.headers.get("authorization", "")
@@ -190,7 +162,6 @@ def _extract_client_key(request: Request) -> str:
     if api_key:
         return f"key:{api_key}"
 
-    # Fall back to IP
     forwarded = request.headers.get("x-forwarded-for")
     if forwarded:
         return f"ip:{forwarded.split(',')[0].strip()}"
