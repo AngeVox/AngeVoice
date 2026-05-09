@@ -48,9 +48,11 @@ jobs:
       - name: Import and CLI smoke check
         run: |
           python - <<'PY'
+          import importlib.metadata
           import kokoro_tts
-          assert kokoro_tts.__version__ == "2.6.4.2"
+          assert kokoro_tts.__version__ == "2.6.4.3"
+          assert importlib.metadata.version("angevoice") == kokoro_tts.__version__
           print("AngeVoice version:", kokoro_tts.__version__)
           PY
-          angevoice --version
-          kokoro-tts --version
+          angevoice --version | grep 2.6.4.3
+          kokoro-tts --version | grep 2.6.4.3
