@@ -1,9 +1,9 @@
-"""AngeVoice configuration.
+"""AngeVoice 配置。
 
-Configuration priority:
-1. Explicit function parameters
-2. KOKORO_* environment variables
-3. Defaults
+配置优先级：
+1. 显式函数参数
+2. KOKORO_* / ANGEVOICE_* / MOSS_* 环境变量
+3. 代码默认值
 """
 
 import logging
@@ -110,7 +110,7 @@ def _clamp(value, min_value=None, max_value=None):
 
 @dataclass
 class TTSConfig:
-    """Runtime configuration."""
+    """运行时配置。"""
     model_dir: Path = field(default_factory=_find_models_dir)
     device: str = "auto"
 
@@ -176,32 +176,28 @@ class TTSConfig:
     moss_enable_normalize_tts_text: bool = True
     moss_apply_angevoice_rules: bool = True
     moss_realtime_streaming_decode: bool = True
-    moss_stream_chunk_seconds: float = 0.45
+    moss_stream_chunk_seconds: float = 0.42
     moss_stream_queue_max_items: int = 8
     moss_cuda_self_test_enabled: bool = True
     moss_auto_fallback_cpu: bool = True
     moss_quality_gate_enabled: bool = True
     moss_max_clip_ratio: float = 0.02
     moss_output_peak_normalize_enabled: bool = True
-    moss_output_target_peak: float = 0.92
-    moss_output_gain: float = 1.0
+    moss_output_target_peak: float = 0.88
+    moss_output_gain: float = 0.96
 
-    # Rate limiting (per-client token bucket + global queue)
-    # 0 = disabled (no middleware overhead)
+    # 限流：按客户端令牌桶 + 全局并发闸门；0 表示关闭。
     rate_limit_qps: float = 0.0
     rate_limit_burst: int = 5
     max_queue_length: int = 0
 
-    # Stream decode frame budget thresholds (Issue #10)
-    # Lead seconds below each threshold determine how many frames to decode at once
-    moss_stream_budget_threshold_low: float = 0.20
-    moss_stream_budget_threshold_mid: float = 0.55
-    moss_stream_budget_threshold_high: float = 1.10
-    moss_stream_chunk_min_floor: float = 0.05
+    # MOSS 流式解码预算阈值：按已输出音频领先实时播放的秒数决定解码帧数。
+    moss_stream_budget_threshold_low: float = 0.25
+    moss_stream_budget_threshold_mid: float = 0.65
+    moss_stream_budget_threshold_high: float = 1.20
+    moss_stream_chunk_min_floor: float = 0.10
 
-    # Idle timeout: unload all loaded models after N seconds of no requests.
-    # 600 seconds is the default because NAS/home-server users are power-sensitive.
-    # Set ANGEVOICE_IDLE_TIMEOUT_SECONDS=0 to keep models resident.
+    # 空闲释放：默认 10 分钟无人使用后释放所有已加载模型。
     model_idle_timeout_seconds: float = 600
     model_idle_check_interval: float = 30
     model_idle_unload_current: bool = True
@@ -224,14 +220,14 @@ class TTSConfig:
         return []
 
     def validate_security(self) -> None:
-        """Reject unsafe admin/auth combinations before serving traffic."""
+        """启动前拒绝不安全的后台/鉴权组合。"""
         api_key = (self.api_key or "").strip()
         normalized_key = api_key.lower()
         if api_key and normalized_key in PLACEHOLDER_API_KEYS:
             raise ValueError("KOKORO_API_KEY is still a placeholder; set a real secret or leave it empty")
         admin_password = (os.environ.get("ANGEVOICE_ADMIN_PASSWORD") or "").strip()
-        if self.admin_enabled and not api_key and not admin_password:
-            raise ValueError("KOKORO_ADMIN_ENABLED=true requires KOKORO_API_KEY or ANGEVOICE_ADMIN_PASSWORD")
+        if self.admin_enabled and not admin_password:
+            raise ValueError("KOKORO_ADMIN_ENABLED=true requires ANGEVOICE_ADMIN_PASSWORD")
         if self.voice_upload_enabled and not self.admin_enabled:
             raise ValueError("KOKORO_VOICE_UPLOAD_ENABLED=true requires KOKORO_ADMIN_ENABLED=true")
         if not self.enabled_models:
@@ -390,11 +386,7 @@ def _apply_env(config: TTSConfig) -> None:
     if os.environ.get("KOKORO_CORS_ORIGINS"):
         config.cors_origins = [o.strip() for o in os.environ["KOKORO_CORS_ORIGINS"].split(",") if o.strip()]
     if os.environ.get("ANGEVOICE_ENABLED_MODELS"):
-        config.enabled_models = [
-            item.strip().lower()
-            for item in os.environ["ANGEVOICE_ENABLED_MODELS"].split(",")
-            if item.strip()
-        ]
+        config.enabled_models = [item.strip().lower() for item in os.environ["ANGEVOICE_ENABLED_MODELS"].split(",") if item.strip()]
     if os.environ.get("MOSS_MODEL_DIR"):
         config.moss_model_dir = Path(os.environ["MOSS_MODEL_DIR"]).expanduser()
     if os.environ.get("MOSS_TTS_NANO_PATH"):
@@ -403,17 +395,10 @@ def _apply_env(config: TTSConfig) -> None:
         config.moss_prompt_audio_path = Path(os.environ["MOSS_PROMPT_AUDIO_PATH"]).expanduser()
 
 
-def load_config(
-    model_dir: Optional[str] = None,
-    device: Optional[str] = None,
-    host: Optional[str] = None,
-    port: Optional[int] = None,
-    **kwargs,
-) -> TTSConfig:
-    """Load runtime config with environment and argument overrides."""
+def load_config(model_dir: Optional[str] = None, device: Optional[str] = None, host: Optional[str] = None, port: Optional[int] = None, **kwargs) -> TTSConfig:
+    """加载运行时配置，并应用环境变量和函数参数覆盖。"""
     config = TTSConfig()
     _apply_env(config)
-
     if model_dir:
         config.model_dir = Path(model_dir)
     if device:
@@ -427,6 +412,5 @@ def load_config(
             setattr(config, k, v)
     if isinstance(config.output_dir, str):
         config.output_dir = Path(config.output_dir).expanduser()
-
     config.validate_security()
     return config
