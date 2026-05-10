@@ -18,8 +18,8 @@ services:
       - "8100:8000"
 
     env_file:
-      # 公共配置集中在 docker/.env，先复制 docker/.env.example 再修改。
-      - ../.env
+      # 默认值按 CPU/NAS 安全场景设计，CPU 画像无需额外复制 .env 即可启动。
+      - ../angevoice.env
 
     volumes:
       # 模型目录：只读挂载，避免容器误改模型文件。
@@ -33,11 +33,11 @@ services:
       - ../../moss_models:/opt/MOSS-TTS-Nano/models
       # 合成输出目录。
       - ../../outputs:/app/outputs
-      # 可选：开启音色上传时取消注释，并在 .env 中开启 KOKORO_VOICE_UPLOAD_ENABLED。
+      # 可选：开启音色上传时取消注释，并在配置文件中开启 KOKORO_VOICE_UPLOAD_ENABLED。
       # - ../../models/voices:/app/models/voices:rw
 
     environment:
-      # CPU 画像覆盖公共配置中的设备与 MOSS 参数。
+      # CPU 画像显式锁定 CPU，防止无 GPU NAS 误启 CUDA。
       KOKORO_DEVICE: cpu
       ANGEVOICE_ENABLED_MODELS: kokoro,moss-nano-cpu
       MOSS_EXECUTION_PROVIDER: cpu
