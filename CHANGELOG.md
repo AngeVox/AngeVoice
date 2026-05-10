@@ -6,6 +6,31 @@ Format based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and [Se
 
 ---
 
+## [2.6.4.4] - 2026-05-11
+
+### 🛠️ 修复
+- 修复 e2e 脚本在 `set -e` 下使用 `((PASS++))` / `((FAIL++))` 可能提前退出的问题，计数器改为安全自增写法。
+- WebSocket e2e 不再只检查 `started`，现在同时验证 `started`、真实 `audio` 分片和 `done` 完成帧。
+- idle unload e2e 增加真实“卸载后再请求自动重载”校验；默认超时时长过长时会明确跳过并提示测试环境设置短超时。
+- 内置全局 queue limit 不再依赖 `asyncio.Semaphore._value` 私有字段，改为公开状态的非阻塞并发闸门。
+- 默认空闲卸载改为 600 秒，并允许释放当前模型；NAS/家用服务器无人使用时可自动释放显存、降低功耗。
+
+### 🎛️ 管理与部署
+- 新增 `/admin` 管理后台入口，沿用主站视觉风格；默认关闭，开启后必须配置账号密码。
+- 主页右上角新增“管理后台”入口，与 API 文档入口保持一致。
+- 三套 Docker 画像统一读取 `docker/angevoice.env`，公共默认值按 CPU/NAS 安全场景设计，GPU 与 legacy-gpu 仅覆盖必要差异。
+- 新增 `docker/.env.example` 作为用户本地自定义模板。
+- 新增 `scripts/install.sh` 一键安装脚本，可检测 Docker/Compose、NVIDIA GPU、GPU 型号和 GitHub/GHCR 网络情况，并推荐 `cpu` / `gpu` / `legacy-gpu` 画像。
+
+### 🔊 MOSS 体验优化
+- MOSS 默认输出策略改为质量优先：更温和的峰值保护、轻微降低输出增益、加大流式最小分片，减少削峰失真、碎片卡顿和块间响度跳变。
+- MOSS 流式阈值文档和默认配置对齐，避免 `MOSS_STREAM_BUDGET_THRESHOLD_*` 含义与实际行为不一致。
+
+### 🔧 版本
+- 包版本、项目元数据与测试目标版本对齐为 `2.6.4.4`。
+
+---
+
 ## [2.6.4.3] - 2026-05-09
 
 ### 🛡️ Stability / 稳定性
