@@ -106,7 +106,7 @@ request:
 | `MOSS_DEFAULT_VOICE` | `Junhao` | Built-in MOSS voice preset |
 | `MOSS_SAMPLE_MODE` | `fixed` | MOSS sampling mode; `greedy` is more stable but flatter |
 | `MOSS_SEED` | `1234` | Reset RNG per request to reduce long-text voice drift; `-1` disables |
-| `MOSS_STREAM_CHUNK_SECONDS` | `0.45` | WebSocket chunk duration for MOSS audio frames |
+| `MOSS_STREAM_CHUNK_SECONDS` | `0.42` | MOSS WebSocket chunk duration; balances first audio and smoothness |
 | `MOSS_STREAM_QUEUE_MAX_ITEMS` | `8` | Streaming queue backpressure limit |
 | `MOSS_PROMPT_AUDIO_PATH` | - | Optional reference audio for voice cloning |
 | `MOSS_PROMPT_UPLOAD_MAX_BYTES` | `20971520` | `/api/tts` reference-audio upload limit |
@@ -117,8 +117,24 @@ request:
 | `MOSS_CUDA_SELF_TEST_ENABLED` | `true` | Warm up CUDA provider before serving |
 | `MOSS_QUALITY_GATE_ENABLED` | `true` | Reject silent/clipped/invalid test output |
 | `MOSS_OUTPUT_PEAK_NORMALIZE_ENABLED` | `true` | Scale MOSS output down when it exceeds the target peak |
-| `MOSS_OUTPUT_TARGET_PEAK` | `0.92` | MOSS output peak target |
-| `MOSS_OUTPUT_GAIN` | `1.0` | Extra gain before peak normalization |
+| `MOSS_OUTPUT_TARGET_PEAK` | `0.88` | Softer MOSS output peak target to reduce clipping |
+| `MOSS_OUTPUT_GAIN` | `0.96` | Slight pre-normalization attenuation to preserve dynamics and reduce distortion |
+
+
+## MOSS 进程级隔离
+
+MOSS CUDA 默认启用进程级隔离：主服务进程不直接运行 CUDA/ONNX Runtime 推理，而是把请求发给独立 worker 子进程。
+如果 worker 在 `KOKORO_REQUEST_TIMEOUT_SECONDS` 内没有返回，主进程会 terminate/kill 子进程并把该引擎标记为 unhealthy；下一次请求会重新创建 worker 和 runtime。
+
+默认配置：
+
+```env
+MOSS_PROCESS_ISOLATION_ENABLED=true
+MOSS_PROCESS_ISOLATION_PROVIDERS=cuda
+MOSS_PROCESS_KILL_GRACE_SECONDS=2
+```
+
+CPU 默认不走进程隔离，以保留更低延迟和更少进程开销；如需对 CPU 也隔离，可设置 `MOSS_PROCESS_ISOLATION_PROVIDERS=cpu,cuda`。
 
 ## Runtime Tuning
 
@@ -136,8 +152,10 @@ KOKORO_MAX_CONCURRENT_REQUESTS=1
 MOSS_CPU_THREADS=2
 MOSS_PROMPT_AUDIO_MAX_SECONDS=8
 MOSS_PROMPT_CACHE_MAX_ITEMS=6
-MOSS_STREAM_CHUNK_SECONDS=0.35
+MOSS_STREAM_CHUNK_SECONDS=0.42
 MOSS_OUTPUT_PEAK_NORMALIZE_ENABLED=true
+MOSS_OUTPUT_TARGET_PEAK=0.88
+MOSS_OUTPUT_GAIN=0.96
 ```
 
 For modern GPUs with 8 GB VRAM, keep reference audio short. Long clone samples
@@ -197,3 +215,8 @@ export ANGEVOICE_ENABLED_MODELS=kokoro,moss-nano-cpu
 
 Use `.[moss-gpu]` only after confirming the target CUDA/cuDNN stack matches the
 selected `onnxruntime-gpu` wheel.
+
+
+### MOSS 模块拆分
+
+`moss_engine.py` 保留对外兼容的 `MossNanoEngine`，但运行时加载、自检、文本分段、prompt audio 缓存、流式预算和音频后处理已拆到 `src/kokoro_tts/moss/` 子包，便于后续单测和定位失真/卡顿问题。

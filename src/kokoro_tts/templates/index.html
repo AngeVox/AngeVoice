@@ -16,23 +16,17 @@
       <div class="boot-logo" aria-label="AngeVoice">
         <span class="name-ange">Ange</span><span class="name-voice">Voice</span>
       </div>
-      <div class="boot-wave">
-        <i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i>
-      </div>
+      <div class="boot-wave"><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i></div>
       <div class="boot-line"></div>
     </div>
   </div>
   <script id="angevoice-bootstrap" type="application/json">{{ bootstrap | tojson }}</script>
   <main class="app-shell">
     <header class="topbar">
-      <div class="brand-mark brand-wordmark" aria-hidden="true">
-        <span class="name-ange">Ange</span><span class="name-voice">Voice</span>
-      </div>
-      <div class="brand-copy">
-        <p class="eyebrow">AngeVoice Studio</p>
-        <h1>中文 TTS 控制台</h1>
-      </div>
+      <div class="brand-mark brand-wordmark" aria-hidden="true"><span class="name-ange">Ange</span><span class="name-voice">Voice</span></div>
+      <div class="brand-copy"><p class="eyebrow">AngeVoice Studio</p><h1>中文 TTS 控制台</h1></div>
       <div class="topbar-actions">
+        <a href="/admin" class="ghost-button small" style="display:inline-flex;align-items:center;text-decoration:none;">管理后台</a>
         <a href="/api-docs" class="ghost-button small" style="display:inline-flex;align-items:center;text-decoration:none;">API 文档</a>
         <span class="status-pill" id="health-pill"><span></span><b>连接中</b></span>
         <button type="button" class="icon-button" id="theme-btn" title="切换主题" aria-label="切换主题">☾</button>
@@ -41,104 +35,46 @@
     </header>
 
     <section class="stats-drawer" id="stats-drawer">
-      <div class="stats-header">
-        <div>
-          <p class="eyebrow">Telemetry</p>
-          <h2>服务统计</h2>
-        </div>
-        <button type="button" class="ghost-button small" id="metrics-toggle">收起</button>
-      </div>
+      <div class="stats-header"><div><p class="eyebrow">Telemetry</p><h2>服务统计</h2></div><button type="button" class="ghost-button small" id="metrics-toggle">收起</button></div>
       <div class="metrics-grid" id="metrics-grid">
-        <article class="metric-card spotlight">
-          <span>请求</span>
-          <strong id="metric-requests">0</strong>
-        </article>
-        <article class="metric-card spotlight">
-          <span>缓存</span>
-          <strong id="metric-cache">0</strong>
-        </article>
-        <article class="metric-card spotlight">
-          <span>音色</span>
-          <strong id="metric-voices">0</strong>
-        </article>
-        <article class="metric-card spotlight">
-          <span>并发</span>
-          <strong id="metric-active">0</strong>
-        </article>
+        <article class="metric-card spotlight"><span>请求</span><strong id="metric-requests">0</strong></article>
+        <article class="metric-card spotlight"><span>缓存</span><strong id="metric-cache">0</strong></article>
+        <article class="metric-card spotlight"><span>音色</span><strong id="metric-voices">0</strong></article>
+        <article class="metric-card spotlight"><span>并发</span><strong id="metric-active">0</strong></article>
       </div>
     </section>
 
     <section class="workspace">
       <form class="composer panel spotlight" id="tts-form">
-        <div class="section-head">
-          <div>
-            <p class="eyebrow">Compose</p>
-            <h2>文本与参数</h2>
-          </div>
-          <span class="counter"><b id="char-count">0</b>/<span id="max-count">10000</span></span>
-        </div>
-
+        <div class="section-head"><div><p class="eyebrow">Compose</p><h2>文本与参数</h2></div><span class="counter"><b id="char-count">0</b>/<span id="max-count">10000</span></span></div>
         <textarea id="text" maxlength="10000" spellcheck="false">春花秋月何时了，往事知多少。</textarea>
-
         <div class="controls-grid">
-          <label class="field">
-            <span>模型 <b id="model-status">当前</b></span>
-            <select id="model-select"></select>
-          </label>
-          <label class="field">
-            <span>音色</span>
-            <select id="voice"></select>
-          </label>
-          <label class="field">
-            <span>语速 <b id="speed-value">1.0</b></span>
-            <input type="range" id="speed" min="0.5" max="2.0" step="0.1" value="1.0" />
-          </label>
-          <label class="toggle-row">
-            <input type="checkbox" id="stream-toggle" checked />
-            <span>流式播放</span>
-          </label>
+          <label class="field"><span>模型 <b id="model-status">当前</b></span><select id="model-select"></select></label>
+          <label class="field"><span>音色</span><select id="voice"></select></label>
+          <label class="field"><span>语速 <b id="speed-value">1.0</b></span><input type="range" id="speed" min="0.5" max="2.0" step="0.1" value="1.0" /></label>
+          <label class="toggle-row"><input type="checkbox" id="stream-toggle" checked /><span>流式播放</span></label>
         </div>
-
         <div class="clone-panel" id="clone-panel" hidden>
-          <label class="field file-field">
-            <span>参考音频 <b id="clone-status">MOSS 克隆</b></span>
-            <input type="file" id="prompt-audio" accept="audio/*,.wav,.mp3,.flac,.ogg,.m4a,.aac" />
-          </label>
+          <label class="field file-field"><span>参考音频 <b id="clone-status">MOSS 克隆</b></span><input type="file" id="prompt-audio" accept="audio/*,.wav,.mp3,.flac,.ogg,.m4a,.aac" /></label>
           <button type="button" class="ghost-button small" id="clear-prompt-audio" disabled>清除</button>
         </div>
-
         <div class="button-row">
           <button type="submit" class="primary-button glare" id="generate-btn">生成语音</button>
           <button type="button" class="secondary-button" id="preview-btn">试听</button>
           <button type="button" class="danger-button" id="stop-btn" disabled>停止</button>
           <button type="button" class="ghost-button" id="clear-btn">清空</button>
         </div>
-
         <div class="progress-track" id="progress-track" aria-live="polite"></div>
       </form>
-
       <aside class="side-panel">
         <section class="panel voice-panel spotlight">
-          <div class="section-head compact">
-            <div>
-              <p class="eyebrow">Voices</p>
-              <h2>音色库</h2>
-            </div>
-            <button type="button" class="ghost-button small" id="favorite-btn">收藏</button>
-          </div>
+          <div class="section-head compact"><div><p class="eyebrow">Voices</p><h2>音色库</h2></div><button type="button" class="ghost-button small" id="favorite-btn">收藏</button></div>
           <input class="search-input" id="voice-search" type="search" placeholder="搜索音色" />
           <div class="voice-tabs" id="voice-tabs"></div>
           <div class="voice-list" id="voice-list"></div>
         </section>
-
         <section class="panel player-panel spotlight">
-          <div class="section-head compact">
-            <div>
-              <p class="eyebrow">Playback</p>
-              <h2>播放</h2>
-            </div>
-            <button type="button" class="ghost-button small" id="download-btn" disabled>下载</button>
-          </div>
+          <div class="section-head compact"><div><p class="eyebrow">Playback</p><h2>播放</h2></div><button type="button" class="ghost-button small" id="download-btn" disabled>下载</button></div>
           <audio id="audio-player" controls></audio>
           <div class="request-log" id="request-log"></div>
         </section>
@@ -148,24 +84,11 @@
 
   <dialog class="settings-dialog" id="settings-dialog">
     <form method="dialog" class="settings-card">
-      <div class="section-head">
-        <div>
-          <p class="eyebrow">Access</p>
-          <h2>API Key</h2>
-        </div>
-        <button type="submit" class="icon-button" aria-label="关闭">×</button>
-      </div>
-      <label class="field">
-        <span>Bearer Token</span>
-        <input type="password" id="api-token" autocomplete="off" placeholder="KOKORO_API_KEY" />
-      </label>
-      <div class="button-row">
-        <button type="button" class="primary-button" id="save-token-btn">保存</button>
-        <button type="button" class="ghost-button" id="clear-token-btn">移除</button>
-      </div>
+      <div class="section-head"><div><p class="eyebrow">Access</p><h2>API Key</h2></div><button type="submit" class="icon-button" aria-label="关闭">×</button></div>
+      <label class="field"><span>Bearer Token</span><input type="password" id="api-token" autocomplete="off" placeholder="KOKORO_API_KEY" /></label>
+      <div class="button-row"><button type="button" class="primary-button" id="save-token-btn">保存</button><button type="button" class="ghost-button" id="clear-token-btn">移除</button></div>
     </form>
   </dialog>
-
   <script src="/static/app.js" defer></script>
 </body>
 </html>

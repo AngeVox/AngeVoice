@@ -1,4 +1,4 @@
-"""Status, health, voice listing and Web UI routes."""
+"""状态、健康检查、音色列表和 Web UI 路由。"""
 
 import time
 
@@ -11,7 +11,7 @@ from ..service_state import ServiceState
 
 
 def _get_vram_usage() -> dict:
-    """Return GPU VRAM info if available, else status='unavailable'."""
+    """返回 GPU 显存信息；不可用时返回状态说明。"""
     try:
         import torch  # noqa: F811
         if torch.cuda.is_available():
@@ -79,7 +79,7 @@ def create_status_router(state: ServiceState, verify_api_key, templates=None) ->
 
     @router.get("/api-docs", response_class=HTMLResponse)
     async def api_docs(request: Request):
-        """Human-friendly API documentation with copyable MOSS clone examples."""
+        """返回带有可复制 MOSS 克隆示例的 API 文档页。"""
         if templates:
             current_model = state.model_manager.current_snapshot()
             bootstrap = {
@@ -107,16 +107,21 @@ def create_status_router(state: ServiceState, verify_api_key, templates=None) ->
     async def health():
         current_model = state.model_manager.current_snapshot()
         voices = current_model.get("voices") or []
-        # Check if any loaded model is unhealthy
+        # 检查是否存在已加载但 unhealthy 的模型
         all_models = state.model_manager.list_models()
         unhealthy_models = [
             m["id"] for m in all_models
             if m.get("loaded") and not m.get("healthy", True)
         ]
         is_healthy = not unhealthy_models
-        status = "ok" if current_model.get("loaded") and is_healthy else (
-            "degraded" if unhealthy_models else "loading"
-        )
+        if unhealthy_models:
+            status = "degraded"
+        elif current_model.get("loaded"):
+            status = "ok"
+        elif current_model.get("idle_unloaded"):
+            status = "idle"
+        else:
+            status = "loading"
         return {
             "status": status,
             "healthy": is_healthy,
@@ -212,18 +217,18 @@ def create_status_router(state: ServiceState, verify_api_key, templates=None) ->
         snapshot = state.snapshot_stats()
         uptime = time.time() - snapshot["started_at"]
 
-        # Queue / concurrency info
+        # 队列与并发信息
         active = [r for r in state.active_requests.values() if r.get("status") in {"queued", "running", "cancelling"}]
         queued = [r for r in active if r.get("status") == "queued"]
 
-        # Latency percentiles
+        # 延迟百分位统计
         latency = state.latency_tracker.summary()
 
-        # Model info
+        # 模型信息
         all_models = state.model_manager.list_models()
         current_model = state.model_manager.current_snapshot()
 
-        # VRAM
+        # 显存信息
         vram = _get_vram_usage()
 
         requests_total = snapshot.get("requests_total", 0)
@@ -232,7 +237,7 @@ def create_status_router(state: ServiceState, verify_api_key, templates=None) ->
 
         return {
             "uptime_seconds": round(uptime, 3),
-            # Backward-compatible flat keys (used by existing tests)
+            # 保持向后兼容的扁平字段（现有测试和旧客户端仍会读取）
             "requests_total": requests_total,
             "requests_ok": requests_ok,
             "requests_error": requests_error,

@@ -1,0 +1,67 @@
+name: Docker CPU Smoke
+
+on:
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  cpu-smoke:
+    name: CPU compose smoke
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Check compose file
+        run: |
+          cd docker/cpu
+          docker compose config --quiet
+
+      - name: Build CPU image
+        run: |
+          cd docker/cpu
+          docker compose build
+
+      - name: Start CPU container
+        run: |
+          cd docker/cpu
+          docker compose up -d
+
+      - name: Wait for health endpoint
+        run: |
+          for i in $(seq 1 60); do
+            if curl -fsS http://127.0.0.1:8100/health >/tmp/angevoice-health.json; then
+              cat /tmp/angevoice-health.json
+              exit 0
+            fi
+            docker logs angevoice-cpu --tail=80 || true
+            sleep 5
+          done
+          docker logs angevoice-cpu --tail=200 || true
+          exit 1
+
+      - name: Run smoke test
+        env:
+          BASE_URL: http://127.0.0.1:8100
+          OUT_DIR: /tmp/angevoice-smoke
+          VOICE: zm_010
+        run: |
+          bash scripts/smoke_test.sh
+
+      - name: Dump logs on failure
+        if: failure()
+        run: |
+          docker ps -a || true
+          docker logs angevoice-cpu --tail=300 || true
+
+      - name: Stop CPU container
+        if: always()
+        run: |
+          cd docker/cpu
+          docker compose down -v

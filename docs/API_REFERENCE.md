@@ -71,9 +71,21 @@ WebSocket 客户端可通过 `Authorization` 头或首条 JSON 消息传递 toke
 | `WS` | `/ws/v1/tts` | WebSocket 流式合成；首条消息携带请求参数 | 设置 API key 后需要 |
 | `POST` | `/v1/audio/batch` | 批量合成 ZIP，返回 `manifest.json` | 设置 API key 后需要 |
 | `POST` | `/v1/audio/requests/{request_id}/cancel` | 标记正在执行的请求为取消状态 | 设置 API key 后需要 |
-| `DELETE` | `/admin/cache` | 清空内存中的合成缓存 | 需开启 Admin + API key |
-| `GET` | `/admin/voices` | 查看本地 Kokoro 音色目录 | 需开启 Admin + API key |
-| `POST` | `/admin/voices/upload` | 上传可信的 `.pt` Kokoro 音色文件 | 需开启 Admin + 上传功能 + API key |
+| `DELETE` | `/admin/cache` | 清空内存中的合成缓存 | 需开启 Admin，使用管理员账号密码或 Bearer Token |
+| `GET` | `/admin/voices` | 查看本地 Kokoro 音色目录 | 需开启 Admin，使用管理员账号密码或 Bearer Token |
+| `POST` | `/admin/voices/upload` | 上传可信的 `.pt` Kokoro 音色文件 | 需开启 Admin + 上传功能，使用管理员账号密码或 Bearer Token |
+
+
+### `/health` status 字段
+
+| status | 说明 |
+|---|---|
+| `ok` | 服务正常，当前模型已加载 |
+| `idle` | 服务正常，当前模型因空闲超时已卸载；下次请求自动加载 |
+| `loading` | 服务已启动但当前模型正在首次加载或尚未加载完成 |
+| `degraded` | 至少有一个已加载模型 unhealthy |
+
+Docker 健康检查将 `ok` 和 `idle` 都视为可用状态。
 
 ## 模型 ID
 
@@ -545,14 +557,14 @@ WebSocket 客户端也可发送：
 
 ```bash
 KOKORO_ADMIN_ENABLED=true
-KOKORO_API_KEY=<paste-generated-token-here>
+ANGEVOICE_ADMIN_PASSWORD=<paste-generated-token-here>
 ```
 
 清空缓存：
 
 ```bash
 curl -X DELETE "$BASE_URL/admin/cache" \
-  -H "Authorization: Bearer YOUR_TOKEN"
+  -u "admin:YOUR_ADMIN_PASSWORD"
 ```
 
 查看本地 Kokoro 音色：
@@ -604,28 +616,28 @@ If upload must be enabled, restrict to internal network admin endpoints with rev
 
 | 环境变量 | 默认值 | 说明 |
 |---|---|---|
-| `MOSS_STREAM_BUDGET_THRESHOLD_LOW` | `0.20` | 低负载阈值：当 GPU 显存占用比例低于此值时，采用较小的 chunk 切分策略以降低首字延迟 |
-| `MOSS_STREAM_BUDGET_THRESHOLD_MID` | `0.55` | 中负载阈值：介于低阈值和高阈值之间时，采用均衡的 chunk 切分策略 |
-| `MOSS_STREAM_BUDGET_THRESHOLD_HIGH` | `1.10` | 高负载阈值：当 GPU 显存占用比例超过此值时，采用更保守的 chunk 切分策略以避免 OOM |
-| `MOSS_STREAM_CHUNK_MIN_FLOOR` | `0.05` | 最小 chunk 比例下限：单次解码的最小 chunk 占比，防止过小切分导致的性能下降 |
+| `MOSS_STREAM_BUDGET_THRESHOLD_LOW` | `0.25` | 音频播放余量低阈值（秒）：低于此值每次只解码 1 帧，优先保证点生成后尽快出声 |
+| `MOSS_STREAM_BUDGET_THRESHOLD_MID` | `0.65` | 音频播放余量中阈值（秒）：低于此值每次解码 2 帧 |
+| `MOSS_STREAM_BUDGET_THRESHOLD_HIGH` | `1.20` | 音频播放余量高阈值（秒）：低于此值每次解码 4 帧，高于此值每次解码 8 帧以减少块间抖动 |
+| `MOSS_STREAM_CHUNK_MIN_FLOOR` | `0.10` | 最小流式分包时长下限（秒）：防止过短碎片导致听感卡顿 |
 
-这三个阈值（`LOW` < `MID` < `HIGH`）将 GPU 显存占用划分为四个区间，系统根据当前占用自动选择对应的 chunk 切分策略。`CHUNK_MIN_FLOOR` 保证单次解码不会小于总时长的 5%。
+这三个阈值（`LOW` < `MID` < `HIGH`）不是显存占用比例，而是“已生成音频领先实时播放的秒数”。余量越少，解码越小块，优先降低首包延迟；余量越充足，解码块越大，减少块间抖动。
 
 ## 空闲超时自动释放显存
 
-在 GPU 部署场景中，多模型共存会占用大量显存。启用空闲超时后，非当前使用的模型在空闲一段时间后会被自动卸载以释放显存，下次请求时再自动重新加载，对调用方完全透明。
+在 GPU 部署场景中，多模型共存会占用大量显存。启用空闲超时后，所有已加载模型（包括当前选中的模型）在空闲一段时间后会被自动卸载以释放显存/内存，下次请求时再自动重新加载，对调用方完全透明。
 
 | 环境变量 | 默认值 | 说明 |
 |---|---|---|
-| `ANGEVOICE_IDLE_TIMEOUT_SECONDS` | `0`（禁用） | 空闲超时时间（秒）。模型在连续 N 秒内没有收到请求时自动卸载。设置为 `0` 表示禁用此功能 |
+| `ANGEVOICE_IDLE_TIMEOUT_SECONDS` | `600` | 空闲超时时间（秒）。模型在连续 N 秒内没有收到请求时自动卸载。设置为 `0` 表示禁用此功能 |
 | `ANGEVOICE_IDLE_CHECK_INTERVAL` | `30` | 检查间隔（秒）。系统每隔 N 秒检查一次各模型的空闲状态 |
 
 工作原理：
 
 1. 系统每隔 `ANGEVOICE_IDLE_CHECK_INTERVAL` 秒检查一次各模型的最后请求时间
-2. 如果某个模型（非当前活跃模型）已空闲超过 `ANGEVOICE_IDLE_TIMEOUT_SECONDS` 秒，自动调用卸载
+2. 如果某个已加载模型已空闲超过 `ANGEVOICE_IDLE_TIMEOUT_SECONDS` 秒，自动调用卸载
 3. 下一次对该模型发起的 API 请求会先触发重新加载，加载完成后正常返回合成结果
-4. 当前活跃模型（通过 `/v1/models/switch` 切换的模型）不受空闲超时影响
+4. 默认也会释放当前活跃模型；如需保持当前模型常驻，可设置 `ANGEVOICE_IDLE_UNLOAD_CURRENT=false`
 
 推荐配置：
 
@@ -635,7 +647,7 @@ ANGEVOICE_IDLE_TIMEOUT_SECONDS=1800
 ANGEVOICE_IDLE_CHECK_INTERVAL=30
 ```
 
-> 注意：重新加载模型需要一定时间（通常几秒到十几秒），首次请求的延迟会略高。如果显存充裕，建议保持默认禁用状态。
+> 注意：重新加载模型需要一定时间（通常几秒到十几秒），首次请求的延迟会略高。如果显存/内存充裕，可以设置 `ANGEVOICE_IDLE_TIMEOUT_SECONDS=0` 禁用空闲卸载。
 
 ## 常见错误
 
@@ -646,3 +658,7 @@ ANGEVOICE_IDLE_CHECK_INTERVAL=30
 | WebSocket 已连接但无音频 | 首条消息缺少必要字段、token 错误或代理未正确转发 WebSocket | 先直接测试 `ws://host:port/ws/v1/tts`，再排查代理配置 |
 | 克隆合成出现 OOM / 爆音 / 失真 | prompt 过长、CUDA provider 不稳定、显存不足 | 降低 `MOSS_PROMPT_AUDIO_MAX_SECONDS` 至 5-8，或改用 `moss-nano-cpu` 测试 |
 | `401 Unauthorized` | 已配置 `KOKORO_API_KEY` 但请求未携带 token | 在请求头添加 Bearer token，或在 WebSocket 首包中添加 `token` 字段 |
+
+| `MOSS_PROCESS_ISOLATION_ENABLED` | `true` | 是否启用 MOSS 进程级隔离 |
+| `MOSS_PROCESS_ISOLATION_PROVIDERS` | `cuda` | 哪些 provider 使用隔离子进程 |
+| `MOSS_PROCESS_KILL_GRACE_SECONDS` | `2` | worker 超时后终止/强杀的宽限秒数 |

@@ -213,10 +213,11 @@ MOSS_PROMPT_AUDIO_MAX_SECONDS=8
 MOSS_PROMPT_CACHE_MAX_ITEMS=6
 MOSS_SAMPLE_MODE=fixed
 MOSS_SEED=1234
-MOSS_STREAM_CHUNK_SECONDS=0.35
+MOSS_STREAM_CHUNK_SECONDS=0.42
+MOSS_STREAM_CHUNK_MIN_FLOOR=0.10
 MOSS_OUTPUT_PEAK_NORMALIZE_ENABLED=true
-MOSS_OUTPUT_TARGET_PEAK=0.90
-MOSS_OUTPUT_GAIN=1.0
+MOSS_OUTPUT_TARGET_PEAK=0.88
+MOSS_OUTPUT_GAIN=0.96
 ```
 
 排查：
@@ -236,6 +237,16 @@ docker ps --format "table {{.Names}}\t{{.Image}}\t{{.Status}}"
 ```
 
 单张 8GB 卡不建议同时跑多个会加载 GPU 模型的容器。`MOSS_CUDA_MEMORY_LIMIT_MB` 默认保持 `0`；只有在 Tesla P4、RTX 3070 这类紧张环境排障时，才建议手动设置成 `4096` 或更低测试。
+
+MOSS CUDA 默认启用进程级隔离：
+
+```env
+MOSS_PROCESS_ISOLATION_ENABLED=true
+MOSS_PROCESS_ISOLATION_PROVIDERS=cuda
+MOSS_PROCESS_KILL_GRACE_SECONDS=2
+```
+
+如果 ONNX/CUDA 底层调用真的卡死，主进程会在请求超时后终止 worker 子进程，并在下次请求重新创建 runtime。CPU 默认不隔离；如需排查 CPU runtime 卡死，可临时设置 `MOSS_PROCESS_ISOLATION_PROVIDERS=cpu,cuda`。
 
 ## 7. 输出音频没有持久化
 
@@ -275,7 +286,7 @@ v2.6 会在启动时拦截不安全配置。以下配置会失败：
 ```bash
 KOKORO_API_KEY=change-me
 KOKORO_ADMIN_ENABLED=true
-KOKORO_API_KEY=
+ANGEVOICE_ADMIN_PASSWORD=
 KOKORO_VOICE_UPLOAD_ENABLED=true
 KOKORO_ADMIN_ENABLED=false
 ```
@@ -288,7 +299,14 @@ KOKORO_ADMIN_ENABLED=false
 KOKORO_VOICE_UPLOAD_ENABLED=false
 ```
 
-需要管理接口时再开启 `KOKORO_ADMIN_ENABLED=true`，并保留强 API Key。
+需要管理后台/接口时再开启：
+
+```bash
+KOKORO_ADMIN_ENABLED=true
+ANGEVOICE_ADMIN_PASSWORD=<strong-password>
+```
+
+公网部署建议同时保留强 API Key。
 
 ## 10. `/stats` 或 `/requests` 返回 401
 

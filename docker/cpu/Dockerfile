@@ -47,11 +47,11 @@ RUN chmod +x /entrypoint.sh
 
 EXPOSE 8000
 
-# 健康检查：每 30 秒访问 /health，10 秒超时，启动后给 60 秒缓冲期
+# 健康检查：每 30 秒访问 /health；ok/idle 都代表服务可用
 HEALTHCHECK --interval=30s --timeout=10s --start-period=60s --retries=3 \
   CMD python3 -c "import urllib.request, json; \
     d = json.loads(urllib.request.urlopen('http://localhost:8000/health').read()); \
     s = d.get('status', 'unknown'); \
-    exit(0 if s == 'ok' else 1)" || exit 1
+    exit(0 if s in {'ok', 'idle'} else 1)" || exit 1
 
 ENTRYPOINT ["/entrypoint.sh"]

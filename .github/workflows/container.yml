@@ -73,6 +73,20 @@ jobs:
           username: ${{ secrets.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}
 
+      - name: Read package version
+        id: version
+        shell: bash
+        run: |
+          VERSION=$(python - <<'PY'
+          import tomllib
+          from pathlib import Path
+          data = tomllib.loads(Path("pyproject.toml").read_text(encoding="utf-8"))
+          print(data["project"]["version"])
+          PY
+          )
+          echo "version=${VERSION}" >> "$GITHUB_OUTPUT"
+          echo "v_version=v${VERSION}" >> "$GITHUB_OUTPUT"
+
       - name: Docker metadata
         id: meta
         uses: docker/metadata-action@v5
@@ -81,8 +95,8 @@ jobs:
             ghcr.io/${{ github.repository_owner }}/${{ matrix.image }}
             ${{ secrets.DOCKERHUB_USERNAME }}/${{ matrix.image }}
           tags: |
-            type=raw,value=latest,enable={{is_default_branch}}
-            type=ref,event=tag
+            type=raw,value=latest,enable=${{ steps.publish.outputs.enabled == 'true' }}
+            type=raw,value=${{ steps.version.outputs.v_version }},enable=${{ steps.publish.outputs.enabled == 'true' }}
             type=sha,prefix=sha-
 
       - name: Build image

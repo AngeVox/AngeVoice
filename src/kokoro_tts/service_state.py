@@ -38,6 +38,7 @@ class ServiceState:
         self.cancelled_requests: set[str] = set()
         self.stats_lock = threading.Lock()
         self.output_lock = threading.Lock()
+        self.request_lock = threading.Lock()
         self.latency_tracker = LatencyTracker()
         self.stats = {
             "requests_total": 0,
@@ -127,27 +128,31 @@ class ServiceState:
     def mark_request(self, request_id: str, status: str, **extra) -> None:
         if not self.cfg.queue_status_enabled:
             return
-        item = self.active_requests.setdefault(
-            request_id,
-            {"id": request_id, "created_at": time.time(), "status": status},
-        )
-        item.update({"status": status, "updated_at": time.time(), **extra})
+        with self.request_lock:
+            item = self.active_requests.setdefault(
+                request_id,
+                {"id": request_id, "created_at": time.time(), "status": status},
+            )
+            item.update({"status": status, "updated_at": time.time(), **extra})
 
     def finish_request(self, request_id: str, status: str, **extra) -> None:
         self.mark_request(request_id, status, **extra)
-        if self.cfg.queue_status_enabled and len(self.active_requests) > 100:
-            oldest = sorted(self.active_requests.items(), key=lambda kv: kv[1].get("updated_at", 0))[:20]
-            for key, _ in oldest:
-                self.active_requests.pop(key, None)
-        if status in {"done", "error", "timeout", "cancelled"}:
-            self.cancelled_requests.discard(request_id)
+        with self.request_lock:
+            if self.cfg.queue_status_enabled and len(self.active_requests) > 100:
+                oldest = sorted(self.active_requests.items(), key=lambda kv: kv[1].get("updated_at", 0))[:20]
+                for key, _ in oldest:
+                    self.active_requests.pop(key, None)
+            if status in {"done", "error", "timeout", "cancelled"}:
+                self.cancelled_requests.discard(request_id)
 
     def is_cancelled(self, request_id: str) -> bool:
-        return request_id in self.cancelled_requests
+        with self.request_lock:
+            return request_id in self.cancelled_requests
 
     def request_cancel(self, request_id: str) -> bool:
-        known = request_id in self.active_requests
-        self.cancelled_requests.add(request_id)
+        with self.request_lock:
+            known = request_id in self.active_requests
+            self.cancelled_requests.add(request_id)
         self.inc_stat("ws_cancelled_total")
         self.mark_request(request_id, "cancelling")
         return known

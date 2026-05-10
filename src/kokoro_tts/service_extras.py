@@ -1,12 +1,15 @@
-"""Optional service endpoints for AngeVoice.
+"""AngeVoice 可选服务端点。
 
-This module keeps product/service features out of server.py so the core server stays
-small and easy to review. AngeVoice is built on the Kokoro v1.1 model.
+批量合成、管理接口、MP3 转码等产品功能集中放在这里，避免
+``server.py`` 继续膨胀。
 """
 
 from __future__ import annotations
 
 import asyncio
+import base64
+import hmac
+import os
 import json
 import logging
 import shutil
@@ -17,7 +20,7 @@ from io import BytesIO
 from pathlib import Path
 from typing import Callable, Optional
 
-from fastapi import Depends, File, HTTPException, UploadFile
+from fastapi import Depends, File, HTTPException, Request, UploadFile
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 
@@ -28,11 +31,11 @@ _fallback_stats_lock = threading.Lock()
 
 
 class BatchItem(BaseModel):
-    text: str = Field(..., description="Text to synthesize")
-    model: Optional[str] = Field(default=None, description="Model id")
-    voice: Optional[str] = Field(default=None, description="Voice name")
-    speed: Optional[float] = Field(default=None, ge=0.5, le=2.0, description="Speed")
-    filename: Optional[str] = Field(default=None, description="File name in zip")
+    text: str = Field(..., description="待合成文本")
+    model: Optional[str] = Field(default=None, description="模型 ID")
+    voice: Optional[str] = Field(default=None, description="音色名称")
+    speed: Optional[float] = Field(default=None, ge=0.5, le=2.0, description="语速")
+    filename: Optional[str] = Field(default=None, description="ZIP 内文件名")
 
 
 class BatchTTSRequest(BaseModel):
@@ -112,7 +115,7 @@ def register_extra_routes(
     cache_clear: Callable[[], int] | None = None,
     cache_size: Callable[[], int] | None = None,
 ):
-    """Register optional AngeVoice service routes on the existing FastAPI app."""
+    """注册 AngeVoice 可选服务路由。"""
     def inc_stat(name: str, delta=1) -> None:
         if increment_stat is not None:
             increment_stat(name, delta)
@@ -120,9 +123,32 @@ def register_extra_routes(
         with _fallback_stats_lock:
             stats[name] = stats.get(name, 0) + delta
 
-    async def verify_admin(_=Depends(verify_api_key)):
+    async def verify_admin(request: Request):
         if not cfg.admin_enabled:
             raise HTTPException(status_code=404, detail="Admin API disabled")
+
+        auth = request.headers.get("Authorization", "")
+        if cfg.api_key and auth.startswith("Bearer "):
+            token = auth.removeprefix("Bearer ").strip()
+            if hmac.compare_digest(token, cfg.api_key or ""):
+                return
+
+        admin_password = (os.environ.get("ANGEVOICE_ADMIN_PASSWORD") or "").strip()
+        if not admin_password:
+            raise HTTPException(status_code=503, detail="Admin password is not configured")
+
+        if auth.lower().startswith("basic "):
+            raw = auth.split(" ", 1)[1].strip()
+            try:
+                decoded = base64.b64decode(raw).decode("utf-8")
+                username, password = decoded.split(":", 1)
+            except Exception:
+                username, password = "", ""
+            expected_username = os.environ.get("ANGEVOICE_ADMIN_USERNAME", "admin") or "admin"
+            if hmac.compare_digest(username, expected_username) and hmac.compare_digest(password, admin_password):
+                return
+
+        raise HTTPException(status_code=401, detail="Admin login required", headers={"WWW-Authenticate": "Basic"})
 
     def normalize_extra_format(fmt: str) -> str:
         fmt = (fmt or "wav").lower()
@@ -148,7 +174,7 @@ def register_extra_routes(
 
     @app.post("/v1/audio/batch")
     async def batch_tts(req: BatchTTSRequest, _=Depends(verify_api_key)):
-        """Batch synthesize multiple texts and return a ZIP file."""
+        """批量合成多条文本并返回 ZIP 文件。"""
         if not cfg.batch_enabled:
             raise HTTPException(status_code=404, detail="Batch API disabled")
         if not req.items:
@@ -157,7 +183,7 @@ def register_extra_routes(
             raise HTTPException(status_code=400, detail=f"too many items, max {cfg.batch_max_items}")
 
         fmt = normalize_extra_format(req.response_format)
-        ext = "raw" if fmt == "pcm" else fmt
+        ext = "pcm" if fmt == "pcm" else fmt
         batch_id = new_request_id()
         inc_stat("batch_requests_total")
         inc_stat("batch_items_total", len(req.items))
@@ -208,7 +234,8 @@ def register_extra_routes(
         )
 
     @app.delete("/admin/cache")
-    async def clear_cache(_=Depends(verify_admin)):
+    async def clear_cache(request: Request):
+        await verify_admin(request)
         if cache_clear is not None:
             size = cache_clear()
         else:
@@ -217,11 +244,13 @@ def register_extra_routes(
         return {"ok": True, "cleared": size}
 
     @app.get("/admin/voices")
-    async def admin_voices(_=Depends(verify_admin)):
+    async def admin_voices(request: Request):
+        await verify_admin(request)
         return {"voices": cfg.get_voices(), "voices_dir": str(cfg.voices_dir)}
 
     @app.post("/admin/voices/upload")
-    async def upload_voice(file: UploadFile = File(...), _=Depends(verify_admin)):
+    async def upload_voice(request: Request, file: UploadFile = File(...)):
+        await verify_admin(request)
         if not cfg.voice_upload_enabled:
             raise HTTPException(status_code=404, detail="Voice upload disabled")
         filename = Path(file.filename or "").name

@@ -77,7 +77,7 @@ def create_ws_router(state: ServiceState) -> APIRouter:
                     await websocket.send_json({"type": "error", "message": str(exc.detail), "request_id": request_id})
                     return
 
-            queue: asyncio.Queue = asyncio.Queue(maxsize=1)
+            queue: asyncio.Queue = asyncio.Queue(maxsize=4)
             loop = asyncio.get_running_loop()
             done_marker = object()
             cancel_flag = {"cancelled": False, "by_client": False, "notified": False}
@@ -94,6 +94,9 @@ def create_ws_router(state: ServiceState) -> APIRouter:
                     return
                 cancel_flag["notified"] = True
                 await drain_queue()
+                # Put the cancelled message; consumer will break on seeing it.
+                # done_marker is not needed here since the consumer loop breaks
+                # immediately on type=="cancelled" before waiting for a second item.
                 await queue.put({"type": "cancelled", "request_id": request_id})
                 await queue.put(done_marker)
 
@@ -108,6 +111,7 @@ def create_ws_router(state: ServiceState) -> APIRouter:
                         await notify_cancelled()
                         break
                     except Exception:
+                        logger.debug("WS control listener error", exc_info=True, extra={"request_id": request_id})
                         break
                     msg_type = str(control_msg.get("type", "")).lower()
                     if msg_type in {"cancel", "stop"}:

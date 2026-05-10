@@ -32,7 +32,8 @@ src/kokoro_tts/
 ├── audio.py              # 音频编码工具
 ├── engine_manager.py     # 模型注册、加载、切换、卸载
 ├── engine.py             # Kokoro 引擎、分段、文本规范化、音频编码
-├── moss_engine.py        # MOSS-TTS-Nano 官方 ONNX runtime 适配器
+├── moss_engine.py        # MOSS-TTS-Nano 引擎调度与兼容入口
+├── moss/                 # MOSS runtime、进程隔离、prompt、流式和音频后处理辅助模块
 ├── config.py             # 配置和环境变量
 ├── cli.py                # angevoice / kokoro-tts CLI
 ├── templates/index.html  # Studio Web UI HTML shell
@@ -91,9 +92,25 @@ src/kokoro_tts/
 
 MOSS capability metadata 会声明 `modes=["preset_voice","voice_clone"]` 和 `voice_clone_supported=true`。Studio Web UI 根据该能力显示参考音频上传控件；非克隆模型收到 `prompt_audio` 时会返回 400。HTTP 缓存 key 包含模型 ID 和参考音频指纹，避免不同 prompt audio 误命中同一条缓存。
 
-MOSS 适配层不会直接改写上游仓库代码。AngeVoice 在适配层中做三件事：复用单个 MOSS executor 并用 runtime lock 保护官方 runtime；对 clone 参考音频做时长裁剪和 prompt code LRU 缓存；对输出做削峰归一化，降低 8GB 显存环境下 clone OOM、爆音和削波的概率。
+MOSS 适配层不会直接改写上游仓库代码。AngeVoice 在适配层中做四件事：复用单个 MOSS executor 并用 runtime lock 保护官方 runtime；对 clone 参考音频做时长裁剪和 prompt code LRU 缓存；对输出做温和峰值保护，降低 8GB 显存环境下 clone OOM、爆音和削波的概率；CUDA 默认通过隔离 worker 子进程执行，超时后可终止子进程并在下次请求重建 runtime。
 
 MOSS CUDA 依赖目标环境的 ONNX Runtime/CUDA/cuDNN 组合。Tesla P4 在通用 GPU Docker 画像中已通过 `onnxruntime-gpu==1.20.2` + `nvidia-cudnn-cu12==9.1.0.70` 探针测试；缺 cuDNN 9 时官方 runtime 会创建 CPU session，AngeVoice 会拒绝该 CUDA 加载并按配置回退 CPU。老架构GPU 镜像通过 ONNX Runtime CUDA 11 feed 预装了 CUDA 11.8 兼容的 MOSS GPU 依赖，但默认只开放 MOSS CPU，方便用户先稳定运行 Kokoro。
+
+
+### MOSS 子模块
+
+`kokoro_tts.moss` 子包承载从 `moss_engine.py` 拆出的纯逻辑和隔离逻辑：
+
+| 文件 | 职责 |
+|---|---|
+| `runtime.py` | 官方 runtime 导入、provider 创建、CUDA 显存限制注入、自检音频分析 |
+| `process_worker.py` | MOSS 进程级隔离；父进程调度，worker 子进程加载 runtime 并执行推理 |
+| `prompt.py` | 参考音频裁剪、采样率/通道对齐、prompt code LRU 缓存 |
+| `streaming.py` | 流式帧预算、codec streaming 输出整理 |
+| `postprocess.py` | 波形归一化、温和峰值保护、静音和流式分片 |
+| `text.py` | MOSS 文本清洗和分段 |
+
+默认只有 `moss-nano-cuda` 走进程级隔离；CPU 路径保持线程内 runtime，以减少进程开销。
 
 ## Studio Web UI
 

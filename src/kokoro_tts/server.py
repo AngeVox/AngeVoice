@@ -1,8 +1,8 @@
-"""AngeVoice FastAPI application factory.
+"""AngeVoice FastAPI 应用工厂。
 
-The historical public API remains ``kokoro_tts.server.create_app`` and
-``kokoro_tts.server.run_server``. Route implementations live under
-``kokoro_tts.routes`` so this file stays focused on application assembly.
+历史公开 API 仍保留 ``kokoro_tts.server.create_app`` 与
+``kokoro_tts.server.run_server``。具体路由放在 ``kokoro_tts.routes``，
+让本文件专注应用装配。
 """
 
 import logging
@@ -14,7 +14,7 @@ from . import __version__
 from .config import TTSConfig, load_config
 from .engine import TTSEngine
 from .engine_manager import EngineManager
-from .routes import create_audio_router, create_status_router, create_ws_router
+from .routes import create_admin_router, create_audio_router, create_status_router, create_ws_router
 from .security import make_verify_api_key
 from .service_state import ServiceState
 from .rate_limit import GlobalQueueMiddleware, RateLimitMiddleware
@@ -53,6 +53,8 @@ _WORKER_ENV_EXPORTS = {
     "ANGEVOICE_OUTPUT_DIR": "output_dir",
     "ANGEVOICE_SAVE_OUTPUTS": "save_outputs",
     "ANGEVOICE_OUTPUT_MAX_FILES": "output_max_files",
+    "ANGEVOICE_IDLE_TIMEOUT_SECONDS": "model_idle_timeout_seconds",
+    "ANGEVOICE_IDLE_CHECK_INTERVAL": "model_idle_check_interval",
     "MOSS_EXECUTION_PROVIDER": "moss_execution_provider",
     "MOSS_CPU_THREADS": "moss_cpu_threads",
     "MOSS_DEFAULT_VOICE": "moss_default_voice",
@@ -78,12 +80,13 @@ _WORKER_ENV_EXPORTS = {
     "MOSS_OUTPUT_PEAK_NORMALIZE_ENABLED": "moss_output_peak_normalize_enabled",
     "MOSS_OUTPUT_TARGET_PEAK": "moss_output_target_peak",
     "MOSS_OUTPUT_GAIN": "moss_output_gain",
+    "MOSS_PROCESS_ISOLATION_ENABLED": "moss_process_isolation_enabled",
+    "MOSS_PROCESS_ISOLATION_PROVIDERS": "moss_process_isolation_providers",
+    "MOSS_PROCESS_KILL_GRACE_SECONDS": "moss_process_kill_grace_seconds",
     "MOSS_STREAM_BUDGET_THRESHOLD_LOW": "moss_stream_budget_threshold_low",
     "MOSS_STREAM_BUDGET_THRESHOLD_MID": "moss_stream_budget_threshold_mid",
     "MOSS_STREAM_BUDGET_THRESHOLD_HIGH": "moss_stream_budget_threshold_high",
     "MOSS_STREAM_CHUNK_MIN_FLOOR": "moss_stream_chunk_min_floor",
-    "ANGEVOICE_IDLE_TIMEOUT_SECONDS": "model_idle_timeout_seconds",
-    "ANGEVOICE_IDLE_CHECK_INTERVAL": "model_idle_check_interval",
     "KOKORO_RATE_LIMIT_QPS": "rate_limit_qps",
     "KOKORO_RATE_LIMIT_BURST": "rate_limit_burst",
     "KOKORO_MAX_QUEUE_LENGTH": "max_queue_length",
@@ -113,7 +116,7 @@ def _export_config_for_workers(cfg: TTSConfig) -> None:
 
 
 def create_app(config: Optional[TTSConfig] = None, engine: Optional[TTSEngine] = None):
-    """Create the AngeVoice FastAPI app with delayed heavyweight imports."""
+    """创建 AngeVoice FastAPI 应用，重量级依赖按需加载。"""
     from contextlib import asynccontextmanager
 
     from fastapi import FastAPI
@@ -173,6 +176,7 @@ def create_app(config: Optional[TTSConfig] = None, engine: Optional[TTSEngine] =
         logger.debug("Jinja2 templates are unavailable", exc_info=True)
 
     app.include_router(create_status_router(state, verify_api_key, templates=templates))
+    app.include_router(create_admin_router(state))
     app.include_router(create_audio_router(state, verify_api_key))
     app.include_router(create_ws_router(state))
 

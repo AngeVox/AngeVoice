@@ -63,14 +63,7 @@ class TokenBucket:
 class _BucketRegistry:
     """Manages per-key ``TokenBucket`` instances with automatic cleanup."""
 
-    __slots__ = (
-        "_qps",
-        "_burst",
-        "_buckets",
-        "_lock",
-        "_last_cleanup",
-        "_cleanup_interval",
-    )
+    __slots__ = ("_qps", "_burst", "_buckets", "_lock", "_last_cleanup", "_cleanup_interval")
 
     def __init__(self, qps: float, burst: int) -> None:
         self._qps = max(0.0, float(qps))
@@ -125,21 +118,48 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
         )
 
 
+class _NonBlockingConcurrencyGate:
+    """Small public-state gate used instead of peeking at asyncio.Semaphore._value."""
+
+    def __init__(self, max_concurrent: int) -> None:
+        self._max = max(1, int(max_concurrent))
+        self._in_flight = 0
+        self._lock = asyncio.Lock()
+
+    @property
+    def max_concurrent(self) -> int:
+        return self._max
+
+    @property
+    def in_flight(self) -> int:
+        return self._in_flight
+
+    async def acquire_nowait(self) -> bool:
+        async with self._lock:
+            if self._in_flight >= self._max:
+                return False
+            self._in_flight += 1
+            return True
+
+    async def release(self) -> None:
+        async with self._lock:
+            self._in_flight = max(0, self._in_flight - 1)
+
+
 class GlobalQueueMiddleware(BaseHTTPMiddleware):
-    """Limits total concurrent in-flight requests via an ``asyncio.Semaphore``."""
+    """Limits total concurrent in-flight requests without private asyncio APIs."""
 
     def __init__(self, app, max_concurrent: int) -> None:  # noqa: ANN001
         super().__init__(app)
-        self._semaphore = asyncio.Semaphore(max(1, int(max_concurrent)))
-        self._max = max(1, int(max_concurrent))
+        self._gate = _NonBlockingConcurrencyGate(max_concurrent)
 
     async def dispatch(self, request: Request, call_next):  # noqa: ANN201
-        # asyncio.Semaphore has no public acquire_nowait(). In ASGI's event loop,
-        # checking and decrementing _value without an await in between is atomic
-        # enough for this non-blocking capacity gate and avoids wait_for(..., 0)
-        # false negatives on some Python/event-loop combinations.
-        if self._semaphore._value <= 0:  # noqa: SLF001 - no public non-blocking API
-            logger.warning("Global queue full (%d/%d)", self._max, self._max)
+        if not await self._gate.acquire_nowait():
+            logger.warning(
+                "Global queue full (%d/%d)",
+                self._gate.in_flight,
+                self._gate.max_concurrent,
+            )
             return JSONResponse(
                 status_code=429,
                 content={
@@ -148,11 +168,10 @@ class GlobalQueueMiddleware(BaseHTTPMiddleware):
                 },
                 headers={"Retry-After": "1"},
             )
-        await self._semaphore.acquire()
         try:
             return await call_next(request)
         finally:
-            self._semaphore.release()
+            await self._gate.release()
 
 
 def _extract_client_key(request: Request) -> str:

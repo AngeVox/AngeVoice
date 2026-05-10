@@ -8,6 +8,25 @@ English | [中文](README.md)
 [![Python 3.10+](https://img.shields.io/badge/python-3.10+-blue.svg)](https://www.python.org/downloads/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
 
+
+## One-command install (recommended)
+
+After Docker and Docker Compose V2 are installed, run the interactive installer. It detects CPU/GPU, older NVIDIA cards, Docker/Compose and GitHub/GHCR connectivity, then recommends the `cpu`, `gpu` or `legacy-gpu` profile.
+
+```bash
+bash <(curl -fsSL https://raw.githubusercontent.com/ang77712829/AngeVoice/main/scripts/install.sh)
+```
+
+For restricted networks, clone the repository first and run the local installer:
+
+```bash
+git clone https://github.com/ang77712829/AngeVoice.git
+cd AngeVoice
+bash scripts/install.sh
+```
+
+Shared Docker defaults live in `docker/angevoice.env`. They are CPU/NAS-safe by default; GPU profiles only override the required CUDA settings.
+
 ## What is AngeVoice?
 
 AngeVoice is not a newly trained model. It is a local TTS service framework for low-power devices, NAS boxes, and long-running self-hosted environments.
@@ -35,7 +54,7 @@ Good fits:
 | Studio Web UI | Built-in console with model switching, voice filtering, preview, streaming playback, stop generation, API-key settings, and metrics |
 | API docs page | `GET /api-docs` provides copyable examples, especially for MOSS reference-audio clone and streaming clone |
 | OpenAI-compatible API | `POST /v1/audio/speech` with `model/input/voice/speed/response_format` |
-| MOSS-TTS-Nano | OpenMOSS ONNX runtime adapter with preset voices, reference-audio cloning, CPU baseline, and experimental CUDA mode |
+| MOSS-TTS-Nano | OpenMOSS ONNX runtime adapter with preset voices, reference-audio cloning, CPU baseline, and experimental CUDA mode; CUDA uses process isolation by default so a stuck worker can be killed |
 | Multi-model runtime | `/v1/models` lists, loads, unloads, and switches engines; cache keys are isolated by model |
 | WebSocket streaming | `WS /ws/v1/tts`; bounded chunks, `cancel` / `stop`, MOSS clone audio in the first JSON message |
 | Chinese text rules | Auto pause punctuation, jieba-first segmentation, fallback lexicon, and common polyphone overrides |
@@ -43,7 +62,7 @@ Good fits:
 | Service controls | Request IDs, `/health`, `/stats`, `/requests`, timeout, concurrency guard, LRU cache |
 | Docker profiles | CPU, GPU, and Legacy GPU Compose profiles |
 | CLI | Recommended command: `angevoice`; legacy `kokoro-tts` remains supported |
-| Idle timeout GPU release | `ANGEVOICE_IDLE_TIMEOUT_SECONDS` configurable auto-unload of inactive models to release GPU memory |
+| Idle timeout release | Defaults to unloading all loaded models after 10 minutes of inactivity, including the current model, to reduce NAS power/VRAM usage |
 
 ## Quick start
 
@@ -68,7 +87,7 @@ curl http://127.0.0.1:8101/health
 curl http://127.0.0.1:8101/v1/models
 ```
 
-> **Container health status**: Every Docker image includes a built-in `HEALTHCHECK` that hits `/health` every 30 seconds. A `{"status":"ok"}` response marks the container as **healthy**; any other response marks it **unhealthy**. The 60-second start period allows model loading before the first check. Inspect with `docker inspect --format='{{json .State.Health}}' <container>`.
+> **Container health status**: Every Docker image includes a built-in `HEALTHCHECK` that hits `/health` every 30 seconds. A `{"status":"ok"}` or `{"status":"idle"}` response marks the container as **healthy**. `idle` means the current model was unloaded by the idle timer but the service is ready to auto-load it on the next request. The 60-second start period allows model loading before the first check. Inspect with `docker inspect --format='{{json .State.Health}}' <container>`.
 
 ### Docker CPU / Legacy GPU
 
@@ -93,6 +112,18 @@ angevoice synth "Hello world" -o hello.wav -v zm_010
 # Legacy command still works
 kokoro-tts serve --port 8000
 ```
+
+
+### `/health` status semantics
+
+| status | Meaning |
+|---|---|
+| `ok` | Service is healthy and the current model is loaded |
+| `idle` | Service is healthy, but the current model was unloaded by the idle timer and will auto-load on next request |
+| `loading` | Service is up but the current model is still loading or has not completed first load |
+| `degraded` | At least one loaded model is unhealthy |
+
+Docker health checks treat both `ok` and `idle` as healthy.
 
 ## Documentation entry points
 
@@ -243,18 +274,21 @@ environment:
 | `MOSS_PROMPT_AUDIO_MAX_SECONDS` | `10` | Reference-audio trim duration |
 | `MOSS_PROMPT_CACHE_MAX_ITEMS` | `8` | Encoded prompt-audio cache size |
 | `MOSS_AUTO_FALLBACK_CPU` | `true` | Fall back to CPU when CUDA self-test fails |
+| `MOSS_PROCESS_ISOLATION_ENABLED` | `true` | Enable MOSS process isolation |
+| `MOSS_PROCESS_ISOLATION_PROVIDERS` | `cuda` | Providers executed in an isolated worker process |
+| `MOSS_PROCESS_KILL_GRACE_SECONDS` | `2` | Grace seconds before force-killing a timed-out worker |
 | `MOSS_QUALITY_GATE_ENABLED` | `true` | Reject silent, NaN/Inf, or heavily clipped MOSS self-test output |
-| `ANGEVOICE_IDLE_TIMEOUT_SECONDS` | `0` | Auto-unload inactive models after N seconds; 0 = disabled |
+| `ANGEVOICE_IDLE_TIMEOUT_SECONDS` | `600` | Auto-unload all loaded models after N idle seconds; 0 = disabled |
 | `ANGEVOICE_IDLE_CHECK_INTERVAL` | `30` | Idle check interval (seconds) |
-| `MOSS_STREAM_BUDGET_THRESHOLD_LOW` | `0.20` | Stream decode low threshold (seconds); below this decode 1 frame |
-| `MOSS_STREAM_BUDGET_THRESHOLD_MID` | `0.55` | Stream decode mid threshold; below this decode 2 frames |
-| `MOSS_STREAM_BUDGET_THRESHOLD_HIGH` | `1.10` | Stream decode high threshold; below this decode 4 frames |
-| `MOSS_STREAM_CHUNK_MIN_FLOOR` | `0.05` | Minimum stream chunk floor (seconds) |
+| `MOSS_STREAM_BUDGET_THRESHOLD_LOW` | `0.25` | Audio lead low threshold in seconds; below this decode 1 frame for faster first audio |
+| `MOSS_STREAM_BUDGET_THRESHOLD_MID` | `0.65` | Audio lead mid threshold; below this decode 2 frames |
+| `MOSS_STREAM_BUDGET_THRESHOLD_HIGH` | `1.20` | Audio lead high threshold; below this decode 4 frames, above this decode 8 frames |
+| `MOSS_STREAM_CHUNK_MIN_FLOOR` | `0.10` | Minimum stream chunk floor (seconds) to avoid tiny choppy fragments |
 
 ## Security notes
 
 - Set `KOKORO_API_KEY` for public or semi-public deployments.
-- Admin APIs are disabled by default. If enabled, a strong API key is required or the service refuses to start.
+- Admin UI/APIs are disabled by default. If enabled, `ANGEVOICE_ADMIN_PASSWORD` is required; public deployments should also set `KOKORO_API_KEY` and restrict access at the reverse proxy.
 - `.pt` voice upload is disabled by default. Only upload trusted files.
 
 ⚠️ **Security Warning**: Enabling `KOKORO_VOICE_UPLOAD_ENABLED` on public-facing servers is **strongly discouraged**.
@@ -291,6 +325,8 @@ chmod +x scripts/e2e_loop_test.sh
 ```
 
 Lightweight smoke tests:
+
+You can also manually trigger the `Docker CPU Smoke` GitHub Actions workflow to validate `docker compose config --quiet`, CPU image build, container startup, `/health`, and `scripts/smoke_test.sh`.
 
 ```bash
 chmod +x scripts/smoke_test.sh scripts/loop_test.sh

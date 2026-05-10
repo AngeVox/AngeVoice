@@ -8,6 +8,25 @@
 [![Python 3.10+](https://img.shields.io/badge/python-3.10+-blue.svg)](https://www.python.org/downloads/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
 
+
+## 一键安装（推荐普通用户）
+
+服务器已安装 Docker 和 Docker Compose V2 后，可直接运行交互式安装脚本。脚本会自动检测 CPU/GPU、老架构 NVIDIA 显卡、Docker/Compose 和 GitHub/GHCR 网络情况，并推荐 `cpu` / `gpu` / `legacy-gpu` 画像。
+
+```bash
+bash <(curl -fsSL https://raw.githubusercontent.com/ang77712829/AngeVoice/main/scripts/install.sh)
+```
+
+如果你在国内网络访问 GitHub 或 GHCR 较慢，可以先下载源码包后执行本地脚本：
+
+```bash
+git clone https://github.com/ang77712829/AngeVoice.git
+cd AngeVoice
+bash scripts/install.sh
+```
+
+默认 Docker 配置集中在 `docker/angevoice.env`，CPU/NAS 场景开箱安全；GPU 和 legacy-gpu 画像只覆盖必要的 CUDA 参数。
+
 ## 项目定位
 
 AngeVoice 不是重新训练的新模型，而是面向低配设备、NAS 和长期运行环境做的本地 TTS 服务框架。
@@ -35,7 +54,7 @@ AngeVoice 不是重新训练的新模型，而是面向低配设备、NAS 和长
 | Studio Web UI | 内置控制台，支持模型切换、音色筛选、试听、流式播放、停止生成、API Key 设置和统计卡片 |
 | API 文档页 | `GET /api-docs` 提供可复制调用示例，重点覆盖 MOSS 参考音频克隆和流式克隆 |
 | OpenAI 兼容 API | `POST /v1/audio/speech`，兼容 `model/input/voice/speed/response_format` |
-| MOSS-TTS-Nano | 通过 OpenMOSS 官方 ONNX runtime 接入，支持预设音色、参考音频克隆、CPU 基线和 CUDA 实验模式 |
+| MOSS-TTS-Nano | 通过 OpenMOSS 官方 ONNX runtime 接入，支持预设音色、参考音频克隆、CPU 基线和 CUDA 实验模式；CUDA 默认进程级隔离，超时可杀掉子进程 |
 | 多模型运行时 | `/v1/models` 查看、加载、卸载和切换模型；可切换时卸载旧模型并隔离缓存 |
 | WebSocket 流式 | `WS /ws/v1/tts` 小包推送；支持 `cancel` / `stop`；MOSS 克隆可在首包传参考音频 base64 |
 | 中文文本规则 | 自动断句标点、jieba 分词优先、兜底词典、常见多音字上下文修正 |
@@ -43,7 +62,7 @@ AngeVoice 不是重新训练的新模型，而是面向低配设备、NAS 和长
 | 服务治理 | 请求 ID、`/health`、`/stats`、`/requests`、超时、并发限制、LRU 缓存 |
 | Docker 画像 | CPU、GPU、老架构 GPU 三套 Compose 画像 |
 | CLI | 推荐 `angevoice`，旧命令 `kokoro-tts` 继续兼容 |
-| 空闲超时释放显存 | `ANGEVOICE_IDLE_TIMEOUT_SECONDS` 可配置空闲超时自动卸载非活跃模型，释放 GPU 显存 |
+| 空闲超时释放显存 | 默认 10 分钟无人使用后卸载所有已加载模型（包括当前模型），释放显存/内存并降低 NAS 功耗 |
 
 ## 快速开始
 
@@ -68,7 +87,7 @@ curl http://127.0.0.1:8101/health
 curl http://127.0.0.1:8101/v1/models
 ```
 
-> **容器健康状态**：每个 Docker 镜像内置 `HEALTHCHECK`，每 30 秒自动请求 `/health` 端点。返回 `{"status":"ok"}` 判定为 healthy；否则标记为 unhealthy。`start-period=60s` 确保模型加载期间不会误判。可用 `docker inspect --format='{{json .State.Health}}' <container>` 查看。
+> **容器健康状态**：每个 Docker 镜像内置 `HEALTHCHECK`，每 30 秒自动请求 `/health` 端点。返回 `{"status":"ok"}` 或 `{"status":"idle"}` 都判定为 healthy；`idle` 表示模型已被空闲卸载但服务正常可用。`start-period=60s` 确保模型加载期间不会误判。可用 `docker inspect --format='{{json .State.Health}}' <container>` 查看。
 
 ### Docker CPU / 老架构 GPU
 
@@ -93,6 +112,20 @@ angevoice synth "你好世界" -o hello.wav -v zm_010
 # 旧命令仍可用
 kokoro-tts serve --port 8000
 ```
+
+
+### `/health` 状态语义
+
+`/health` 返回 HTTP 200 不代表当前模型一定常驻内存，需结合 `status` 字段：
+
+| status | 含义 |
+|---|---|
+| `ok` | 服务正常，当前模型已加载 |
+| `idle` | 服务正常，当前模型因空闲超时已卸载；下次请求会自动加载 |
+| `loading` | 服务已启动但当前模型还未完成首次加载 |
+| `degraded` | 至少有一个已加载模型 unhealthy |
+
+Docker 健康检查把 `ok` 和 `idle` 都视为 healthy。
 
 ## 文档入口
 
@@ -230,7 +263,7 @@ environment:
 | `KOKORO_STREAM_CHUNK_SECONDS` | `0.50` | WebSocket 输出小包时长 |
 | `KOKORO_CACHE_ENABLED` | `true` | 是否启用内存 LRU 缓存 |
 | `KOKORO_BATCH_ENABLED` | `true` | 是否启用批量合成 |
-| `KOKORO_ADMIN_ENABLED` | `false` | 是否启用管理接口 |
+| `KOKORO_ADMIN_ENABLED` | `false` | 是否启用管理后台和管理接口；开启后必须设置 `ANGEVOICE_ADMIN_PASSWORD` |
 | `KOKORO_MP3_ENABLED` | `false` | 是否启用 MP3 输出，依赖 ffmpeg |
 | `ANGEVOICE_ENABLED_MODELS` | `kokoro` | 启用的模型 ID，逗号分隔 |
 | `ANGEVOICE_DEFAULT_MODEL` | `kokoro` | 启动时加载的默认模型 |
@@ -243,20 +276,23 @@ environment:
 | `MOSS_PROMPT_AUDIO_MAX_SECONDS` | `10` | 克隆参考音频裁剪时长 |
 | `MOSS_PROMPT_CACHE_MAX_ITEMS` | `8` | 参考音频编码缓存条目数 |
 | `MOSS_AUTO_FALLBACK_CPU` | `true` | CUDA 自检失败时回退 CPU |
+| `MOSS_PROCESS_ISOLATION_ENABLED` | `true` | 是否启用 MOSS 进程级隔离 |
+| `MOSS_PROCESS_ISOLATION_PROVIDERS` | `cuda` | 哪些 provider 走隔离子进程，逗号分隔 |
+| `MOSS_PROCESS_KILL_GRACE_SECONDS` | `2` | 超时后终止 worker 的宽限秒数 |
 | `MOSS_QUALITY_GATE_ENABLED` | `true` | 拒绝静音、NaN/Inf 或明显 clipping 的 MOSS 自检输出 |
-| `ANGEVOICE_IDLE_TIMEOUT_SECONDS` | `0` | 空闲超时自动卸载非活跃模型（秒），0=禁用 |
+| `ANGEVOICE_IDLE_TIMEOUT_SECONDS` | `600` | 空闲超时自动卸载所有已加载模型（秒），0=禁用 |
 | `ANGEVOICE_IDLE_CHECK_INTERVAL` | `30` | 空闲检查间隔（秒） |
-| `MOSS_STREAM_BUDGET_THRESHOLD_LOW` | `0.20` | 流式解码低阈值（秒），低于此值每次解码1帧 |
-| `MOSS_STREAM_BUDGET_THRESHOLD_MID` | `0.55` | 流式解码中阈值（秒），低于此值每次解码2帧 |
-| `MOSS_STREAM_BUDGET_THRESHOLD_HIGH` | `1.10` | 流式解码高阈值（秒），低于此值每次解码4帧 |
-| `MOSS_STREAM_CHUNK_MIN_FLOOR` | `0.05` | 流式最小分包时长下限（秒） |
+| `MOSS_STREAM_BUDGET_THRESHOLD_LOW` | `0.25` | 音频播放余量低阈值（秒），低于此值每次解码 1 帧以尽快出声 |
+| `MOSS_STREAM_BUDGET_THRESHOLD_MID` | `0.65` | 音频播放余量中阈值（秒），低于此值每次解码 2 帧 |
+| `MOSS_STREAM_BUDGET_THRESHOLD_HIGH` | `1.20` | 音频播放余量高阈值（秒），低于此值每次解码 4 帧，高于此值每次解码 8 帧 |
+| `MOSS_STREAM_CHUNK_MIN_FLOOR` | `0.10` | 流式最小分包时长下限（秒），避免过短碎片造成卡顿感 |
 
 完整配置见 [`docs/API_REFERENCE.md`](docs/API_REFERENCE.md) 和各 Docker Compose 文件。
 
 ## 安全说明
 
 - 公网部署建议设置 `KOKORO_API_KEY`，并在反向代理层限制来源。
-- 管理接口默认关闭；开启 `KOKORO_ADMIN_ENABLED=true` 时必须设置强 API Key，否则服务会拒绝启动。
+- 管理后台/管理接口默认关闭；开启 `KOKORO_ADMIN_ENABLED=true` 时必须设置 `ANGEVOICE_ADMIN_PASSWORD`，公网部署还建议同时设置 `KOKORO_API_KEY` 并限制来源。
 - `.pt` 音色上传默认关闭。只上传可信来源文件；PyTorch 权重文件不应来自不可信渠道。
 
 ⚠️ **安全警告**：公网环境**不建议**开启 `KOKORO_VOICE_UPLOAD_ENABLED`。
@@ -293,6 +329,8 @@ chmod +x scripts/e2e_loop_test.sh
 ```
 
 轻量冒烟测试：
+
+也可以在 GitHub Actions 手动触发 `Docker CPU Smoke` workflow，验证 `docker compose config --quiet`、CPU 镜像构建、容器启动、`/health` 和 `scripts/smoke_test.sh`。
 
 ```bash
 chmod +x scripts/smoke_test.sh scripts/loop_test.sh

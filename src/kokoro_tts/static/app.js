@@ -568,7 +568,7 @@ async function refreshServiceState() {
     const health = await fetch('/health').then(resp => resp.json());
     updateModelData(health.models || [], health.current_model || health.model?.id || '');
     const healthLabel = health.auth_required && !state.token ? '需要 Key' : `${health.status}${health.current_model ? ` · ${health.current_model}` : ''}`;
-    setHealth(health.status === 'ok' ? 'ok' : '', healthLabel);
+    setHealth(['ok', 'idle'].includes(health.status) ? 'ok' : '', healthLabel);
     if (Array.isArray(health.voices) && health.voices.join('|') !== state.voices.join('|')) {
       state.voices = health.voices;
       state.selectedVoice = health.model?.default_voice || state.voices[0] || '';

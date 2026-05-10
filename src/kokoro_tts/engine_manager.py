@@ -1,4 +1,4 @@
-"""Runtime model selection for AngeVoice."""
+"""AngeVoice 运行时模型选择与生命周期管理。"""
 
 from __future__ import annotations
 
@@ -36,12 +36,7 @@ def _normalize_moss_id(provider: str) -> str:
 
 
 class EngineManager:
-    """Owns lazily loaded engines and coordinates model switching.
-
-    The manager keeps a per-model active reference count. Any unload path must
-    respect that count unless ``force=True`` is explicitly requested; otherwise
-    a model can be released while a synthesis request is still using it.
-    """
+    """统一管理 Kokoro/MOSS 引擎的懒加载、切换与空闲释放。"""
 
     def __init__(self, cfg: TTSConfig, initial_engine=None):
         self.cfg = cfg
@@ -69,15 +64,12 @@ class EngineManager:
         return int(self._active_counts.get(model_id, 0) or 0)
 
     def _start_idle_timer(self) -> None:
-        timeout = getattr(self.cfg, "model_idle_timeout_seconds", 0) or 0
+        timeout = float(getattr(self.cfg, "model_idle_timeout_seconds", 0) or 0)
         if timeout <= 0:
             return
         interval = max(5.0, float(getattr(self.cfg, "model_idle_check_interval", 30) or 30))
-        logger.info(
-            "Idle unload timer enabled: models idle for %.0fs will be unloaded (check every %.0fs)",
-            timeout,
-            interval,
-        )
+        unload_current = bool(getattr(self.cfg, "model_idle_unload_current", True))
+        logger.info("空闲卸载已启用：闲置 %.0fs 后释放模型（检查间隔 %.0fs，释放当前模型=%s）", timeout, interval, unload_current)
         self._idle_timer_stop.clear()
         self._schedule_idle_check(interval)
 
@@ -92,33 +84,35 @@ class EngineManager:
         try:
             self._check_and_unload_idle_models()
         except Exception:
-            logger.debug("Idle check failed", exc_info=True)
+            logger.debug("空闲卸载检查失败", exc_info=True)
         finally:
             self._schedule_idle_check(interval)
 
     def _check_and_unload_idle_models(self) -> None:
-        timeout = getattr(self.cfg, "model_idle_timeout_seconds", 0) or 0
+        timeout = float(getattr(self.cfg, "model_idle_timeout_seconds", 0) or 0)
         if timeout <= 0:
             return
         now = time.monotonic()
         unloaded: list[str] = []
+        unload_current = bool(getattr(self.cfg, "model_idle_unload_current", True))
         with self._lock:
             for model_id in list(self._engines.keys()):
-                if model_id == self._current_model_id:
+                if model_id == self._current_model_id and not unload_current:
                     continue
                 engine = self._engines.get(model_id)
                 if engine is None or not getattr(engine, "is_loaded", False):
                     continue
                 active = self._active_count(model_id)
                 if active > 0:
-                    logger.debug("Skipping idle unload for %s: %d active borrow(s)", model_id, active)
+                    logger.debug("跳过忙碌模型 %s：active_count=%d", model_id, active)
                     continue
                 last = self._last_used.get(model_id, 0)
-                if now - last >= timeout and self.unload_model(model_id, force=False, raise_if_busy=False):
+                idle_for = now - last
+                if idle_for >= timeout and self.unload_model(model_id, force=False, raise_if_busy=False):
                     unloaded.append(model_id)
-                    logger.info("Idle unload: model %s released after %.0fs of inactivity", model_id, now - last)
+                    logger.info("空闲卸载：模型 %s 闲置 %.0fs 后已释放", model_id, idle_for)
         if unloaded:
-            logger.info("Idle unload completed: released %s", ", ".join(unloaded))
+            logger.info("空闲卸载完成：%s", ", ".join(unloaded))
 
     def stop_idle_timer(self) -> None:
         self._idle_timer_stop.set()
@@ -160,7 +154,7 @@ class EngineManager:
                     continue
                 specs.append(EngineSpec(model_id, "MOSS-TTS-Nano CUDA", "moss-tts-nano-onnx", "cuda", experimental=True))
             else:
-                logger.warning("Ignoring unknown AngeVoice model id: %s", item)
+                logger.warning("忽略未知 AngeVoice 模型 ID：%s", item)
         if not specs:
             specs.append(EngineSpec("kokoro", "Kokoro v1.1 Chinese", "kokoro", self.cfg.device))
         return specs
@@ -187,12 +181,7 @@ class EngineManager:
             if unload_previous and previous_id != target_id:
                 previous_busy = self._active_count(previous_id) > 0
                 if previous_busy:
-                    logger.info(
-                        "Switching from %s to %s without unloading previous model: %d active borrow(s)",
-                        previous_id,
-                        target_id,
-                        self._active_count(previous_id),
-                    )
+                    logger.info("切换模型时保留忙碌旧模型：%s -> %s", previous_id, target_id)
                 else:
                     unloaded_previous = self.unload_model(previous_id, force=False, raise_if_busy=False)
             try:
@@ -203,17 +192,10 @@ class EngineManager:
                     try:
                         self.get_engine(previous_id, load=True)
                     except Exception:
-                        logger.exception("Failed to restore previous model after switching to %s failed", target_id)
+                        logger.exception("切换失败后恢复旧模型失败：%s", previous_id)
                 raise
             self._current_model_id = target_id
-            return {
-                "ok": True,
-                "previous_model": previous_id,
-                "current_model": target_id,
-                "unloaded_previous": unloaded_previous,
-                "previous_busy": previous_busy,
-                "model": self._engine_metadata(engine) or self._model_snapshot(self._spec_for(target_id)),
-            }
+            return {"ok": True, "previous_model": previous_id, "current_model": target_id, "unloaded_previous": unloaded_previous, "previous_busy": previous_busy, "model": self._engine_metadata(engine) or self._model_snapshot(self._spec_for(target_id))}
 
     @contextmanager
     def borrow(self, model_id: str | None = None) -> Iterator[object]:
@@ -225,12 +207,12 @@ class EngineManager:
                 self.switch_model(target_id, unload_previous=True, load=True)
             engine = self.get_engine(target_id, load=True)
             if not bool(getattr(engine, "is_healthy", True)) or bool(getattr(engine, "_unhealthy", False)):
-                logger.info("Engine %s is unhealthy, triggering reload", target_id)
+                logger.info("模型 %s 状态异常，准备重新加载", target_id)
                 try:
                     engine.unload()
                     engine.load()
                 except Exception:
-                    logger.exception("Failed to reload unhealthy engine %s", target_id)
+                    logger.exception("重新加载模型失败：%s", target_id)
                     raise
             self._active_counts[target_id] = self._active_count(target_id) + 1
         try:
@@ -250,6 +232,7 @@ class EngineManager:
             self._engines[target_id] = engine
         if load and not bool(getattr(engine, "is_loaded", False)):
             engine.load()
+            self._touch_model(target_id)
         return engine
 
     def unload_model(self, model_id: str, *, force: bool = False, raise_if_busy: bool = True) -> bool:
@@ -260,7 +243,7 @@ class EngineManager:
                 message = f"Model {target_id} is busy: active_count={active}"
                 if raise_if_busy:
                     raise HTTPException(status_code=409, detail=message)
-                logger.info("Skipping unload for busy model %s: active_count=%d", target_id, active)
+                logger.info("跳过忙碌模型卸载：%s active_count=%d", target_id, active)
                 return False
             engine = self._engines.get(target_id)
             if engine is None:
@@ -270,11 +253,11 @@ class EngineManager:
                 unload()
             return True
 
-    def unload_inactive(self, *, force: bool = False) -> list[str]:
+    def unload_inactive(self, *, force: bool = False, include_current: bool = True) -> list[str]:
         unloaded: list[str] = []
         with self._lock:
             for model_id in list(self._engines):
-                if model_id == self._current_model_id:
+                if model_id == self._current_model_id and not include_current:
                     continue
                 if self.unload_model(model_id, force=force, raise_if_busy=False):
                     unloaded.append(model_id)
@@ -305,42 +288,15 @@ class EngineManager:
         loaded = bool(getattr(engine, "is_loaded", False)) if engine is not None else False
         healthy = bool(getattr(engine, "is_healthy", True)) if engine is not None else True
         runtime = self._engine_metadata(engine) if loaded and engine is not None else {}
-        static_capabilities = self._static_capabilities(spec)
         active_count = self._active_count(spec.id)
-        return {
-            "id": spec.id,
-            "name": spec.name,
-            "backend": spec.backend,
-            "provider": spec.provider,
-            "experimental": spec.experimental,
-            "enabled": True,
-            "current": spec.id == self._current_model_id,
-            "loaded": loaded,
-            "healthy": healthy,
-            "available": self._runtime_available(spec),
-            "active_count": active_count,
-            **static_capabilities,
-            **runtime,
-        }
+        idle_timeout = float(getattr(self.cfg, "model_idle_timeout_seconds", 0) or 0)
+        idle_unloaded = bool(engine is not None and not loaded and idle_timeout > 0 and spec.id in self._last_used)
+        return {"id": spec.id, "name": spec.name, "backend": spec.backend, "provider": spec.provider, "experimental": spec.experimental, "enabled": True, "current": spec.id == self._current_model_id, "loaded": loaded, "healthy": healthy, "available": self._runtime_available(spec), "active_count": active_count, "idle_timeout_seconds": idle_timeout, "idle_unload_current": bool(getattr(self.cfg, "model_idle_unload_current", True)), "idle_unloaded": idle_unloaded, **self._static_capabilities(spec), **runtime}
 
     def _static_capabilities(self, spec: EngineSpec) -> dict:
         if spec.backend != "moss-tts-nano-onnx":
-            return {
-                "modes": ["preset_voice"],
-                "voice_clone_supported": False,
-                "speed_supported": True,
-                "text_rules_enabled": True,
-            }
-        return {
-            "modes": ["preset_voice", "voice_clone"],
-            "voice_clone_supported": True,
-            "voice_clone_enabled": True,
-            "default_voice": self.cfg.moss_default_voice,
-            "speed_supported": False,
-            "text_rules_enabled": bool(self.cfg.moss_apply_angevoice_rules),
-            "sample_rate": 48000,
-            "channels": 2,
-        }
+            return {"modes": ["preset_voice"], "voice_clone_supported": False, "speed_supported": True, "text_rules_enabled": True}
+        return {"modes": ["preset_voice", "voice_clone"], "voice_clone_supported": True, "voice_clone_enabled": True, "default_voice": self.cfg.moss_default_voice, "speed_supported": False, "text_rules_enabled": bool(self.cfg.moss_apply_angevoice_rules), "sample_rate": 48000, "channels": 2}
 
     def _engine_metadata(self, engine) -> dict:
         metadata = getattr(engine, "metadata", None)
@@ -349,7 +305,7 @@ class EngineManager:
         try:
             value = metadata()
         except Exception:
-            logger.debug("Engine metadata failed", exc_info=True)
+            logger.debug("读取模型元数据失败", exc_info=True)
             return {}
         return value if isinstance(value, dict) else {}
 
