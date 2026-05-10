@@ -63,9 +63,9 @@ This roadmap tracks the long-term direction of AngeVoice. Completed items are ma
 - √ Voice listing endpoint / 音色查看接口
 - √ `.pt` voice upload endpoint / `.pt` 音色上传接口
 - √ Writable voices mount documentation / 可写 voices 挂载说明
-- □ Web UI voice upload page / Web UI 音色上传页面
 - √ Voice preview and favorite voices in Studio UI / Studio UI 音色试听与收藏
 - √ MOSS reference-audio clone upload in Studio UI / Studio UI 中的 MOSS 参考音频克隆上传
+- □ Web UI voice upload page / Web UI 音色上传页面
 - □ Voice metadata database / 音色元数据数据库
 - □ Role-based admin permissions / 分角色管理权限
 
@@ -95,8 +95,9 @@ This roadmap tracks the long-term direction of AngeVoice. Completed items are ma
 - √ MOSS model cache and output persistence mounts / MOSS 模型缓存与输出持久化挂载
 - √ ffmpeg included in Docker images / Docker 镜像内置 ffmpeg
 - √ General and conservative deployment profiles / 通用与保守部署画像
-- □ Published versioned container images / 发布带版本号的容器镜像
-- □ One-command install/update script / 一键安装与更新脚本
+- √ Published versioned container images / 发布带版本号的容器镜像
+- √ One-command install/update/uninstall script / 一键安装、更新与卸载脚本
+- √ `AngeVoice` management command / `AngeVoice` 管理命令
 - □ Helm chart / Helm Chart
 - □ systemd service example / systemd 服务示例
 
@@ -109,9 +110,10 @@ This roadmap tracks the long-term direction of AngeVoice. Completed items are ma
 - √ Shared Chinese text rules for Kokoro and MOSS / Kokoro 与 MOSS 共享中文文本规则
 - √ Tesla P4 CUDA probe for MOSS runtime / MOSS 运行时 Tesla P4 CUDA 探针验证
 - √ MOSS prompt audio trimming/cache and output peak normalization / MOSS 参考音频裁剪缓存与输出削峰
+- √ Per-engine capability registry / 按引擎登记能力
+- √ MOSS CUDA process isolation / MOSS CUDA 进程级隔离
 - □ Optional CosyVoice engine / 可选 CosyVoice 引擎
 - □ Optional GPT-SoVITS engine / 可选 GPT-SoVITS 引擎
-- √ Per-engine capability registry / 按引擎登记能力
 - □ Per-engine dependency isolation / 按引擎隔离依赖
 
 ## Quality and testing / 质量与测试
@@ -121,10 +123,11 @@ This roadmap tracks the long-term direction of AngeVoice. Completed items are ma
 - √ Loop stability test script / 循环稳定性测试脚本
 - √ Invalid parameter tests / 非法参数测试
 - √ Cache hit verification / 缓存命中验证
+- √ CI workflow / CI 工作流
+- √ Manual Docker CPU smoke workflow / 手动 Docker CPU 冒烟工作流
 - □ WebSocket cancel integration test / WebSocket 取消集成测试
 - □ Batch API integration test / 批量接口集成测试
 - □ Admin API integration test / 管理接口集成测试
-- √ CI workflow / CI 工作流
 - □ Release checklist / 发布检查清单
 
 ## Documentation / 文档
@@ -136,9 +139,9 @@ This roadmap tracks the long-term direction of AngeVoice. Completed items are ma
 - √ Legacy GPU bilingual deployment guide / 老显卡中英双语部署说明
 - √ Roadmap / 长期路线图
 - √ Hand-maintained API reference / 人工维护 API 参考
-- □ API reference generated from OpenAPI / 基于 OpenAPI 生成 API 参考
 - √ Troubleshooting cookbook / 排障手册
 - √ Performance tuning notes / 性能调优说明
+- □ API reference generated from OpenAPI / 基于 OpenAPI 生成 API 参考
 
 ## Version direction / 版本方向
 
