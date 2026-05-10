@@ -20,12 +20,16 @@ Format based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and [Se
 
 ### 🎛️ 管理与部署
 - 修复一键安装脚本：`docker compose pull` 成功后不再强制 `--build`，只有拉取失败才本地构建。
+- 安装脚本新增 `AngeVoice` 管理命令，支持菜单式安装/更新、重启、停止、卸载和状态查看。
+- 安装脚本网络检测扩展到 GitHub、GHCR、Docker Hub 与本机 Docker registry mirror；GHCR 不可达时跳过预构建镜像 pull，减少卡顿。
+- 本地源码目录执行安装脚本时会就地安装/更新，不再额外克隆到 `/opt/angevoice`；远程安装无本地项目目录时才使用 `/opt/angevoice`。
+- 安装完成后自动读取本机局域网 IP，并输出 Studio、管理后台和 API 文档的完整访问地址。
 - 容器发布工作流会同时生成 `latest` 和 `vX.Y.Z` 标签，和 Compose 默认 `latest` 镜像保持一致。
 - 新增 `/admin` 管理后台入口，沿用主站视觉风格；默认关闭，开启后必须配置账号密码。
 - 主页右上角新增“管理后台”入口，与 API 文档入口保持一致。
 - 三套 Docker 画像统一读取 `docker/angevoice.env`，公共默认值按 CPU/NAS 安全场景设计，GPU 与 legacy-gpu 仅覆盖必要差异。
 - 新增 `docker/.env.example` 作为用户本地自定义模板。
-- 新增 `scripts/install.sh` 一键安装脚本，可检测 Docker/Compose、NVIDIA GPU、GPU 型号和 GitHub/GHCR 网络情况，并推荐 `cpu` / `gpu` / `legacy-gpu` 画像。
+- 新增 `scripts/install.sh` 一键安装脚本，可检测 Docker/Compose、NVIDIA GPU、GPU 型号、GitHub、GHCR、Docker Hub 与本机 registry mirror，并推荐 `cpu` / `gpu` / `legacy-gpu` 画像。
 
 ### 🔊 MOSS 体验优化
 - MOSS 默认输出策略改为质量优先：更温和的峰值保护、轻微降低输出增益、加大流式最小分片，减少削峰失真、碎片卡顿和块间响度跳变。
