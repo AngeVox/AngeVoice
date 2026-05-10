@@ -1,6 +1,8 @@
 name: Docker CPU Smoke
 
 on:
+  pull_request:
+    branches: [main]
   workflow_dispatch:
 
 permissions:
