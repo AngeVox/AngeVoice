@@ -8,135 +8,56 @@ services:
       context: ../..
       dockerfile: docker/legacy-gpu/Dockerfile
       args:
-        # Pin PyTorch for reproducible NAS builds; override only after testing.
+        # 固定 PyTorch 版本，NAS/家用服务器复现更稳定。
         PYTORCH_VERSION: "2.5.1"
-        # Legacy image preinstalls a CUDA 11.8 compatible MOSS GPU runtime.
-        # Runtime config keeps the MOSS CUDA model hidden until the user enables it.
+        # 老架构 GPU 镜像预装 CUDA 11.8 兼容的 MOSS runtime，但默认只开放 MOSS CPU。
         INSTALL_MOSS: "true"
         MOSS_RUNTIME_PACKAGE: "onnxruntime-gpu==1.20.1"
         MOSS_RUNTIME_INDEX_URL: "https://aiinfra.pkgs.visualstudio.com/PublicPackages/_packaging/onnxruntime-cuda-11/pypi/simple/"
+
     ports:
-      # Host port:container port. Open http://HOST_IP:8102
+      # 宿主机端口:容器端口。访问 http://宿主机IP:8102
       - "8102:8000"
 
+    env_file:
+      # 公共配置集中在 docker/.env，先复制 docker/.env.example 再修改。
+      - ../.env
+
     volumes:
-      # Model directory, read-only by default.
+      # 模型目录：只读挂载，避免容器误改模型文件。
       - ../../models:/app/models:ro
-
-      # HuggingFace model cache: persist on host to avoid re-download.
+      # HuggingFace 缓存：持久化到宿主机，避免重复下载。
       - ../../hf_cache:/root/.cache/huggingface
-
-      # Frontend resources: persist on host, update without rebuild.
+      # 前端资源：本地修改后重启容器即可生效。
       - ../../src/kokoro_tts/templates/index.html:/app/src/kokoro_tts/templates/index.html:ro
       - ../../src/kokoro_tts/static:/app/src/kokoro_tts/static:ro
-
-      # MOSS ONNX model cache. Persist downloads across container restarts.
+      # MOSS ONNX 模型缓存。
       - ../../moss_models:/opt/MOSS-TTS-Nano/models
-
-      # Generated audio output. Enable ANGEVOICE_SAVE_OUTPUTS to persist HTTP synthesis results.
+      # 合成输出目录。
       - ../../outputs:/app/outputs
-
-      # Development hot-reload. Uncomment for git pull + docker compose restart workflows.
-      # For production, keep it commented and rebuild the image instead.
-      # - ../../src:/app/src:ro
-
-      # Writable voices directory for optional admin voice upload.
-      # Requires KOKORO_ADMIN_ENABLED=true and KOKORO_VOICE_UPLOAD_ENABLED=true.
+      # 可选：开启音色上传时取消注释，并在 .env 中开启 KOKORO_VOICE_UPLOAD_ENABLED。
       # - ../../models/voices:/app/models/voices:rw
 
     environment:
-      # Real-time Python logs.
-      - PYTHONUNBUFFERED=1
+      # 老架构 GPU 保守配置：Kokoro 用 CUDA，MOSS 默认走 CPU，避免 CUDA 兼容性卡死。
+      KOKORO_DEVICE: cuda
+      KOKORO_REQUEST_TIMEOUT_SECONDS: "600"
+      KOKORO_SEGMENT_LENGTH: "80"
+      ANGEVOICE_ENABLED_MODELS: kokoro,moss-nano-cpu
+      MOSS_EXECUTION_PROVIDER: cpu
+      MOSS_CUDA_ENABLED: "false"
+      MOSS_PROMPT_AUDIO_MAX_SECONDS: "8"
+      MOSS_PROMPT_CACHE_MAX_ITEMS: "6"
+      MOSS_STREAM_CHUNK_SECONDS: "0.35"
+      MOSS_STREAM_QUEUE_MAX_ITEMS: "6"
+      MOSS_OUTPUT_TARGET_PEAK: "0.90"
+      KOKORO_STREAM_BINARY_ENABLED: "false"
+      KOKORO_CACHE_MAX_ITEMS: "64"
+      KOKORO_BATCH_MAX_ITEMS: "10"
+      NVIDIA_VISIBLE_DEVICES: all
+      NVIDIA_DRIVER_CAPABILITIES: compute,utility
 
-      # Base service configuration.
-      - KOKORO_HOST=0.0.0.0
-      - KOKORO_PORT=8000
-      - KOKORO_DEVICE=cuda
-
-      # Keep legacy GPU deployments conservative.
-      - KOKORO_WORKERS=1
-      - KOKORO_MAX_CONCURRENT_REQUESTS=1
-      - KOKORO_REQUEST_TIMEOUT_SECONDS=600
-
-      # Smaller segments are often more stable on older GPU / NAS environments.
-      - KOKORO_MAX_TEXT_LENGTH=10000
-      - KOKORO_SEGMENT_LENGTH=80
-
-      # Default voice and speed.
-      - KOKORO_DEFAULT_VOICE=zm_010
-      - KOKORO_DEFAULT_SPEED=1.0
-
-      # Multi-model framework. Default startup remains Kokoro; legacy profile exposes MOSS CPU only.
-      # To try MOSS CUDA after validation, add moss-nano-cuda and set MOSS_CUDA_ENABLED=true.
-      - ANGEVOICE_ENABLED_MODELS=kokoro,moss-nano-cpu
-      - ANGEVOICE_DEFAULT_MODEL=kokoro
-      - ANGEVOICE_OUTPUT_DIR=/app/outputs
-      - ANGEVOICE_SAVE_OUTPUTS=true
-      - ANGEVOICE_OUTPUT_MAX_FILES=1000
-      - MOSS_MODEL_DIR=/opt/MOSS-TTS-Nano/models
-      - MOSS_PROMPT_UPLOAD_MAX_BYTES=20971520
-      - MOSS_PROMPT_AUDIO_MAX_SECONDS=8
-      - MOSS_PROMPT_CACHE_MAX_ITEMS=6
-      - MOSS_EXECUTION_PROVIDER=cpu
-      - MOSS_CUDA_ENABLED=false
-      # Optional ORT CUDA arena cap. Legacy profile keeps CUDA MOSS hidden by default;
-      # set this manually only when exposing moss-nano-cuda on tight 8GB cards.
-      - MOSS_CUDA_MEMORY_LIMIT_MB=0
-      - MOSS_CPU_THREADS=2
-      - MOSS_MAX_NEW_FRAMES=375
-      - MOSS_VOICE_CLONE_MAX_TEXT_TOKENS=75
-      - MOSS_SAMPLE_MODE=fixed
-      - MOSS_SEED=1234
-      - MOSS_REALTIME_STREAMING_DECODE=true
-      - MOSS_STREAM_CHUNK_SECONDS=0.35
-      - MOSS_STREAM_QUEUE_MAX_ITEMS=6
-      - MOSS_AUTO_FALLBACK_CPU=true
-      - MOSS_CUDA_SELF_TEST_ENABLED=true
-      - MOSS_QUALITY_GATE_ENABLED=true
-      - MOSS_OUTPUT_PEAK_NORMALIZE_ENABLED=true
-      - MOSS_OUTPUT_TARGET_PEAK=0.90
-      - MOSS_OUTPUT_GAIN=1.0
-
-      # Prefer JSON/base64 streaming first on older environments; enable binary after validation if needed.
-      - KOKORO_STREAM_FORMAT=pcm_s16le
-      - KOKORO_STREAM_BINARY_ENABLED=false
-      - KOKORO_STREAM_CHUNK_SECONDS=0.50
-
-      # Cache reduces repeated synthesis work.
-      - KOKORO_CACHE_ENABLED=true
-      - KOKORO_CACHE_MAX_ITEMS=64
-
-      # Service status endpoints.
-      - KOKORO_METRICS_ENABLED=true
-      - KOKORO_QUEUE_STATUS_ENABLED=true
-
-      # Batch synthesis.
-      - KOKORO_BATCH_ENABLED=true
-      - KOKORO_BATCH_MAX_ITEMS=10
-      # Keep legacy GPU batch conservative by default.
-      - KOKORO_BATCH_CONCURRENCY=1
-
-      # Admin APIs are disabled by default. Enable only with an API key.
-      # - KOKORO_ADMIN_ENABLED=true
-      # Generate a real token first, for example: openssl rand -hex 32
-      # - KOKORO_API_KEY=<paste-generated-token-here>
-
-      # Voice upload is disabled by default. Requires writable voices mount.
-      # - KOKORO_VOICE_UPLOAD_ENABLED=true
-      # - KOKORO_VOICE_UPLOAD_MAX_BYTES=10485760
-
-      # MP3 is disabled by default. ffmpeg is included in this image.
-      # - KOKORO_MP3_ENABLED=true
-      # - KOKORO_MP3_BITRATE=192k
-
-      # CORS: use * for local testing; restrict to your frontend domain in production.
-      - KOKORO_CORS_ORIGINS=*
-
-      # NVIDIA runtime configuration.
-      - NVIDIA_VISIBLE_DEVICES=all
-      - NVIDIA_DRIVER_CAPABILITIES=compute,utility
-
-    # Docker Compose V2 syntax. For older Compose runtimes, use deploy.resources instead.
+    # Docker Compose V2 推荐写法。旧环境可改回 deploy.resources.reservations.devices。
     gpus: all
 
     healthcheck:
