@@ -8,123 +8,42 @@ services:
       context: ../..
       dockerfile: docker/cpu/Dockerfile
       args:
-        # Pin PyTorch for reproducible NAS builds; override only after testing.
+        # 固定 PyTorch 版本，NAS/家用服务器复现更稳定。
         PYTORCH_VERSION: "2.5.1"
-        # CPU image ships the MOSS CPU runtime; CUDA models stay disabled.
+        # CPU 镜像预装 MOSS CPU runtime，CUDA 模型默认隐藏。
         INSTALL_MOSS: "true"
+
     ports:
       # 宿主机端口:容器端口。访问 http://宿主机IP:8100
       - "8100:8000"
 
+    env_file:
+      # 公共配置集中在 docker/.env，先复制 docker/.env.example 再修改。
+      - ../.env
+
     volumes:
-      # 模型目录：只读挂载，避免容器误改模型文件
+      # 模型目录：只读挂载，避免容器误改模型文件。
       - ../../models:/app/models:ro
-
-      # HuggingFace 模型缓存：持久化到宿主机，避免容器重启后重新下载
+      # HuggingFace 缓存：持久化到宿主机，避免重复下载。
       - ../../hf_cache:/root/.cache/huggingface
-
-      # 前端资源：持久化到宿主机，改前端无需重建镜像
+      # 前端资源：本地修改后重启容器即可生效。
       - ../../src/kokoro_tts/templates/index.html:/app/src/kokoro_tts/templates/index.html:ro
       - ../../src/kokoro_tts/static:/app/src/kokoro_tts/static:ro
-
-      # MOSS ONNX 模型缓存：持久化到宿主机，避免首次下载后重启丢失
+      # MOSS ONNX 模型缓存。
       - ../../moss_models:/opt/MOSS-TTS-Nano/models
-
-      # 合成音频输出：开启 ANGEVOICE_SAVE_OUTPUTS 后持久化 Kokoro/MOSS HTTP 生成结果
+      # 合成输出目录。
       - ../../outputs:/app/outputs
-
-      # 开发/测试环境热更新源码：取消注释后 git pull + docker compose restart 即可生效
-      # 生产环境建议保持注释，通过 docker compose up -d --build 固化进镜像
-      # - ../../src:/app/src:ro
-
-      # 如果开启音色上传，需要把 voices 目录单独以可写方式挂载，并开启 KOKORO_ADMIN_ENABLED / KOKORO_VOICE_UPLOAD_ENABLED
+      # 可选：开启音色上传时取消注释，并在 .env 中开启 KOKORO_VOICE_UPLOAD_ENABLED。
       # - ../../models/voices:/app/models/voices:rw
 
     environment:
-      # Python 日志实时输出
-      - PYTHONUNBUFFERED=1
-
-      # 基础服务配置
-      - KOKORO_HOST=0.0.0.0
-      - KOKORO_PORT=8000
-      - KOKORO_DEVICE=cpu
-
-      # CPU 模式可按机器核心数调大 workers；不确定时保持 1 更稳
-      - KOKORO_WORKERS=1
-
-      # 同一进程内最大合成并发。CPU 模式可从 1/2/4 逐步压测
-      - KOKORO_MAX_CONCURRENT_REQUESTS=1
-
-      # 请求超时。长文本/慢机器可以调大
-      - KOKORO_REQUEST_TIMEOUT_SECONDS=300
-
-      # 文本限制与切分长度
-      - KOKORO_MAX_TEXT_LENGTH=10000
-      - KOKORO_SEGMENT_LENGTH=100
-
-      # 默认音色和语速
-      - KOKORO_DEFAULT_VOICE=zm_010
-      - KOKORO_DEFAULT_SPEED=1.0
-
-      # 多模型框架。CPU 镜像只开放 Kokoro 与 MOSS CPU，默认启动仍是 Kokoro
-      - ANGEVOICE_ENABLED_MODELS=kokoro,moss-nano-cpu
-      - ANGEVOICE_DEFAULT_MODEL=kokoro
-      - ANGEVOICE_OUTPUT_DIR=/app/outputs
-      - ANGEVOICE_SAVE_OUTPUTS=true
-      - ANGEVOICE_OUTPUT_MAX_FILES=1000
-      - MOSS_MODEL_DIR=/opt/MOSS-TTS-Nano/models
-      - MOSS_PROMPT_UPLOAD_MAX_BYTES=20971520
-      - MOSS_PROMPT_AUDIO_MAX_SECONDS=10
-      - MOSS_PROMPT_CACHE_MAX_ITEMS=8
-      - MOSS_EXECUTION_PROVIDER=cpu
-      - MOSS_CUDA_ENABLED=false
-      - MOSS_CUDA_MEMORY_LIMIT_MB=0
-      - MOSS_CPU_THREADS=2
-      - MOSS_MAX_NEW_FRAMES=375
-      - MOSS_VOICE_CLONE_MAX_TEXT_TOKENS=75
-      - MOSS_SAMPLE_MODE=fixed
-      - MOSS_SEED=1234
-      - MOSS_REALTIME_STREAMING_DECODE=true
-      - MOSS_STREAM_CHUNK_SECONDS=0.45
-      - MOSS_STREAM_QUEUE_MAX_ITEMS=8
-      - MOSS_OUTPUT_PEAK_NORMALIZE_ENABLED=true
-      - MOSS_OUTPUT_TARGET_PEAK=0.92
-      - MOSS_OUTPUT_GAIN=1.0
-
-      # WebSocket 流式配置
-      - KOKORO_STREAM_FORMAT=pcm_s16le
-      - KOKORO_STREAM_BINARY_ENABLED=true
-      - KOKORO_STREAM_CHUNK_SECONDS=0.50
-
-      # 内存 LRU 缓存：重复文本/音色/语速/格式会直接命中缓存
-      - KOKORO_CACHE_ENABLED=true
-      - KOKORO_CACHE_MAX_ITEMS=128
-
-      # 服务状态接口：/stats 和 /requests
-      - KOKORO_METRICS_ENABLED=true
-      - KOKORO_QUEUE_STATUS_ENABLED=true
-
-      # 批量合成接口：/v1/audio/batch，返回 ZIP
-      - KOKORO_BATCH_ENABLED=true
-      - KOKORO_BATCH_MAX_ITEMS=20
-      # 批量内部并发。CPU 可按核心数逐步调到 2/4/8
-      - KOKORO_BATCH_CONCURRENCY=1
-
-      # 管理接口默认关闭。开启后建议同时设置 KOKORO_API_KEY
-      # - KOKORO_ADMIN_ENABLED=true
-      # Generate a real token first, for example: openssl rand -hex 32
-      # - KOKORO_API_KEY=<paste-generated-token-here>
-
-      # 音色上传默认关闭。开启前请把 models/voices 挂载为 rw
-      # - KOKORO_VOICE_UPLOAD_ENABLED=true
-      # - KOKORO_VOICE_UPLOAD_MAX_BYTES=10485760
-
-      # MP3 默认关闭。开启前镜像/宿主需安装 ffmpeg
-      # - KOKORO_MP3_ENABLED=true
-      # - KOKORO_MP3_BITRATE=192k
-
-      # CORS：测试环境可用 *；公网建议改成你的前端域名
-      - KOKORO_CORS_ORIGINS=*
+      # CPU 画像覆盖公共配置中的设备与 MOSS 参数。
+      KOKORO_DEVICE: cpu
+      ANGEVOICE_ENABLED_MODELS: kokoro,moss-nano-cpu
+      MOSS_EXECUTION_PROVIDER: cpu
+      MOSS_CUDA_ENABLED: "false"
+      MOSS_PROMPT_AUDIO_MAX_SECONDS: "10"
+      MOSS_STREAM_CHUNK_SECONDS: "0.45"
 
     healthcheck:
       test: ["CMD", "python3", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health')"]
