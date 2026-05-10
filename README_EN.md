@@ -11,7 +11,7 @@ English | [中文](README.md)
 
 ## One-command install (recommended)
 
-After Docker and Docker Compose V2 are installed, run the interactive installer. It detects CPU/GPU, older NVIDIA cards, Docker/Compose and GitHub/GHCR connectivity, then recommends the `cpu`, `gpu` or `legacy-gpu` profile.
+After Docker and Docker Compose V2 are installed, run the interactive installer. It detects CPU/GPU, older NVIDIA cards, Docker/Compose, GitHub, GHCR, Docker Hub, and local Docker registry mirrors, then recommends the `cpu`, `gpu` or `legacy-gpu` profile.
 
 ```bash
 bash <(curl -fsSL https://raw.githubusercontent.com/ang77712829/AngeVoice/main/scripts/install.sh)
@@ -26,6 +26,25 @@ bash scripts/install.sh
 ```
 
 Shared Docker defaults live in `docker/angevoice.env`. They are CPU/NAS-safe by default; GPU profiles only override the required CUDA settings.
+
+When the script is run from an existing source checkout, it installs/updates **in place** and no longer clones another copy into `/opt/angevoice`, which is friendlier for NAS file managers. The `/opt/angevoice` fallback is only used for remote `curl` installs where no local project directory exists. After startup, the script prints the detected LAN URL, for example `http://192.168.1.10:8101`.
+
+After installation, the script creates the `AngeVoice` management command. Run:
+
+```bash
+AngeVoice
+```
+
+It opens a menu for install/update, restart, stop, uninstall, status and access URLs. Direct commands are also available:
+
+```bash
+bash scripts/install.sh --status
+bash scripts/install.sh --restart
+bash scripts/install.sh --stop
+bash scripts/install.sh --uninstall
+```
+
+Uninstall stops/removes containers and networks only; models, outputs and config files are kept.
 
 ## What is AngeVoice?
 
