@@ -33,7 +33,7 @@ src/kokoro_tts/
 ├── engine_manager.py     # 模型注册、加载、切换、卸载
 ├── engine.py             # Kokoro 引擎、分段、文本规范化、音频编码
 ├── moss_engine.py        # MOSS-TTS-Nano 引擎调度与兼容入口
-├── moss/                 # MOSS runtime、进程隔离、prompt、流式和音频后处理辅助模块
+├── moss/                 # MOSS runtime、可选进程隔离、prompt、流式和音频后处理辅助模块
 ├── config.py             # 配置和环境变量
 ├── cli.py                # angevoice / kokoro-tts CLI
 ├── templates/index.html  # Studio Web UI HTML shell
@@ -59,7 +59,7 @@ src/kokoro_tts/
 2. `security.py` 校验 WebSocket token 或 Authorization header。
 3. `service_state.py` 用同一个并发信号量保护推理。
 4. `engine_manager.py` 借用目标模型，当前模型不匹配且启用卸载策略时会先切换并卸载旧模型。
-5. 引擎生成 `started/audio/segment_error/done` 消息。Kokoro 保持上游 pipeline 的段落级推理，但在 WebSocket 发送前按固定时长切成小包；MOSS 使用官方 `generate_audio_frames` 回调和 codec streaming decoder，在当前 chunk 仍在生成时持续推送小音频包。
+5. 引擎生成 `started/audio/segment_error/done` 消息。Kokoro 保持上游 pipeline 的段落级推理，但在 WebSocket 发送前按固定时长切成小包；MOSS 默认使用线程内官方 `generate_audio_frames` 回调和 codec streaming decoder，以优先保证 NAS/老显卡上的实时流式体验。
 6. 客户端发送 `cancel` 或 `stop` 后，服务停止后续段落推送。
 
 ## 状态对象
@@ -92,7 +92,9 @@ src/kokoro_tts/
 
 MOSS capability metadata 会声明 `modes=["preset_voice","voice_clone"]` 和 `voice_clone_supported=true`。Studio Web UI 根据该能力显示参考音频上传控件；非克隆模型收到 `prompt_audio` 时会返回 400。HTTP 缓存 key 包含模型 ID 和参考音频指纹，避免不同 prompt audio 误命中同一条缓存。
 
-MOSS 适配层不会直接改写上游仓库代码。AngeVoice 在适配层中做四件事：复用单个 MOSS executor 并用 runtime lock 保护官方 runtime；对 clone 参考音频做时长裁剪和 prompt code LRU 缓存；对输出做温和峰值保护，降低 8GB 显存环境下 clone OOM、爆音和削波的概率；CUDA 默认通过隔离 worker 子进程执行，超时后可终止子进程并在下次请求重建 runtime。
+MOSS 适配层不会直接改写上游仓库代码。AngeVoice 在适配层中做四件事：复用单个 MOSS executor 并用 runtime lock 保护官方 runtime；对 clone 参考音频做时长裁剪和 prompt code LRU 缓存；对输出做温和峰值保护，降低 8GB 显存环境下 clone OOM、爆音和削波的概率；保留可选进程级隔离能力，便于排查 CUDA/ONNX Runtime 底层卡死问题。
+
+MOSS 进程级隔离默认关闭，以优先保证 NAS 和老显卡上的实时流式体验。需要排查 CUDA/ONNX Runtime 底层卡死时，可手动设置 `MOSS_PROCESS_ISOLATION_ENABLED=true` 启用；启用后默认只有 `moss-nano-cuda` 走隔离 worker，超时后可终止子进程并在下次请求重建 runtime。CPU 路径默认保持线程内 runtime，以减少进程通信开销。
 
 MOSS CUDA 依赖目标环境的 ONNX Runtime/CUDA/cuDNN 组合。Tesla P4 在通用 GPU Docker 画像中已通过 `onnxruntime-gpu==1.20.2` + `nvidia-cudnn-cu12==9.1.0.70` 探针测试；缺 cuDNN 9 时官方 runtime 会创建 CPU session，AngeVoice 会拒绝该 CUDA 加载并按配置回退 CPU。老架构GPU 镜像通过 ONNX Runtime CUDA 11 feed 预装了 CUDA 11.8 兼容的 MOSS GPU 依赖，但默认只开放 MOSS CPU，方便用户先稳定运行 Kokoro。
 
@@ -104,13 +106,13 @@ MOSS CUDA 依赖目标环境的 ONNX Runtime/CUDA/cuDNN 组合。Tesla P4 在通
 | 文件 | 职责 |
 |---|---|
 | `runtime.py` | 官方 runtime 导入、provider 创建、CUDA 显存限制注入、自检音频分析 |
-| `process_worker.py` | MOSS 进程级隔离；父进程调度，worker 子进程加载 runtime 并执行推理 |
+| `process_worker.py` | 可选 MOSS 进程级隔离；父进程调度，worker 子进程加载 runtime 并执行推理 |
 | `prompt.py` | 参考音频裁剪、采样率/通道对齐、prompt code LRU 缓存 |
 | `streaming.py` | 流式帧预算、codec streaming 输出整理 |
 | `postprocess.py` | 波形归一化、温和峰值保护、静音和流式分片 |
 | `text.py` | MOSS 文本清洗和分段 |
 
-默认只有 `moss-nano-cuda` 走进程级隔离；CPU 路径保持线程内 runtime，以减少进程开销。
+默认不启用 MOSS 进程级隔离。启用 `MOSS_PROCESS_ISOLATION_ENABLED=true` 后，`MOSS_PROCESS_ISOLATION_PROVIDERS` 控制哪些 provider 进入隔离 worker，默认值为 `cuda`。
 
 ## Studio Web UI
 
