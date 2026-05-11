@@ -54,8 +54,8 @@ bash scripts/install.sh --uninstall
 - `xiaozhi/adapters/angevoice.py`：OpenAI 兼容非流式适配，最快跑通。
 - `xiaozhi/adapters/angevoice_stream.py`：WebSocket 流式适配，支持 Kokoro/MOSS 流式输出。
 - `xiaozhi/adapters/angevoice_clone.py`：MOSS 参考音频克隆非流式适配。
-- `xiaozhi/scripts/install-xiaozhi-adapter.sh`：一键安装适配器、patch 小智 Compose、写入示例配置。
-- `xiaozhi/manager/presets.yaml`：智控台可复制预设，不修改小智前端源码。
+- `xiaozhi/scripts/install-xiaozhi-adapter.sh`：一键安装适配器、patch 小智 Compose、导入智控台数据库预设，并重建 server 容器让挂载生效。
+- `xiaozhi/MANAGER_PRESETS.md`：智控台持久化说明，解释 `ai_model_provider` / `ai_model_config`、Docker 权限和容器重建行为。
 
 一键接入小智：
 
@@ -63,6 +63,23 @@ bash scripts/install.sh --uninstall
 cd /path/to/xiaozhi-server
 bash <(curl -fsSL https://raw.githubusercontent.com/ang77712829/AngeVoice/main/xiaozhi/scripts/install-xiaozhi-adapter.sh)
 ```
+
+安装脚本是交互式的，普通用户一路按回车会采用推荐默认值。脚本会自动识别 `docker-compose_all.yml` / `docker-compose.yml` / `compose.yml`，支持飞牛、群晖等 NAS 面板改名后的 compose 文件。
+
+脚本需要 Docker 权限：root 用户可直接运行；普通用户需要加入 `docker` 用户组，或使用 `sudo` / 管理员终端运行。新增 volume 挂载后仅 `docker restart` 不会生效，因此脚本会自动执行：
+
+```bash
+docker compose -f <compose文件> up -d --no-deps --force-recreate xiaozhi-esp32-server
+```
+
+`--no-deps` 只重建小智 server 容器，不会重建 db/redis，也不会删除 `mysql/data`、`models/`、`uploadfile/` 等持久化数据。
+
+带智控台的小智全模块请优先让脚本导入数据库预设。脚本会写入：
+
+- `ai_model_provider`：让智控台“新增模型”的接口类型出现 `angevoice` / `angevoice_stream` / `angevoice_clone`。
+- `ai_model_config`：让“模型配置 → 语音合成”出现 AngeVoice Kokoro、MOSS CPU/CUDA、MOSS clone 等预设。
+
+智控台/API 模式下不要把 `selected_module` / `TTS` 本地配置写进 `data/.config.yaml`，否则小智后端会报“既包含智控台配置又包含本地配置”。脚本检测到 `manager-api:` 时会默认跳过本地配置写入，只保留数据库预设。
 
 MOSS 克隆流式示例：
 
@@ -72,7 +89,15 @@ bash <(curl -fsSL https://raw.githubusercontent.com/ang77712829/AngeVoice/main/x
   --prompt-audio ./reference.wav
 ```
 
-完整教程见 [`xiaozhi/README.md`](xiaozhi/README.md)。
+MOSS clone 的 `prompt_audio_path` 必须使用小智容器内路径，例如：
+
+```text
+/opt/xiaozhi-esp32-server/data/angevoice_prompts/reference.wav
+```
+
+不要填写宿主机路径，例如 `/vol*/.../xiaozhi-server/data/angevoice_prompts/`。
+
+完整教程见 [`xiaozhi/README.md`](xiaozhi/README.md)，智控台持久化说明见 [`xiaozhi/MANAGER_PRESETS.md`](xiaozhi/MANAGER_PRESETS.md)。
 
 ## 项目定位
 
