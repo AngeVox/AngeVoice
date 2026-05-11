@@ -12,13 +12,15 @@ from __future__ import annotations
 
 import os
 
-import requests
+import httpx
 
 from config.logger import setup_logging
 from core.providers.tts.base import TTSProviderBase
 
 TAG = __name__
 logger = setup_logging()
+
+MAX_PROMPT_AUDIO_SIZE = 10 * 1024 * 1024  # 10 MB
 
 
 class TTSProvider(TTSProviderBase):
@@ -41,6 +43,10 @@ class TTSProvider(TTSProviderBase):
         if not os.path.exists(self.prompt_audio_path):
             raise Exception(f"AngeVoice MOSS克隆参考音频不存在: {self.prompt_audio_path}")
 
+        file_size = os.path.getsize(self.prompt_audio_path)
+        if file_size > MAX_PROMPT_AUDIO_SIZE:
+            raise Exception(f"AngeVoice MOSS克隆参考音频过大: {file_size / 1024 / 1024:.1f}MB > {MAX_PROMPT_AUDIO_SIZE / 1024 / 1024:.0f}MB 限制")
+
         headers = {}
         if self.api_key:
             headers["Authorization"] = f"Bearer {self.api_key}"
@@ -51,18 +57,20 @@ class TTSProvider(TTSProviderBase):
             "voice": self.voice,
             "response_format": self.audio_file_type,
         }
-        with open(self.prompt_audio_path, "rb") as audio_file:
-            files = {"prompt_audio": (os.path.basename(self.prompt_audio_path), audio_file)}
-            response = requests.post(self.api_url, data=data, files=files, headers=headers, timeout=self.timeout)
 
-        if response.status_code != 200:
-            raise Exception(f"AngeVoice MOSS克隆请求失败: {response.status_code} - {response.text[:500]}")
+        async with httpx.AsyncClient(timeout=self.timeout) as client:
+            with open(self.prompt_audio_path, "rb") as audio_file:
+                files = {"prompt_audio": (os.path.basename(self.prompt_audio_path), audio_file)}
+                response = await client.post(self.api_url, data=data, files=files, headers=headers)
 
-        if output_file:
-            with open(output_file, "wb") as out:
-                out.write(response.content)
-            return None
-        return response.content
+            if response.status_code != 200:
+                raise Exception(f"AngeVoice MOSS克隆请求失败: {response.status_code} - {response.text[:500]}")
+
+            if output_file:
+                with open(output_file, "wb") as out:
+                    out.write(response.content)
+                return None
+            return response.content
 
 
 def _resolve_clone_url(url: str) -> str:

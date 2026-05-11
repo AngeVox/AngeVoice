@@ -16,6 +16,7 @@ import base64
 import json
 import os
 import queue
+import threading
 import traceback
 
 import aiohttp
@@ -27,6 +28,43 @@ from core.utils.tts import MarkdownCleaner
 
 TAG = __name__
 logger = setup_logging()
+
+MAX_PROMPT_AUDIO_SIZE = 10 * 1024 * 1024  # 10 MB
+
+
+class _BackgroundLoop:
+    """Persistent event loop running in a dedicated daemon thread."""
+
+    def __init__(self):
+        self._loop = asyncio.new_event_loop()
+        self._thread = threading.Thread(target=self._run, daemon=True)
+        self._thread.start()
+
+    def _run(self):
+        asyncio.set_event_loop(self._loop)
+        self._loop.run_forever()
+
+    def run_coro(self, coro, timeout: float = 180):
+        future = asyncio.run_coroutine_threadsafe(coro, self._loop)
+        return future.result(timeout=timeout)
+
+    def close(self):
+        self._loop.call_soon_threadsafe(self._loop.stop)
+        self._thread.join(timeout=3)
+
+
+# Module-level singleton; created lazily on first use.
+_bg_loop: _BackgroundLoop | None = None
+_bg_lock = threading.Lock()
+
+
+def _get_bg_loop() -> _BackgroundLoop:
+    global _bg_loop
+    if _bg_loop is None:
+        with _bg_lock:
+            if _bg_loop is None:
+                _bg_loop = _BackgroundLoop()
+    return _bg_loop
 
 
 class TTSProvider(TTSProviderBase):
@@ -128,7 +166,8 @@ class TTSProvider(TTSProviderBase):
             return
         try:
             self.tts_audio_queue.put((SentenceType.FIRST, [], original_text, sentence_id or getattr(self, "current_sentence_id", None)))
-            asyncio.run(self._stream_text(text, sentence_id=sentence_id))
+            bg = _get_bg_loop()
+            bg.run_coro(self._stream_text(text, sentence_id=sentence_id), timeout=self.timeout + 10)
             logger.bind(tag=TAG).info(f"AngeVoice流式合成成功: {original_text}")
         except Exception as exc:
             logger.bind(tag=TAG).error(f"AngeVoice流式合成失败: {original_text}，错误: {exc}")
@@ -258,6 +297,9 @@ def _audio_bytes(data: dict) -> bytes:
 
 
 def _load_prompt_audio(path: str, filename: str) -> dict:
+    file_size = os.path.getsize(path)
+    if file_size > MAX_PROMPT_AUDIO_SIZE:
+        raise ValueError(f"prompt_audio 文件过大: {file_size / 1024 / 1024:.1f}MB > {MAX_PROMPT_AUDIO_SIZE / 1024 / 1024:.0f}MB 限制")
     with open(path, "rb") as f:
         data = base64.b64encode(f.read()).decode("ascii")
     return {"filename": filename or os.path.basename(path), "data": data}

@@ -9,7 +9,7 @@ It is the safest first integration mode for Kokoro and MOSS preset voices.
 
 from __future__ import annotations
 
-import requests
+import httpx
 
 from config.logger import setup_logging
 from core.providers.tts.base import TTSProviderBase
@@ -59,15 +59,16 @@ class TTSProvider(TTSProviderBase):
             "speed": self.speed,
         }
 
-        response = requests.post(self.api_url, json=payload, headers=headers, timeout=self.timeout)
-        if response.status_code != 200:
-            raise Exception(f"AngeVoice TTS请求失败: {response.status_code} - {response.text[:500]}")
+        async with httpx.AsyncClient(timeout=self.timeout) as client:
+            response = await client.post(self.api_url, json=payload, headers=headers)
+            if response.status_code != 200:
+                raise Exception(f"AngeVoice TTS请求失败: {response.status_code} - {response.text[:500]}")
 
-        if output_file:
-            with open(output_file, "wb") as audio_file:
-                audio_file.write(response.content)
-            return None
-        return response.content
+            if output_file:
+                with open(output_file, "wb") as audio_file:
+                    audio_file.write(response.content)
+                return None
+            return response.content
 
 
 def _resolve_speech_url(url: str) -> str:

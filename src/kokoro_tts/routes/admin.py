@@ -30,14 +30,6 @@ def _safe_compare_bytes(left: bytes, right: bytes) -> bool:
     return secrets.compare_digest(left, right)
 
 
-def _safe_compare(left: str, right: str) -> bool:
-    """Backward-compatible constant-time compare for Unicode credentials."""
-    return any(
-        _safe_compare_bytes(candidate, expected)
-        for candidate in _candidate_encodings(left)
-        for expected in _candidate_encodings(right)
-    )
-
 
 def _candidate_encodings(value: str) -> list[bytes]:
     candidates: list[bytes] = []
