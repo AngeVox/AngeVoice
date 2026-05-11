@@ -216,7 +216,7 @@ MOSS_SEED=1234
 MOSS_STREAM_CHUNK_SECONDS=0.42
 MOSS_STREAM_CHUNK_MIN_FLOOR=0.10
 MOSS_OUTPUT_PEAK_NORMALIZE_ENABLED=true
-MOSS_REALTIME_STREAMING_DECODE=false
+MOSS_REALTIME_STREAMING_DECODE=true
 MOSS_OUTPUT_TARGET_PEAK=0.78
 MOSS_OUTPUT_GAIN=0.90
 MOSS_OUTPUT_DECLICK_ENABLED=true
@@ -237,14 +237,14 @@ curl http://127.0.0.1:8101/v1/models/current
 优先使用质量优先配置：
 
 ```bash
-MOSS_REALTIME_STREAMING_DECODE=false
+MOSS_REALTIME_STREAMING_DECODE=true
 MOSS_OUTPUT_TARGET_PEAK=0.78
 MOSS_OUTPUT_GAIN=0.90
 MOSS_OUTPUT_DECLICK_ENABLED=true
 MOSS_OUTPUT_EDGE_FADE_MS=2
 ```
 
-`MOSS_REALTIME_STREAMING_DECODE=true` 会更早推送小音频块，但在部分参考音频、CUDA/ONNX 组合和小喇叭播放链路上容易放大 chunk 边界不连续，表现为“刺”“噗”“电流音”。默认关闭后仍然通过 WebSocket 分包播放，只是不再使用官方逐帧实时解码路径，听感通常更稳。
+`MOSS_REALTIME_STREAMING_DECODE=true` 会更早推送小音频块，但在部分参考音频、CUDA/ONNX 组合和小喇叭播放链路上容易放大 chunk 边界不连续，表现为“刺”“噗”“电流音”。默认开启逐帧实时解码以降低延迟；实时路径不会对每个小块做边缘淡入淡出，避免产生连续卡顿。若个别设备仍有噪声，可设为 false 走质量优先整块生成。
 
 
 如果日志显示 `requested=cuda actual=cpu`，或出现 `CUBLAS_STATUS_ALLOC_FAILED` / `BFCArena::AllocateRawInternal`，说明 CUDA provider 初始化失败。优先检查显存是否被其他容器占用：

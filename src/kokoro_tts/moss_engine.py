@@ -674,6 +674,7 @@ class MossNanoEngine:
                     put_item=put_item,
                     is_cancelled=is_cancelled,
                     stream_state=stream_state,
+                    edge_fade=False,
                 )
                 chunk_emitted += count
                 emitted += count
@@ -793,10 +794,11 @@ class MossNanoEngine:
         is_cancelled: Callable[[], bool],
         stream_state: dict,
         is_pause: bool = False,
+        edge_fade: bool = True,
     ) -> int:
         if is_cancelled():
             raise _MossStreamCancelled()
-        processed = self._postprocess_waveform(waveform, update_quality=not is_pause)
+        processed = self._postprocess_waveform(waveform, update_quality=not is_pause, edge_fade=edge_fade and not is_pause)
         if not is_pause and stream_state["first_audio_emitted_at_perf"] is None and getattr(processed, "size", 0):
             stream_state["first_audio_emitted_at_perf"] = time.perf_counter()
         stream_state["emitted_samples_total"] = int(stream_state["emitted_samples_total"]) + int(processed.shape[0])
@@ -855,7 +857,7 @@ class MossNanoEngine:
             logger=logger,
         )
 
-    def _postprocess_waveform(self, waveform, *, update_quality: bool = True):
+    def _postprocess_waveform(self, waveform, *, update_quality: bool = True, edge_fade: bool = True):
         processed, quality = normalize_waveform(
             waveform,
             channels=self.channels,
@@ -863,7 +865,11 @@ class MossNanoEngine:
             target_peak=float(self.config.moss_output_target_peak),
             peak_normalize_enabled=bool(self.config.moss_output_peak_normalize_enabled),
             declick_enabled=bool(getattr(self.config, "moss_output_declick_enabled", True)),
-            edge_fade_samples=int(self.sample_rate * float(getattr(self.config, "moss_output_edge_fade_ms", 2.0)) / 1000.0),
+            edge_fade_samples=(
+                int(self.sample_rate * float(getattr(self.config, "moss_output_edge_fade_ms", 2.0)) / 1000.0)
+                if bool(edge_fade)
+                else 0
+            ),
         )
         if update_quality:
             self._last_output_quality = quality.as_dict()

@@ -616,7 +616,7 @@ If upload must be enabled, restrict to internal network admin endpoints with rev
 
 | 环境变量 | 默认值 | 说明 |
 |---|---|---|
-| `MOSS_REALTIME_STREAMING_DECODE` | `false` | 是否启用 MOSS 官方逐帧实时解码；默认质量优先关闭 |
+| `MOSS_REALTIME_STREAMING_DECODE` | `true` | 是否启用 MOSS 官方逐帧实时解码；默认开启低延迟；实时路径跳过逐小块边缘淡入淡出 |
 | `MOSS_STREAM_BUDGET_THRESHOLD_LOW` | `0.25` | 音频播放余量低阈值（秒）：低于此值每次只解码 1 帧，优先保证点生成后尽快出声 |
 | `MOSS_STREAM_BUDGET_THRESHOLD_MID` | `0.65` | 音频播放余量中阈值（秒）：低于此值每次解码 2 帧 |
 | `MOSS_STREAM_BUDGET_THRESHOLD_HIGH` | `1.20` | 音频播放余量高阈值（秒）：低于此值每次解码 4 帧，高于此值每次解码 8 帧以减少块间抖动 |

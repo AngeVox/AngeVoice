@@ -7,7 +7,7 @@
 MOSS 的 WebSocket 仍然会分包输出，但默认不再启用官方逐帧实时解码：
 
 ```bash
-MOSS_REALTIME_STREAMING_DECODE=false
+MOSS_REALTIME_STREAMING_DECODE=true
 ```
 
 原因是逐帧实时解码可以降低首包延迟，但在部分 CUDA/ONNX 组合、参考音频和小喇叭播放链路上，容易放大 chunk 边界不连续，表现为：
@@ -22,7 +22,7 @@ MOSS_REALTIME_STREAMING_DECODE=false
 ## 推荐参数
 
 ```bash
-MOSS_REALTIME_STREAMING_DECODE=false
+MOSS_REALTIME_STREAMING_DECODE=true
 MOSS_OUTPUT_PEAK_NORMALIZE_ENABLED=true
 MOSS_OUTPUT_TARGET_PEAK=0.78
 MOSS_OUTPUT_GAIN=0.90
@@ -61,3 +61,16 @@ Kokoro 和 MOSS 对“了”的多音字行为不同：
 ```
 
 AngeVoice 会在进入模型前按模型类型做内部提示替换，对外 API 不需要改写文本。
+
+
+## 低延迟实时模式修正
+
+`MOSS_REALTIME_STREAMING_DECODE=true` 仍然是推荐默认值，适合小智、WebSocket 和 NAS 实时播放。
+
+需要注意的是，实时模式会产生很多很小的音频块。如果对每个小块都做 1~3ms 的 edge fade，会在播放端形成连续的微小音量缺口，听起来像卡顿、抖动或爆音。因此当前实现只在整段/整块输出上使用边缘淡入淡出，实时逐帧小块只保留去 DC、去孤立脉冲和峰值保护，不再逐小块 fade。
+
+如需最大听感稳定性、可以接受更慢首包，可手动设置：
+
+```env
+MOSS_REALTIME_STREAMING_DECODE=false
+```

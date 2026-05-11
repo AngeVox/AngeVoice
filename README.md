@@ -348,7 +348,7 @@ environment:
 | `MOSS_PROMPT_AUDIO_MAX_SECONDS` | `10` | 克隆参考音频裁剪时长 |
 | `MOSS_PROMPT_CACHE_MAX_ITEMS` | `8` | 参考音频编码缓存条目数 |
 | `MOSS_AUTO_FALLBACK_CPU` | `true` | CUDA 自检失败时回退 CPU |
-| `MOSS_REALTIME_STREAMING_DECODE` | `false` | 是否启用 MOSS 官方逐帧实时解码；默认关闭以优先保证 Web/小智播放音质，开启后首包更快但更容易产生碎片感/电流音 |
+| `MOSS_REALTIME_STREAMING_DECODE` | `true` | 是否启用 MOSS 官方逐帧实时解码；默认开启以优先保证低延迟；实时路径会跳过逐小块边缘淡入淡出，降低爆音和卡顿 |
 | `MOSS_PROCESS_ISOLATION_ENABLED` | `false` | 是否启用 MOSS 进程级隔离 |
 | `MOSS_PROCESS_ISOLATION_PROVIDERS` | `cuda` | 哪些 provider 走隔离子进程，逗号分隔 |
 | `MOSS_PROCESS_KILL_GRACE_SECONDS` | `2` | 超时后终止 worker 的宽限秒数 |

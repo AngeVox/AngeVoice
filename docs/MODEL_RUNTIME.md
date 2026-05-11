@@ -121,7 +121,7 @@ request:
 | `MOSS_OUTPUT_GAIN` | `0.90` | Slight pre-normalization attenuation to preserve dynamics and reduce distortion |
 | `MOSS_OUTPUT_DECLICK_ENABLED` | `true` | Repair isolated impulse spikes before encoding |
 | `MOSS_OUTPUT_EDGE_FADE_MS` | `2` | Short fade-in/out for MOSS segment boundaries |
-| `MOSS_REALTIME_STREAMING_DECODE` | `false` | Quality-first default. Enable only when lowest first-packet latency is more important than playback smoothness |
+| `MOSS_REALTIME_STREAMING_DECODE` | `true` | Low-latency default with stateful smoothing. Disable only when quality-first full-chunk generation is preferred |
 
 
 ## MOSS 进程级隔离
@@ -157,7 +157,7 @@ MOSS_PROMPT_AUDIO_MAX_SECONDS=8
 MOSS_PROMPT_CACHE_MAX_ITEMS=6
 MOSS_STREAM_CHUNK_SECONDS=0.42
 MOSS_OUTPUT_PEAK_NORMALIZE_ENABLED=true
-MOSS_REALTIME_STREAMING_DECODE=false
+MOSS_REALTIME_STREAMING_DECODE=true
 MOSS_OUTPUT_TARGET_PEAK=0.78
 MOSS_OUTPUT_GAIN=0.90
 MOSS_OUTPUT_DECLICK_ENABLED=true

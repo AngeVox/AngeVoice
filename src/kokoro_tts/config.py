@@ -175,7 +175,7 @@ class TTSConfig:
     moss_enable_wetext_processing: bool = False
     moss_enable_normalize_tts_text: bool = True
     moss_apply_angevoice_rules: bool = True
-    moss_realtime_streaming_decode: bool = False
+    moss_realtime_streaming_decode: bool = True
     moss_stream_chunk_seconds: float = 0.42
     moss_stream_queue_max_items: int = 8
     moss_cuda_self_test_enabled: bool = True

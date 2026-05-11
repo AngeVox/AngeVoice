@@ -79,7 +79,7 @@ MOSS_MODEL_DIR=/opt/MOSS-TTS-Nano/models
 MOSS_PROMPT_AUDIO_MAX_SECONDS=10
 MOSS_PROMPT_CACHE_MAX_ITEMS=8
 MOSS_OUTPUT_PEAK_NORMALIZE_ENABLED=true
-MOSS_REALTIME_STREAMING_DECODE=false
+MOSS_REALTIME_STREAMING_DECODE=true
 MOSS_OUTPUT_TARGET_PEAK=0.78
 MOSS_OUTPUT_GAIN=0.90
 MOSS_OUTPUT_DECLICK_ENABLED=true
@@ -100,7 +100,7 @@ curl -X POST http://localhost:8000/api/tts \
 
 AngeVoice 中文规则默认也会作用到 MOSS：自动断句、时间读法、轻量语义匹配和常见多音字修正都会在进入模型前处理。Tesla P4 已通过 Docker 探针验证可使用通用 GPU 画像的 `onnxruntime-gpu==1.20.2` + `nvidia-cudnn-cu12==9.1.0.70` 跑通 MOSS CUDA 推理。缺 cuDNN 9 时会回退为 CPU session，AngeVoice 会拒绝该 CUDA 加载并按配置回退 CPU。
 
-MOSS 克隆参考音频默认裁剪到 10 秒，并缓存编码后的 prompt audio codes。WebSocket 克隆默认走质量优先分包：先用官方高质量 chunk 生成，再按较稳定的小包输出；如需最低首包延迟，可手动开启 `MOSS_REALTIME_STREAMING_DECODE=true` 使用 OpenMOSS 官方逐帧回调。
+MOSS 克隆参考音频默认裁剪到 10 秒，并缓存编码后的 prompt audio codes。WebSocket 克隆默认走低延迟实时分包：使用 OpenMOSS 官方逐帧回调，并在实时路径跳过逐小块 edge fade，避免卡顿和爆音。如需质量优先整块生成，可手动设置 `MOSS_REALTIME_STREAMING_DECODE=false`。
 
 ## 批量合成 ZIP
 
