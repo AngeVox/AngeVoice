@@ -1,0 +1,17 @@
+# AngeVoice MOSS 预设音色流式配置示例
+# 不使用参考音频克隆，只调用 MOSS-TTS-Nano 的预设音色。
+
+selected_module:
+  TTS: AngeVoiceMossStream
+
+TTS:
+  AngeVoiceMossStream:
+    type: angevoice_stream
+    api_url: ws://host.docker.internal:8101/ws/v1/tts
+    http_url: http://host.docker.internal:8101
+    api_key: ""
+    model: moss-nano-cpu
+    voice: Junhao
+    format: pcm_s16le
+    output_dir: tmp/
+    tts_timeout: 240

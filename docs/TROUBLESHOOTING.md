@@ -499,3 +499,29 @@ AngeVoice
 ```bash
 bash scripts/install.sh --restart
 ```
+
+### 管理后台能弹出登录框但无法进入
+
+检查环境变量：
+
+```bash
+grep -E 'KOKORO_ADMIN_ENABLED|ANGEVOICE_ADMIN_USERNAME|ANGEVOICE_ADMIN_PASSWORD' docker/angevoice.env
+```
+
+必须满足：
+
+```bash
+KOKORO_ADMIN_ENABLED=true
+ANGEVOICE_ADMIN_PASSWORD=你的强密码
+```
+
+然后重启容器：
+
+```bash
+AngeVoice --restart
+# 或 docker compose restart
+```
+
+如果账号或密码包含中文，建议使用最新版本。管理后台 Basic Auth 已经改为按原始字节解析，并同时兼容 UTF-8 / latin-1，避免浏览器编码差异导致一直无法登录。
+
+公网部署时不建议直接暴露 `/admin`。建议只在内网访问，或通过反向代理限制 IP。

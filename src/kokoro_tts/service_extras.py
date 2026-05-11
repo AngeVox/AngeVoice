@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import asyncio
 import base64
+import binascii
 import hmac
 import os
 import json
@@ -28,6 +29,18 @@ logger = logging.getLogger(__name__)
 
 ALLOWED_MP3_BITRATES = {"64k", "96k", "128k", "160k", "192k", "256k", "320k"}
 _fallback_stats_lock = threading.Lock()
+
+
+def _admin_credential_candidates(value: str) -> list[bytes]:
+    candidates: list[bytes] = []
+    for encoding in ("utf-8", "latin-1"):
+        try:
+            encoded = value.encode(encoding)
+        except UnicodeEncodeError:
+            continue
+        if encoded not in candidates:
+            candidates.append(encoded)
+    return candidates
 
 
 class BatchItem(BaseModel):
@@ -128,8 +141,8 @@ def register_extra_routes(
             raise HTTPException(status_code=404, detail="Admin API disabled")
 
         auth = request.headers.get("Authorization", "")
-        if cfg.api_key and auth.startswith("Bearer "):
-            token = auth.removeprefix("Bearer ").strip()
+        if cfg.api_key and auth.lower().startswith("bearer "):
+            token = auth[7:].strip()
             if hmac.compare_digest(token, cfg.api_key or ""):
                 return
 
@@ -140,15 +153,21 @@ def register_extra_routes(
         if auth.lower().startswith("basic "):
             raw = auth.split(" ", 1)[1].strip()
             try:
-                decoded = base64.b64decode(raw).decode("utf-8")
-                username, password = decoded.split(":", 1)
-            except Exception:
-                username, password = "", ""
+                decoded = base64.b64decode(raw, validate=True)
+                username_bytes, password_bytes = decoded.split(b":", 1)
+            except (binascii.Error, ValueError):
+                username_bytes, password_bytes = b"", b""
             expected_username = os.environ.get("ANGEVOICE_ADMIN_USERNAME", "admin") or "admin"
-            if hmac.compare_digest(username, expected_username) and hmac.compare_digest(password, admin_password):
+            username_ok = any(hmac.compare_digest(username_bytes, item) for item in _admin_credential_candidates(expected_username))
+            password_ok = any(hmac.compare_digest(password_bytes, item) for item in _admin_credential_candidates(admin_password))
+            if username_ok and password_ok:
                 return
 
-        raise HTTPException(status_code=401, detail="Admin login required", headers={"WWW-Authenticate": "Basic"})
+        raise HTTPException(
+            status_code=401,
+            detail="Admin login required",
+            headers={"WWW-Authenticate": 'Basic realm="AngeVoice Admin", charset="UTF-8"'},
+        )
 
     def normalize_extra_format(fmt: str) -> str:
         fmt = (fmt or "wav").lower()

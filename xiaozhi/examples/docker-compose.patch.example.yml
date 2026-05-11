@@ -1,0 +1,12 @@
+# 这是 docker-compose_all.yml 中 xiaozhi-esp32-server 服务需要增加的片段。
+# 一键脚本会自动 patch；手动安装时可参考复制。
+
+services:
+  xiaozhi-esp32-server:
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    volumes:
+      - ./angevoice-adapter/angevoice.py:/opt/xiaozhi-esp32-server/core/providers/tts/angevoice.py:ro
+      - ./angevoice-adapter/angevoice_stream.py:/opt/xiaozhi-esp32-server/core/providers/tts/angevoice_stream.py:ro
+      - ./angevoice-adapter/angevoice_clone.py:/opt/xiaozhi-esp32-server/core/providers/tts/angevoice_clone.py:ro
+      - ./data/angevoice_prompts:/opt/xiaozhi-esp32-server/data/angevoice_prompts:ro

@@ -7,7 +7,7 @@ from unittest.mock import MagicMock, patch
 import pytest
 
 sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
-EXPECTED_VERSION = "2.6.4.4"
+EXPECTED_VERSION = "2.6.4.5"
 
 
 def _has_module(name: str) -> bool:
@@ -288,3 +288,39 @@ class TestReviewFixRegressions:
         assert state.is_cancelled("req1") is True
         state.finish_request("req1", "cancelled")
         assert state.is_cancelled("req1") is False
+
+
+class TestXiaozhiAdapterKit:
+    def test_xiaozhi_adapter_files_exist(self):
+        from pathlib import Path
+
+        root = Path(__file__).parent.parent / "xiaozhi"
+        required = [
+            "adapters/angevoice.py",
+            "adapters/angevoice_stream.py",
+            "adapters/angevoice_clone.py",
+            "scripts/install-xiaozhi-adapter.sh",
+            "manager/presets.yaml",
+            "examples/config-moss-clone.yaml",
+        ]
+        for rel in required:
+            assert (root / rel).exists(), rel
+
+    def test_xiaozhi_moss_clone_docs_show_prompt_mount_path(self):
+        from pathlib import Path
+
+        text = (Path(__file__).parent.parent / "xiaozhi" / "README.md").read_text(encoding="utf-8")
+        assert "data/angevoice_prompts/reference.wav" in text
+        assert "/opt/xiaozhi-esp32-server/data/angevoice_prompts/reference.wav" in text
+        assert "智控台" in text
+
+    def test_admin_basic_auth_parser_accepts_utf8_and_latin1_bytes(self):
+        import base64
+        from kokoro_tts.routes.admin import _candidate_encodings, _parse_basic_header
+
+        raw = "管理员:密钥".encode("utf-8")
+        parsed = _parse_basic_header("Basic " + base64.b64encode(raw).decode("ascii"))
+        assert parsed is not None
+        username, password = parsed
+        assert username in _candidate_encodings("管理员")
+        assert password in _candidate_encodings("密钥")

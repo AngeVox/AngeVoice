@@ -1,0 +1,18 @@
+# AngeVoice Kokoro WebSocket 流式配置示例
+# 推荐日常对话使用，首包更快。
+
+selected_module:
+  TTS: AngeVoiceKokoroStream
+
+TTS:
+  AngeVoiceKokoroStream:
+    type: angevoice_stream
+    api_url: ws://host.docker.internal:8101/ws/v1/tts
+    http_url: http://host.docker.internal:8101
+    api_key: ""
+    model: kokoro
+    voice: zm_010
+    format: pcm_s16le
+    speed: 1.0
+    output_dir: tmp/
+    tts_timeout: 180

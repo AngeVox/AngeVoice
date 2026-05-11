@@ -2,19 +2,17 @@
 
 from __future__ import annotations
 
+import base64
+import binascii
 import os
 import secrets
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import HTMLResponse
-from fastapi.security import HTTPBasic, HTTPBasicCredentials
 from pydantic import BaseModel
 from starlette.concurrency import run_in_threadpool
 
 from ..service_state import ServiceState
-
-security = HTTPBasic(auto_error=False)
-
 
 class AdminModelAction(BaseModel):
     include_current: bool = True
@@ -28,28 +26,88 @@ def _admin_password() -> str:
     return os.environ.get("ANGEVOICE_ADMIN_PASSWORD", "") or ""
 
 
-def _safe_compare(left: str, right: str) -> bool:
-    """用 UTF-8 字节做常量时间比较，支持中文账号和密码。"""
+def _safe_compare_bytes(left: bytes, right: bytes) -> bool:
+    return secrets.compare_digest(left, right)
 
-    return secrets.compare_digest(left.encode("utf-8"), right.encode("utf-8"))
+
+def _safe_compare(left: str, right: str) -> bool:
+    """Backward-compatible constant-time compare for Unicode credentials."""
+    return any(
+        _safe_compare_bytes(candidate, expected)
+        for candidate in _candidate_encodings(left)
+        for expected in _candidate_encodings(right)
+    )
+
+
+def _candidate_encodings(value: str) -> list[bytes]:
+    candidates: list[bytes] = []
+    for encoding in ("utf-8", "latin-1"):
+        try:
+            item = value.encode(encoding)
+        except UnicodeEncodeError:
+            continue
+        if item not in candidates:
+            candidates.append(item)
+    return candidates
+
+
+def _parse_basic_header(auth: str) -> tuple[bytes, bytes] | None:
+    """Parse Basic auth without relying on a fixed browser charset.
+
+    Some browsers/proxies still send Basic credentials as latin-1, while users
+    often paste Chinese usernames/passwords encoded as UTF-8. We compare raw
+    bytes against both UTF-8 and latin-1 encodings of the configured values so
+    the admin panel is not locked out by charset differences.
+    """
+
+    if not auth.lower().startswith("basic "):
+        return None
+    token = auth.split(" ", 1)[1].strip()
+    try:
+        raw = base64.b64decode(token, validate=True)
+    except (binascii.Error, ValueError):
+        return None
+    if b":" not in raw:
+        return None
+    username, password = raw.split(b":", 1)
+    return username, password
+
+
+def _parse_bearer_header(auth: str) -> str:
+    if auth.lower().startswith("bearer "):
+        return auth[7:].strip()
+    return ""
+
+
+def _auth_headers() -> dict[str, str]:
+    return {"WWW-Authenticate": 'Basic realm="AngeVoice Admin", charset="UTF-8"'}
 
 
 def create_admin_router(state: ServiceState) -> APIRouter:
     router = APIRouter()
     cfg = state.cfg
 
-    def verify_admin(credentials: HTTPBasicCredentials | None = Depends(security)) -> None:
+    def verify_admin(request: Request) -> None:
         if not cfg.admin_enabled:
             raise HTTPException(status_code=404, detail="管理后台未启用")
         expected_password = _admin_password()
         if not expected_password:
             raise HTTPException(status_code=503, detail="未配置管理后台密码")
-        if credentials is None:
-            raise HTTPException(status_code=401, detail="需要登录", headers={"WWW-Authenticate": "Basic"})
-        username_ok = _safe_compare(credentials.username, _admin_username())
-        password_ok = _safe_compare(credentials.password, expected_password)
+
+        auth = request.headers.get("Authorization", "")
+        bearer = _parse_bearer_header(auth)
+        if cfg.api_key and bearer and secrets.compare_digest(bearer, cfg.api_key):
+            return
+
+        parsed = _parse_basic_header(auth)
+        if parsed is None:
+            raise HTTPException(status_code=401, detail="需要登录", headers=_auth_headers())
+
+        supplied_username, supplied_password = parsed
+        username_ok = any(_safe_compare_bytes(supplied_username, item) for item in _candidate_encodings(_admin_username()))
+        password_ok = any(_safe_compare_bytes(supplied_password, item) for item in _candidate_encodings(expected_password))
         if not (username_ok and password_ok):
-            raise HTTPException(status_code=401, detail="账号或密码错误", headers={"WWW-Authenticate": "Basic"})
+            raise HTTPException(status_code=401, detail="账号或密码错误", headers=_auth_headers())
 
     @router.get("/admin", response_class=HTMLResponse)
     async def admin_panel(_=Depends(verify_admin)):
@@ -122,13 +180,17 @@ def create_admin_router(state: ServiceState) -> APIRouter:
             """
         )
 
+    def _active_requests_snapshot() -> list[dict]:
+        with state.request_lock:
+            return list(state.active_requests.values())[-50:]
+
     @router.get("/admin/api/status")
     async def admin_status(_=Depends(verify_admin)):
         return {
             "current_model": state.model_manager.current_model_id,
             "models": state.model_manager.list_models(),
             "cache_items": state.cache_size(),
-            "active_requests": list(state.active_requests.values())[-50:],
+            "active_requests": _active_requests_snapshot(),
             "stats": state.snapshot_stats(),
             "config": {
                 "enabled_models": cfg.enabled_models,

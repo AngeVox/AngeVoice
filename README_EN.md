@@ -46,6 +46,26 @@ bash scripts/install.sh --uninstall
 
 Uninstall stops/removes containers and networks only; models, outputs and config files are kept.
 
+
+## Xiaozhi ESP32 server adapter
+
+This repository now includes a non-invasive `xiaozhi/` adapter kit for xiaozhi-esp32-server:
+
+- `xiaozhi/adapters/angevoice.py`: non-streaming OpenAI-compatible TTS adapter.
+- `xiaozhi/adapters/angevoice_stream.py`: WebSocket streaming adapter for Kokoro/MOSS.
+- `xiaozhi/adapters/angevoice_clone.py`: non-streaming MOSS reference-audio clone adapter.
+- `xiaozhi/scripts/install-xiaozhi-adapter.sh`: one-command installer for adapter files, Compose patching and example config.
+- `xiaozhi/manager/presets.yaml`: copyable console presets; it does not modify xiaozhi frontend code.
+
+Quick install from a xiaozhi server directory:
+
+```bash
+cd /path/to/xiaozhi-server
+bash <(curl -fsSL https://raw.githubusercontent.com/ang77712829/AngeVoice/main/xiaozhi/scripts/install-xiaozhi-adapter.sh)
+```
+
+See [`xiaozhi/README.md`](xiaozhi/README.md) for the full Chinese guide.
+
 ## What is AngeVoice?
 
 AngeVoice is not a newly trained model. It is a local TTS service framework for low-power devices, NAS boxes, and long-running self-hosted environments.

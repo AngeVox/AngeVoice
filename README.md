@@ -46,6 +46,34 @@ bash scripts/install.sh --uninstall
 
 卸载只停止并移除容器/网络，不删除模型、输出和配置文件。
 
+
+## 小智 ESP32 后端适配
+
+本仓库新增 `xiaozhi/` 目录，提供小智后端无侵入适配包：
+
+- `xiaozhi/adapters/angevoice.py`：OpenAI 兼容非流式适配，最快跑通。
+- `xiaozhi/adapters/angevoice_stream.py`：WebSocket 流式适配，支持 Kokoro/MOSS 流式输出。
+- `xiaozhi/adapters/angevoice_clone.py`：MOSS 参考音频克隆非流式适配。
+- `xiaozhi/scripts/install-xiaozhi-adapter.sh`：一键安装适配器、patch 小智 Compose、写入示例配置。
+- `xiaozhi/manager/presets.yaml`：智控台可复制预设，不修改小智前端源码。
+
+一键接入小智：
+
+```bash
+cd /path/to/xiaozhi-server
+bash <(curl -fsSL https://raw.githubusercontent.com/ang77712829/AngeVoice/main/xiaozhi/scripts/install-xiaozhi-adapter.sh)
+```
+
+MOSS 克隆流式示例：
+
+```bash
+bash <(curl -fsSL https://raw.githubusercontent.com/ang77712829/AngeVoice/main/xiaozhi/scripts/install-xiaozhi-adapter.sh) \
+  --mode moss-clone-stream \
+  --prompt-audio ./reference.wav
+```
+
+完整教程见 [`xiaozhi/README.md`](xiaozhi/README.md)。
+
 ## 项目定位
 
 AngeVoice 不是重新训练的新模型，而是面向低配设备、NAS 和长期运行环境做的本地 TTS 服务框架。

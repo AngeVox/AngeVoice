@@ -662,3 +662,23 @@ ANGEVOICE_IDLE_CHECK_INTERVAL=30
 | `MOSS_PROCESS_ISOLATION_ENABLED` | `false` | 是否启用 MOSS 进程级隔离；默认关闭以优先保证实时流式体验 |
 | `MOSS_PROCESS_ISOLATION_PROVIDERS` | `cuda` | 哪些 provider 使用隔离子进程 |
 | `MOSS_PROCESS_KILL_GRACE_SECONDS` | `2` | worker 超时后终止/强杀的宽限秒数 |
+
+### 管理后台页面
+
+浏览器访问：
+
+```text
+GET /admin
+```
+
+开启方式：
+
+```bash
+KOKORO_ADMIN_ENABLED=true
+ANGEVOICE_ADMIN_USERNAME=admin
+ANGEVOICE_ADMIN_PASSWORD=<strong-password>
+```
+
+`/admin` 使用 HTTP Basic 登录。账号和密码支持中文；服务端会兼容 UTF-8 与 latin-1 Basic Auth 编码，避免不同浏览器编码差异导致无法进入后台。
+
+管理页面当前提供：运行状态、模型列表、活跃请求、缓存数量、清空缓存、释放模型等基础运维功能。
