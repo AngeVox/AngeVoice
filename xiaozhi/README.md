@@ -18,13 +18,15 @@
 
 ```text
 xiaozhi-server/
-├─ docker-compose_all.yml
+├─ docker-compose_all.yml  # 也可能是 docker-compose.yml 或 compose.yml
 ├─ data/
 │  └─ .config.yaml
 └─ models/
    └─ SenseVoiceSmall/
       └─ model.pt
 ```
+
+> 安装脚本会自动识别 `docker-compose_all.yml` / `docker-compose.yml` / `compose.yml`。飞牛等 NAS 面板把 compose 文件改名为 `docker-compose.yml` 的情况也可以直接使用。
 
 2. 已启动 AngeVoice，例如：
 
@@ -78,7 +80,7 @@ bash <(curl -fsSL https://raw.githubusercontent.com/ang77712829/AngeVoice/main/x
 脚本会做这些事：
 
 1. 下载 `angevoice.py`、`angevoice_stream.py`、`angevoice_clone.py` 到 `xiaozhi-server/angevoice-adapter/`。
-2. 修改 `docker-compose_all.yml`，把适配器挂载到小智容器内的 `core/providers/tts/`。
+2. 自动识别并修改小智 compose 文件，把适配器挂载到小智容器内的 `core/providers/tts/`。
 3. 添加 `host.docker.internal:host-gateway`，方便小智容器访问宿主机 AngeVoice。
 4. 创建 `data/angevoice_prompts/`，用于放 MOSS 克隆参考音频。
 5. 可选写入 `data/.config.yaml` 示例配置。
@@ -102,9 +104,9 @@ xiaozhi/adapters/angevoice_stream.py
 xiaozhi/adapters/angevoice_clone.py
 ```
 
-### 2. 修改 docker-compose_all.yml
+### 2. 修改小智 compose 文件
 
-给 `xiaozhi-esp32-server` 服务增加挂载，参考：
+根据你的实际文件名修改 `docker-compose_all.yml`、`docker-compose.yml` 或 `compose.yml`，给 `xiaozhi-esp32-server` 服务增加挂载，参考：
 
 ```yaml
 extra_hosts:
@@ -122,7 +124,8 @@ volumes:
 ### 3. 重启小智 server
 
 ```bash
-docker compose -f docker-compose_all.yml restart xiaozhi-esp32-server
+# 按你的实际 compose 文件名执行，例如 docker-compose.yml：
+docker compose -f docker-compose.yml restart xiaozhi-esp32-server
 ```
 
 ### 4. 测试适配器导入
