@@ -13,6 +13,8 @@ PROMPT_AUDIO=""
 
 PATCH_COMPOSE="ask"
 WRITE_CONFIG="ask"
+IMPORT_MANAGER_PRESETS="ask"
+SET_MANAGER_DEFAULT="ask"
 RESTART="ask"
 
 YES="false"
@@ -39,9 +41,11 @@ AngeVoice 小智后端适配器安装脚本
   --prompt-audio FILE     MOSS clone 参考音频，会复制为 data/angevoice_prompts/reference.wav
 
 安装控制：
-  --adapters-only         只安装适配器，不 patch compose，不写配置，不重启
+  --adapters-only         只安装适配器，不 patch compose，不写配置，不导入智控台，不重启
   --no-compose            不修改 compose 文件
   --no-config             不写入 data/.config.yaml
+  --no-manager            不导入智控台数据库预设
+  --no-default            不把 AngeVoice 设置为智控台默认 TTS
   --no-restart            不重启 xiaozhi-esp32-server 容器
   --yes, -y               非交互模式，使用默认值
   --dry-run               只显示将要执行的操作
@@ -51,7 +55,7 @@ AngeVoice 小智后端适配器安装脚本
 
 示例：
   bash install-xiaozhi-adapter.sh --xiaozhi-dir /vol3/1000/docker/xiaozhi-server
-  bash install-xiaozhi-adapter.sh --mode moss-clone-stream --prompt-audio ./reference.wav
+  bash install-xiaozhi-adapter.sh --mode moss-clone-stream --model moss-nano-cuda --prompt-audio ./reference.wav
 USAGE
 }
 
@@ -64,9 +68,11 @@ while [[ $# -gt 0 ]]; do
     --model) MODEL="$2"; shift 2 ;;
     --api-key) API_KEY="$2"; shift 2 ;;
     --prompt-audio) PROMPT_AUDIO="$2"; shift 2 ;;
-    --adapters-only) PATCH_COMPOSE="false"; WRITE_CONFIG="false"; RESTART="false"; shift ;;
+    --adapters-only) PATCH_COMPOSE="false"; WRITE_CONFIG="false"; IMPORT_MANAGER_PRESETS="false"; RESTART="false"; shift ;;
     --no-compose) PATCH_COMPOSE="false"; shift ;;
     --no-config) WRITE_CONFIG="false"; shift ;;
+    --no-manager) IMPORT_MANAGER_PRESETS="false"; shift ;;
+    --no-default) SET_MANAGER_DEFAULT="false"; shift ;;
     --no-restart) RESTART="false"; shift ;;
     --yes|-y) YES="true"; shift ;;
     --dry-run) DRY_RUN="true"; shift ;;
@@ -644,6 +650,273 @@ config_tuple() {
   esac
 }
 
+selected_manager_id() {
+  case "$MODE:$MODEL" in
+    kokoro:*) echo "TTS_AngeVoiceKokoro" ;;
+    kokoro-stream:*) echo "TTS_AngeVoiceKokoroStream" ;;
+    moss:moss-nano-cuda) echo "TTS_AngeVoiceMossCuda" ;;
+    moss:*) echo "TTS_AngeVoiceMossCpu" ;;
+    moss-stream:moss-nano-cuda) echo "TTS_AngeVoiceMossCudaStream" ;;
+    moss-stream:*) echo "TTS_AngeVoiceMossCpuStream" ;;
+    moss-clone:moss-nano-cuda) echo "TTS_AngeVoiceMossCudaClone" ;;
+    moss-clone:*) echo "TTS_AngeVoiceMossCpuClone" ;;
+    moss-clone-stream:moss-nano-cuda) echo "TTS_AngeVoiceMossCudaCloneStream" ;;
+    moss-clone-stream:*) echo "TTS_AngeVoiceMossCpuCloneStream" ;;
+    *) echo "TTS_AngeVoiceKokoroStream" ;;
+  esac
+}
+
+detect_db_container() {
+  command -v docker >/dev/null 2>&1 || return 1
+
+  local name=""
+
+  for name in xiaozhi-esp32-server-db; do
+    if docker ps --format '{{.Names}}' | grep -qx "$name"; then
+      printf "%s" "$name"
+      return 0
+    fi
+  done
+
+  name="$(docker ps --format '{{.Names}}' 2>/dev/null | grep -Ei 'xiaozhi.*(db|mysql)|mysql.*xiaozhi' | head -n 1 || true)"
+  [[ -n "$name" ]] || return 1
+
+  printf "%s" "$name"
+}
+
+db_env_value() {
+  local container="$1"
+  local key="$2"
+
+  docker inspect "$container" --format '{{range .Config.Env}}{{println .}}{{end}}' 2>/dev/null \
+    | sed -n "s/^${key}=//p" \
+    | head -n 1
+}
+
+generate_manager_sql() {
+  local out="$1"
+  local make_default="$2"
+  local selected_id
+  selected_id="$(selected_manager_id)"
+
+  ANGEVOICE_HTTP="$ANGEVOICE_HTTP" \
+  ANGEVOICE_WS="$ANGEVOICE_WS" \
+  API_KEY="$API_KEY" \
+  SELECTED_ID="$selected_id" \
+  MAKE_DEFAULT="$make_default" \
+  python3 - "$out" <<'PY'
+from __future__ import annotations
+
+import json
+import os
+import sys
+from pathlib import Path
+
+out = Path(sys.argv[1])
+
+http = os.environ["ANGEVOICE_HTTP"]
+ws = os.environ["ANGEVOICE_WS"]
+api_key = os.environ.get("API_KEY", "")
+selected_id = os.environ.get("SELECTED_ID", "TTS_AngeVoiceKokoroStream")
+make_default = os.environ.get("MAKE_DEFAULT", "false") == "true"
+
+doc = "https://github.com/ang77712829/AngeVoice/tree/main/xiaozhi"
+
+def q(value) -> str:
+    if value is None:
+        return "NULL"
+    return "'" + str(value).replace("\\", "\\\\").replace("'", "''") + "'"
+
+def j(value) -> str:
+    return q(json.dumps(value, ensure_ascii=False, separators=(",", ":")))
+
+def provider_fields(kind: str):
+    common = [
+        {"key": "api_url", "label": "AngeVoice接口地址", "type": "string"},
+        {"key": "api_key", "label": "API Key，可留空", "type": "string"},
+        {"key": "model", "label": "模型：kokoro / moss-nano-cpu / moss-nano-cuda", "type": "string"},
+        {"key": "voice", "label": "音色", "type": "string"},
+        {"key": "speed", "label": "语速", "type": "number"},
+        {"key": "output_dir", "label": "输出目录", "type": "string"},
+        {"key": "tts_timeout", "label": "超时时间秒", "type": "number"},
+    ]
+    if kind == "stream":
+        return [
+            {"key": "api_url", "label": "WebSocket地址", "type": "string"},
+            {"key": "http_url", "label": "HTTP地址", "type": "string"},
+            {"key": "api_key", "label": "API Key，可留空", "type": "string"},
+            {"key": "model", "label": "模型", "type": "string"},
+            {"key": "voice", "label": "音色", "type": "string"},
+            {"key": "format", "label": "音频格式，推荐pcm_s16le", "type": "string"},
+            {"key": "speed", "label": "语速", "type": "number"},
+            {"key": "prompt_audio_path", "label": "MOSS克隆参考音频容器路径，可留空", "type": "string"},
+            {"key": "prompt_audio_filename", "label": "参考音频文件名", "type": "string"},
+            {"key": "output_dir", "label": "输出目录", "type": "string"},
+            {"key": "tts_timeout", "label": "超时时间秒", "type": "number"},
+        ]
+    if kind == "clone":
+        return common + [
+            {"key": "prompt_audio_path", "label": "MOSS克隆参考音频容器路径", "type": "string"},
+            {"key": "prompt_audio_filename", "label": "参考音频文件名", "type": "string"},
+            {"key": "response_format", "label": "返回格式，推荐wav", "type": "string"},
+        ]
+    return common + [{"key": "response_format", "label": "返回格式，推荐wav", "type": "string"}]
+
+providers = [
+    ("SYSTEM_TTS_AngeVoice", "TTS", "angevoice", "AngeVoice非流式", provider_fields("normal"), 910),
+    ("SYSTEM_TTS_AngeVoiceStream", "TTS", "angevoice_stream", "AngeVoice流式", provider_fields("stream"), 911),
+    ("SYSTEM_TTS_AngeVoiceClone", "TTS", "angevoice_clone", "AngeVoice克隆非流式", provider_fields("clone"), 912),
+]
+
+prompt_path = "/opt/xiaozhi-esp32-server/data/angevoice_prompts/reference.wav"
+
+def cfg(t, model, voice="zm_010", fmt="wav", timeout=120, prompt=False):
+    d = {
+        "type": t,
+        "api_url": http if t in {"angevoice", "angevoice_clone"} else ws,
+        "http_url": http,
+        "api_key": api_key,
+        "model": model,
+        "voice": voice,
+        "format": fmt,
+        "response_format": "wav",
+        "speed": 1.0,
+        "output_dir": "tmp/",
+        "tts_timeout": timeout,
+    }
+    if prompt:
+        d["prompt_audio_path"] = prompt_path
+        d["prompt_audio_filename"] = "reference.wav"
+    return d
+
+configs = [
+    ("TTS_AngeVoiceKokoro", "TTS", "AngeVoiceKokoro", "AngeVoice Kokoro 非流式", cfg("angevoice", "kokoro", "zm_010", "wav", 120), 910),
+    ("TTS_AngeVoiceKokoroStream", "TTS", "AngeVoiceKokoroStream", "AngeVoice Kokoro 流式", cfg("angevoice_stream", "kokoro", "zm_010", "pcm_s16le", 180), 911),
+    ("TTS_AngeVoiceMossCpu", "TTS", "AngeVoiceMossCpu", "AngeVoice MOSS CPU 非流式", cfg("angevoice", "moss-nano-cpu", "Junhao", "wav", 180), 920),
+    ("TTS_AngeVoiceMossCuda", "TTS", "AngeVoiceMossCuda", "AngeVoice MOSS CUDA 非流式", cfg("angevoice", "moss-nano-cuda", "Junhao", "wav", 180), 921),
+    ("TTS_AngeVoiceMossCpuStream", "TTS", "AngeVoiceMossCpuStream", "AngeVoice MOSS CPU 流式", cfg("angevoice_stream", "moss-nano-cpu", "Junhao", "pcm_s16le", 240), 922),
+    ("TTS_AngeVoiceMossCudaStream", "TTS", "AngeVoiceMossCudaStream", "AngeVoice MOSS CUDA 流式", cfg("angevoice_stream", "moss-nano-cuda", "Junhao", "pcm_s16le", 240), 923),
+    ("TTS_AngeVoiceMossCpuClone", "TTS", "AngeVoiceMossCpuClone", "AngeVoice MOSS CPU 克隆非流式", cfg("angevoice_clone", "moss-nano-cpu", "Junhao", "wav", 300, True), 930),
+    ("TTS_AngeVoiceMossCudaClone", "TTS", "AngeVoiceMossCudaClone", "AngeVoice MOSS CUDA 克隆非流式", cfg("angevoice_clone", "moss-nano-cuda", "Junhao", "wav", 300, True), 931),
+    ("TTS_AngeVoiceMossCpuCloneStream", "TTS", "AngeVoiceMossCpuCloneStream", "AngeVoice MOSS CPU 克隆流式", cfg("angevoice_stream", "moss-nano-cpu", "Junhao", "pcm_s16le", 300, True), 932),
+    ("TTS_AngeVoiceMossCudaCloneStream", "TTS", "AngeVoiceMossCudaCloneStream", "AngeVoice MOSS CUDA 克隆流式", cfg("angevoice_stream", "moss-nano-cuda", "Junhao", "pcm_s16le", 300, True), 933),
+]
+
+lines = [
+    "-- AngeVoice Xiaozhi manager presets",
+    "SET NAMES utf8mb4;",
+]
+
+for row in providers:
+    pid, mtype, pcode, name, fields, sort = row
+    lines.append(
+        "INSERT INTO ai_model_provider "
+        "(id, model_type, provider_code, name, fields, sort, creator, create_date, updater, update_date) VALUES "
+        f"({q(pid)}, {q(mtype)}, {q(pcode)}, {q(name)}, {j(fields)}, {sort}, 1, NOW(), 1, NOW()) "
+        "ON DUPLICATE KEY UPDATE "
+        "model_type=VALUES(model_type), provider_code=VALUES(provider_code), name=VALUES(name), "
+        "fields=VALUES(fields), sort=VALUES(sort), updater=1, update_date=NOW();"
+    )
+
+if make_default:
+    lines.append("UPDATE ai_model_config SET is_default = 0 WHERE model_type = 'TTS';")
+
+for cid, mtype, mcode, name, conf, sort in configs:
+    is_default = 1 if make_default and cid == selected_id else 0
+    is_enabled = 1
+    remark = (
+        "AngeVoice 小智适配配置。适配器文件由 xiaozhi/scripts/install-xiaozhi-adapter.sh 持久化挂载；"
+        "智控台配置写入 ai_model_provider / ai_model_config，重启后不会丢失。"
+    )
+    lines.append(
+        "INSERT INTO ai_model_config "
+        "(id, model_type, model_code, model_name, is_default, is_enabled, config_json, doc_link, remark, sort, updater, update_date, creator, create_date) VALUES "
+        f"({q(cid)}, {q(mtype)}, {q(mcode)}, {q(name)}, {is_default}, {is_enabled}, {j(conf)}, {q(doc)}, {q(remark)}, {sort}, 1, NOW(), 1, NOW()) "
+        "ON DUPLICATE KEY UPDATE "
+        "model_type=VALUES(model_type), model_code=VALUES(model_code), model_name=VALUES(model_name), "
+        "is_default=VALUES(is_default), is_enabled=VALUES(is_enabled), config_json=VALUES(config_json), "
+        "doc_link=VALUES(doc_link), remark=VALUES(remark), sort=VALUES(sort), updater=1, update_date=NOW();"
+    )
+
+out.write_text("\n".join(lines) + "\n", encoding="utf-8")
+PY
+}
+
+import_manager_presets() {
+  if [[ "$DRY_RUN" == "true" ]]; then
+    log "[dry-run] 将导入智控台预设到 ai_model_provider / ai_model_config"
+    return 0
+  fi
+
+  command -v docker >/dev/null 2>&1 || {
+    warn "未找到 docker，跳过智控台数据库导入"
+    return 0
+  }
+
+  local db_container=""
+  db_container="$(detect_db_container || true)"
+
+  if [[ -z "$db_container" ]]; then
+    warn "未找到小智 MySQL 容器，跳过智控台数据库导入。可稍后手动导入 SQL。"
+    return 0
+  fi
+
+  local db_user="root"
+  local db_pass=""
+  local db_name=""
+
+  db_pass="$(db_env_value "$db_container" MYSQL_ROOT_PASSWORD || true)"
+  db_name="$(db_env_value "$db_container" MYSQL_DATABASE || true)"
+
+  [[ -n "$db_pass" ]] || db_pass="123456"
+  [[ -n "$db_name" ]] || db_name="xiaozhi_esp32_server"
+
+  local sql_file="/tmp/angevoice-xiaozhi-manager-presets.sql"
+
+  generate_manager_sql "$sql_file" "$SET_MANAGER_DEFAULT"
+
+  log "导入智控台数据库预设: container=$db_container database=$db_name"
+
+  if docker exec -i "$db_container" mysql -u"$db_user" -p"$db_pass" "$db_name" < "$sql_file"; then
+    log "智控台预设已持久化写入 ai_model_provider / ai_model_config"
+  else
+    warn "智控台数据库导入失败。请确认 MySQL 容器名、账号密码和数据库是否正常。SQL 已保存在: $sql_file"
+    return 0
+  fi
+}
+
+test_angevoice_from_container() {
+  local url="${ANGEVOICE_HTTP}/health"
+
+  if ! docker ps --format '{{.Names}}' | grep -q '^xiaozhi-esp32-server$'; then
+    return 0
+  fi
+
+  log "测试容器访问 AngeVoice /health"
+
+  if docker exec xiaozhi-esp32-server python - "$url" <<'PY'
+import sys
+import urllib.request
+
+url = sys.argv[1]
+try:
+    with urllib.request.urlopen(url, timeout=8) as resp:
+        code = getattr(resp, "status", resp.getcode())
+        body = resp.read(200).decode("utf-8", errors="ignore")
+    print(f"AngeVoice health OK: HTTP {code} {body[:120]}")
+    raise SystemExit(0 if 200 <= int(code) < 500 else 1)
+except Exception as exc:
+    print(f"AngeVoice health check failed: {exc}", file=sys.stderr)
+    raise SystemExit(1)
+PY
+  then
+    return 0
+  fi
+
+  warn "容器访问 AngeVoice 失败。可能是 host.docker.internal 不可用，或 AngeVoice 未启动。可改用 NAS 局域网 IP，例如 http://192.168.x.x:8101。"
+  return 0
+}
+
 XIAOZHI_DIR="$(find_xiaozhi_dir)"
 cd "$XIAOZHI_DIR"
 
@@ -685,10 +958,26 @@ if [[ "$PATCH_COMPOSE" == "ask" ]]; then
 fi
 
 if [[ "$WRITE_CONFIG" == "ask" ]]; then
-  if ask_yes_no "是否写入 data/.config.yaml 示例配置；使用智控台的用户可选否" "Y"; then
+  if ask_yes_no "是否写入 data/.config.yaml 兜底配置；使用智控台的用户也建议保留" "Y"; then
     WRITE_CONFIG="true"
   else
     WRITE_CONFIG="false"
+  fi
+fi
+
+if [[ "$IMPORT_MANAGER_PRESETS" == "ask" ]]; then
+  if ask_yes_no "是否导入 AngeVoice 智控台模型预设到数据库，重启后仍保留" "Y"; then
+    IMPORT_MANAGER_PRESETS="true"
+  else
+    IMPORT_MANAGER_PRESETS="false"
+  fi
+fi
+
+if [[ "$IMPORT_MANAGER_PRESETS" == "true" && "$SET_MANAGER_DEFAULT" == "ask" ]]; then
+  if ask_yes_no "是否将当前选择的 AngeVoice 模型设为智控台默认 TTS" "Y"; then
+    SET_MANAGER_DEFAULT="true"
+  else
+    SET_MANAGER_DEFAULT="false"
   fi
 fi
 
@@ -749,7 +1038,11 @@ if [[ "$WRITE_CONFIG" == "true" ]]; then
     write_config "$selected" "$type" "$cfg_model" "$voice" "$fmt" "$timeout" "$prompt"
   fi
 
-  log "已写入 data/.config.yaml AngeVoice 示例配置"
+  log "已写入 data/.config.yaml AngeVoice 兜底配置"
+fi
+
+if [[ "$IMPORT_MANAGER_PRESETS" == "true" ]]; then
+  import_manager_presets
 fi
 
 COMPOSE="$(compose_cmd)"
@@ -766,19 +1059,19 @@ if command -v docker >/dev/null 2>&1 && [[ "$DRY_RUN" != "true" ]]; then
   if docker ps --format '{{.Names}}' | grep -q '^xiaozhi-esp32-server$'; then
     log "测试容器内适配器导入"
 
-    docker exec xiaozhi-esp32-server python - <<'PY' || warn "适配器导入测试失败，请查看容器日志"
+    if ! docker exec xiaozhi-esp32-server python - <<'PY'
 from core.providers.tts import angevoice, angevoice_stream, angevoice_clone
 print("AngeVoice adapters import OK")
 PY
+    然后
+      warn "适配器导入测试失败，请查看容器日志"
+    fi
 
-    log "测试容器访问 AngeVoice /health"
-
-    docker exec xiaozhi-esp32-server sh -lc "curl -fsS '${ANGEVOICE_HTTP}/health' >/dev/null" \
-|| 警告容器访问 AngeVoice 失败，请确认 AngeVoice 已启动且 host.docker.internal 可用，或改用局域网 IP
+    test_angevoice_from_container
   fi
 fi
 
-猫<<EOF
+猫<EOF
 
 ✅ AngeVoice 小智适配器安装流程完成
 
@@ -791,13 +1084,15 @@ fi
   http=$ANGEVOICE_HTTP
   ws=$ANGEVOICE_WS
 
+智控台持久化：
+提供商表：ai_model_provider
+配置表：ai_model_config
+已导入 CPU/CUDA、流式/非流式、MOSS克隆相关预设。
+  如果页面没刷新，请重新打开“模型配置 → 语音合成”。
+
 MOSS 克隆参考音频：
   宿主机：$XIAOZHI_DIR/data/angevoice_prompts/reference.wav
   容器内：/opt/xiaozhi-esp32-server/data/angevoice_prompts/reference.wav
-
-如果使用智控台：
-  请到“语音合成 → 新增/创建副本”，按 xiaozhi/manager/presets.yaml 填入配置。
-  智控台配置可能会覆盖 data/.config.yaml。
 
 更换 MOSS 克隆声音：
   直接替换 reference.wav
