@@ -1,11 +1,15 @@
-"""AngeVoice Gradio Demo — Hugging Face Spaces 入口。
+"""AngeVoice Gradio Demo — Hugging Face Spaces / ModelScope 入口。
 
 支持 Kokoro v1.1 Chinese 和 MOSS-TTS-Nano CPU 双引擎切换，
 提供文本输入 → 语音合成 → 在线试听。
 
-用法:
-  本地:  python app.py
-  HF:   直接由 Spaces 运行 (端口 7860)
+目录结构:
+  hf-demo/
+  ├── app.py          # 本文件
+  └── README.md       # Space 说明
+
+用法 (在仓库根目录执行):
+  python hf-demo/app.py
 """
 
 from __future__ import annotations
@@ -15,20 +19,23 @@ import logging
 import os
 import sys
 import time
-import tempfile
 from pathlib import Path
 
 # ── 路径设置 ──────────────────────────────────────────────────
-# HF Spaces 克隆的是仓库根目录，src/ 在子目录里
-_REPO_ROOT = Path(__file__).resolve().parent
+# app.py 在 hf-demo/ 子目录，向上找仓库根目录的 src/
+_HF_DEMO_DIR = Path(__file__).resolve().parent
+_REPO_ROOT = _HF_DEMO_DIR.parent
 _SRC_DIR = _REPO_ROOT / "src"
 if str(_SRC_DIR) not in sys.path:
     sys.path.insert(0, str(_SRC_DIR))
 
-logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(name)s: %(message)s")
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
+)
 logger = logging.getLogger("angevoice-demo")
 
-# ── 环境变量预设 (HF Spaces) ──────────────────────────────────
+# ── 环境变量预设 ─────────────────────────────────────────────
 os.environ.setdefault("ANGEVOICE_ENABLED_MODELS", "kokoro,moss-nano-cpu")
 os.environ.setdefault("ANGEVOICE_DEFAULT_MODEL", "kokoro")
 os.environ.setdefault("KOKORO_DEFAULT_VOICE", "zm_010")
@@ -36,12 +43,12 @@ os.environ.setdefault("MOSS_DEFAULT_VOICE", "Junhao")
 os.environ.setdefault("KOKORO_WORKERS", "1")
 os.environ.setdefault("KOKORO_MAX_CONCURRENT_REQUESTS", "1")
 os.environ.setdefault("KOKORO_REQUEST_TIMEOUT_SECONDS", "120")
-os.environ.setdefault("KOKORO_IDLE_TIMEOUT_SECONDS", "0")  # 不自动卸载
+os.environ.setdefault("KOKORO_IDLE_TIMEOUT_SECONDS", "0")
 os.environ.setdefault("MOSS_EXECUTION_PROVIDER", "cpu")
 os.environ.setdefault("MOSS_CPU_THREADS", "2")
 os.environ.setdefault("MOSS_APPLYANGEVOICE_RULES", "true")
 
-# MOSS 需要 OpenMOSS 仓库路径
+# MOSS 需要 OpenMOSS 仓库
 MOSS_REPO = _REPO_ROOT / "MOSS-TTS-Nano"
 if MOSS_REPO.exists():
     os.environ.setdefault("MOSS_TTS_NANO_PATH", str(MOSS_REPO))
@@ -54,8 +61,7 @@ from kokoro_tts.engine import TTSEngine
 from kokoro_tts.engine_manager import EngineManager
 from kokoro_tts.moss_engine import MossNanoEngine
 
-
-# ── 全局引擎管理 ──────────────────────────────────────────────
+# ── 全局引擎管理 ─────────────────────────────────────────────
 _cfg = load_config()
 _engine_manager: EngineManager | None = None
 
@@ -63,7 +69,6 @@ _engine_manager: EngineManager | None = None
 def _get_manager() -> EngineManager:
     global _engine_manager
     if _engine_manager is None:
-        # 先创建 Kokoro 引擎（默认）
         kokoro_engine = TTSEngine(_cfg)
         _engine_manager = EngineManager(_cfg, initial_engine=kokoro_engine)
         logger.info("EngineManager 初始化完成 (default=%s)", _engine_manager.current_model_id)
@@ -76,7 +81,7 @@ def _ensure_model(model_id: str):
     return manager.borrow(model_id).__enter__()
 
 
-# ── 音色列表 ──────────────────────────────────────────────────
+# ── 音色列表 ─────────────────────────────────────────────────
 KOKORO_VOICES = [
     ("zm_010 (默认·女)", "zm_010"),
     ("zm_008 (女)", "zm_008"),
@@ -115,80 +120,48 @@ SAMPLE_TEXTS = [
 ]
 
 
-# ── 合成函数 ──────────────────────────────────────────────────
-def synthesize(
-    text: str,
-    model_name: str,
-    voice: str,
-    speed: float,
-    progress=gr.Progress(track_tqdm=False),
-):
+# ── 合成函数 ─────────────────────────────────────────────────
+def _resolve_voice(display_name: str, model_name: str) -> str:
+    """显示名 → 实际 voice id。"""
+    table = KOKORO_VOICES if model_name == "kokoro" else MOSS_VOICES
+    for label, vid in table:
+        if label == display_name:
+            return vid
+    return KOKORO_VOICES[0][1] if model_name == "kokoro" else MOSS_VOICES[0][1]
+
+
+def synthesize(text, model_name, voice_display, speed):
     """Gradio 回调：文本 → WAV 音频。"""
     if not text or not text.strip():
         raise gr.Error("请输入要合成的文本")
 
-    text = text.strip()[:5000]  # HF 限制长文本
-    progress(0.1, desc=f"加载 {model_name} ...")
+    text = text.strip()[:5000]
+    voice = _resolve_voice(voice_display, model_name)
     t0 = time.time()
 
     try:
-        if model_name == "kokoro":
-            engine = _ensure_model("kokoro")
-            wav_bytes = engine.synthesize(text, voice=voice, speed=speed)
-        elif model_name == "moss-nano-cpu":
-            engine = _ensure_model("moss-nano-cpu")
-            wav_bytes = engine.synthesize(text, voice=voice, speed=speed)
-        else:
-            raise gr.Error(f"未知模型: {model_name}")
+        engine = _ensure_model(model_name)
+        wav_bytes = engine.synthesize(text, voice=voice, speed=speed)
     except Exception as e:
         logger.exception("合成失败")
         raise gr.Error(f"合成失败: {e}") from e
 
     elapsed = time.time() - t0
-    progress(1.0, desc=f"完成 ({elapsed:.1f}s)")
 
-    # wav_bytes → (sample_rate, numpy_array)
     import soundfile as sf
     audio_data, sr = sf.read(io.BytesIO(wav_bytes), dtype="float32")
-    return (sr, audio_data), f"✅ 合成完成 — {model_name} | {elapsed:.2f}s | {len(audio_data)/sr:.1f}s 音频"
+    return (sr, audio_data), f"✅ {model_name} | {elapsed:.2f}s | {len(audio_data)/sr:.1f}s 音频"
 
 
 def update_voices(model_name: str):
-    """切换模型时更新音色下拉框。"""
-    if model_name == "kokoro":
-        choices = [v[0] for v in KOKORO_VOICES]
-        default = choices[0]
-    else:
-        choices = [v[0] for v in MOSS_VOICES]
-        default = choices[0]
-    return gr.update(choices=choices, value=default)
+    """切换引擎时更新音色下拉框。"""
+    voices = KOKORO_VOICES if model_name == "kokoro" else MOSS_VOICES
+    choices = [v[0] for v in voices]
+    return gr.update(choices=choices, value=choices[0])
 
 
-def _resolve_voice(display_name: str, model_name: str) -> str:
-    """显示名 → 实际 voice id。"""
-    if model_name == "kokoro":
-        for label, vid in KOKORO_VOICES:
-            if label == display_name:
-                return vid
-        return "zm_010"
-    else:
-        for label, vid in MOSS_VOICES:
-            if label == display_name:
-                return vid
-        return "Junhao"
-
-
-# ── 包装合成函数（处理 voice 映射） ───────────────────────────
-def do_synthesize(text, model_name, voice_display, speed):
-    voice = _resolve_voice(voice_display, model_name)
-    return synthesize(text, model_name, voice, speed)
-
-
-# ── Gradio UI ─────────────────────────────────────────────────
-THEME = gr.themes.Soft(
-    primary_hue="orange",
-    secondary_hue="blue",
-)
+# ── Gradio UI ────────────────────────────────────────────────
+THEME = gr.themes.Soft(primary_hue="orange", secondary_hue="blue")
 
 with gr.Blocks(
     title="AngeVoice Demo",
@@ -197,8 +170,6 @@ with gr.Blocks(
     .header { text-align: center; margin-bottom: 1em; }
     .header h1 { margin-bottom: 0.2em; }
     .footer { text-align: center; font-size: 0.85em; color: #888; margin-top: 1em; }
-    .model-badge { display: inline-block; padding: 2px 8px; border-radius: 4px;
-                   font-size: 0.8em; margin-left: 8px; }
     """,
 ) as demo:
     gr.Markdown(
@@ -212,7 +183,6 @@ with gr.Blocks(
     )
 
     with gr.Row():
-        # ── 左栏：输入 ──
         with gr.Column(scale=3):
             text_input = gr.Textbox(
                 label="📝 输入文本",
@@ -221,23 +191,22 @@ with gr.Blocks(
                 max_lines=10,
             )
 
-            with gr.Row():
-                model_select = gr.Radio(
-                    label="🧠 选择引擎",
-                    choices=[
-                        ("Kokoro v1.1 Chinese", "kokoro"),
-                        ("MOSS-TTS-Nano CPU", "moss-nano-cpu"),
-                    ],
-                    value="kokoro",
-                    info="Kokoro 速度快，MOSS 支持音色克隆",
-                )
+            model_select = gr.Radio(
+                label="🧠 选择引擎",
+                choices=[
+                    ("Kokoro v1.1 Chinese", "kokoro"),
+                    ("MOSS-TTS-Nano CPU", "moss-nano-cpu"),
+                ],
+                value="kokoro",
+                info="Kokoro 速度快，MOSS 支持音色克隆",
+            )
 
             with gr.Row():
                 voice_select = gr.Dropdown(
                     label="🎵 音色",
                     choices=[v[0] for v in KOKORO_VOICES],
                     value=KOKORO_VOICES[0][0],
-                    info="切换引擎后音色列表会自动更新",
+                    info="切换引擎后音色列表自动更新",
                 )
                 speed_slider = gr.Slider(
                     label="⚡ 语速",
@@ -250,52 +219,36 @@ with gr.Blocks(
 
             synthesize_btn = gr.Button("🔊 合成语音", variant="primary", size="lg")
 
-            # 示例文本
             gr.Examples(
                 examples=[[t] for t in SAMPLE_TEXTS],
                 inputs=[text_input],
                 label="💡 示例文本",
             )
 
-        # ── 右栏：输出 ──
         with gr.Column(scale=2):
             audio_output = gr.Audio(label="🎧 合成结果", type="numpy")
             status_text = gr.Markdown("*等待合成...*")
 
-            # 模型信息
             with gr.Accordion("📊 模型信息", open=False):
                 gr.Markdown(
                     """
-**Kokoro v1.1 Chinese**
-- 模型大小: ~312MB (82M 参数)
-- 采样率: 24kHz / 单声道
-- 音色: 20+ 中文预置
-- 特点: 速度快，轻量级
+**Kokoro v1.1 Chinese** — 82M 参数, ~312MB
+- 采样率 24kHz / 单声道 · 20+ 中文预置音色 · 速度快
 
-**MOSS-TTS-Nano CPU**
-- 模型: OpenMOSS ONNX Runtime
-- 采样率: 48kHz / 双声道
-- 音色: 预置 + 音色克隆
-- 特点: 支持参考音频克隆
-""",
+**MOSS-TTS-Nano CPU** — OpenMOSS ONNX
+- 采样率 48kHz / 双声道 · 预置音色 + 参考音频克隆
+"""
                 )
 
-    # ── 事件绑定 ──
-    model_select.change(
-        fn=update_voices,
-        inputs=[model_select],
-        outputs=[voice_select],
-    )
-
+    # 事件绑定
+    model_select.change(fn=update_voices, inputs=[model_select], outputs=[voice_select])
     synthesize_btn.click(
-        fn=do_synthesize,
+        fn=synthesize,
         inputs=[text_input, model_select, voice_select, speed_slider],
         outputs=[audio_output, status_text],
     )
-
-    # Enter 键也能触发
     text_input.submit(
-        fn=do_synthesize,
+        fn=synthesize,
         inputs=[text_input, model_select, voice_select, speed_slider],
         outputs=[audio_output, status_text],
     )
@@ -303,19 +256,18 @@ with gr.Blocks(
     gr.Markdown(
         """
 <div class="footer">
-<p>🚀 <a href="https://github.com/ang77712829/AngeVoice" target="_blank">GitHub</a> | 
-📦 Docker 一键部署 | 
-MIT License</p>
-<p>Built with ❤️ by <a href="https://github.com/ang77712829" target="_blank">安歌</a></p>
+🚀 <a href="https://github.com/ang77712829/AngeVoice" target="_blank">GitHub</a> ·
+📦 Docker 一键部署 ·
+MIT License ·
+Built with ❤️ by <a href="https://github.com/ang77712829" target="_blank">安歌</a>
 </div>
 """,
         elem_classes="footer",
     )
 
 
-# ── 启动 ──────────────────────────────────────────────────────
+# ── 启动 ─────────────────────────────────────────────────────
 if __name__ == "__main__":
-    # 预热引擎（可选，让用户第一次点合成更快）
     logger.info("预热默认引擎 (kokoro) ...")
     try:
         _ensure_model("kokoro")

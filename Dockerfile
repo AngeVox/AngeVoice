@@ -1,5 +1,5 @@
-# AngeVoice — Hugging Face Spaces Dockerfile
-# 支持 Kokoro v1.1 + MOSS-TTS-Nano CPU 双引擎
+# AngeVoice — Hugging Face Spaces / ModelScope Dockerfile
+# 双引擎: Kokoro v1.1 + MOSS-TTS-Nano CPU
 FROM python:3.10-slim
 
 WORKDIR /app
@@ -12,13 +12,13 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     libgomp1 \
     && rm -rf /var/lib/apt/lists/*
 
-# PyTorch CPU (大幅减小镜像)
+# PyTorch CPU
 RUN pip install --no-cache-dir \
     torch==2.5.1+cpu \
     torchaudio==2.5.1+cpu \
     --index-url https://download.pytorch.org/whl/cpu
 
-# MOSS-TTS-Nano 依赖
+# MOSS-TTS-Nano
 ENV MOSS_TTS_NANO_PATH=/app/MOSS-TTS-Nano
 RUN git clone --depth 1 https://github.com/OpenMOSS/MOSS-TTS-Nano.git "$MOSS_TTS_NANO_PATH" && \
     pip install --no-cache-dir \
@@ -27,24 +27,22 @@ RUN git clone --depth 1 https://github.com/OpenMOSS/MOSS-TTS-Nano.git "$MOSS_TTS
     "onnxruntime>=1.20.0"
 
 # 复制项目
-COPY pyproject.toml README.md ./
+COPY pyproject.toml README.md LICENSE ./
 COPY src/ src/
-COPY app.py ./
+COPY hf-demo/ hf-demo/
 
-# 安装 AngeVoice (editable)
+# 安装 AngeVoice
 RUN pip install --no-cache-dir -e .
 
-# 预装 spaCy 英文模型 (misaki/kokoro 依赖)
+# 预装 spaCy 英文模型
 RUN pip install --no-cache-dir \
     en_core_web_sm@https://github.com/explosion/spacy-models/releases/download/en_core_web_sm-3.8.0/en_core_web_sm-3.8.0-py3-none-any.whl
 
-# Gradio 依赖
+# Gradio
 RUN pip install --no-cache-dir gradio soundfile
 
-# HF Spaces 要求暴露 7860 端口
 EXPOSE 7860
 
-# 环境变量
 ENV PYTHONUNBUFFERED=1
 ENV ANGEVOICE_ENABLED_MODELS=kokoro,moss-nano-cpu
 ENV ANGEVOICE_DEFAULT_MODEL=kokoro
@@ -58,5 +56,4 @@ ENV MOSS_EXECUTION_PROVIDER=cpu
 ENV MOSS_CPU_THREADS=2
 ENV MOSS_APPLYANGEVOICE_RULES=true
 
-# 启动
-CMD ["python", "app.py"]
+CMD ["python", "hf-demo/app.py"]
