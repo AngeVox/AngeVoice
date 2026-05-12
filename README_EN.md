@@ -12,7 +12,6 @@ English | [中文](README.md)
 
 | Platform | Link | Notes |
 |----------|------|-------|
-| 🤗 Hugging Face Spaces | [maxblack3/AngeVoice](https://huggingface.co/spaces/maxblack3/AngeVoice) | Free CPU, Kokoro + MOSS dual engine |
 | 🇨🇳 ModelScope Studio | [ange111/AngeVoice](https://modelscope.cn/studios/ange111/AngeVoice) | Accessible in China, no VPN needed |
 
 ## One-command install (recommended)

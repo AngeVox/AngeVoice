@@ -12,7 +12,6 @@
 
 | 平台 | 链接 | 说明 |
 |------|------|------|
-| 🤗 Hugging Face Spaces | [maxblack3/AngeVoice](https://huggingface.co/spaces/maxblack3/AngeVoice) 
 | 🇨🇳 魔搭创空间 | [ange111/AngeVoice](https://modelscope.cn/studios/ange111/AngeVoice) | 国内直连，无需翻墙 |
 
 ## 一键安装（推荐普通用户）
