@@ -44,13 +44,17 @@ ENV LD_LIBRARY_PATH=/usr/local/lib/python3.10/dist-packages/nvidia/cudnn/lib:/us
 # MOSS-TTS-Nano ONNX runtime is included by default in the modern GPU image so
 # the Web UI can switch between Kokoro, MOSS CPU, and MOSS CUDA without rebuilds.
 # ONNX Runtime 1.20.x on CUDA 12 requires the cuDNN 9 runtime.
+# Preserve the upstream OpenMOSS license inside prebuilt images.
 RUN if [ "$INSTALL_MOSS" = "true" ]; then \
       git clone --depth 1 "$MOSS_REPO" "$MOSS_TTS_NANO_PATH" && \
+      mkdir -p /app/licenses && \
+      if [ -f "$MOSS_TTS_NANO_PATH/LICENSE" ]; then cp "$MOSS_TTS_NANO_PATH/LICENSE" /app/licenses/MOSS-TTS-Nano-LICENSE; fi && \
       python3 -m pip install --no-cache-dir "sentencepiece>=0.1.99" "huggingface_hub>=0.23" "$MOSS_RUNTIME_PACKAGE" "$MOSS_CUDNN_PACKAGE"; \
     fi
 
 # 复制项目
-COPY pyproject.toml README.md ./
+COPY pyproject.toml README.md README_EN.md LICENSE THIRD_PARTY_NOTICES.md ACKNOWLEDGEMENTS.md ./
+COPY licenses/ licenses/
 COPY src/ src/
 
 # 安装项目。使用 editable 模式让 Compose 挂载的模板/静态资源能立即生效。
