@@ -26,13 +26,17 @@ RUN python3 -m pip install --no-cache-dir \
 
 # MOSS-TTS-Nano CPU ONNX runtime. The official repository remains the source
 # of inference code; AngeVoice only imports it through MOSS_TTS_NANO_PATH.
+# Preserve the upstream OpenMOSS license inside prebuilt images.
 RUN if [ "$INSTALL_MOSS" = "true" ]; then \
       git clone --depth 1 "$MOSS_REPO" "$MOSS_TTS_NANO_PATH" && \
+      mkdir -p /app/licenses && \
+      if [ -f "$MOSS_TTS_NANO_PATH/LICENSE" ]; then cp "$MOSS_TTS_NANO_PATH/LICENSE" /app/licenses/MOSS-TTS-Nano-LICENSE; fi && \
       python3 -m pip install --no-cache-dir "sentencepiece>=0.1.99" "huggingface_hub>=0.23" "$MOSS_RUNTIME_PACKAGE"; \
     fi
 
 # 复制项目
-COPY pyproject.toml README.md ./
+COPY pyproject.toml README.md README_EN.md LICENSE THIRD_PARTY_NOTICES.md ACKNOWLEDGEMENTS.md ./
+COPY licenses/ licenses/
 COPY src/ src/
 
 # 安装项目。使用 editable 模式让 Compose 挂载的模板/静态资源能立即生效。
