@@ -4,8 +4,6 @@
 ``server.py`` 继续膨胀。
 """
 
-from __future__ import annotations
-
 import asyncio
 import base64
 import binascii
