@@ -140,6 +140,24 @@ cd docker/legacy-gpu && sudo docker compose up -d
 
 > Try `docker/gpu` first on NVIDIA hosts. Tesla P4/P40/V100 can also perform better with the standard `gpu` image when the host driver is recent; `legacy-gpu` is a compatibility fallback, not a guaranteed faster path.
 
+
+### China Mirror Acceleration
+
+Docker Compose pulls images from GHCR (`ghcr.io`) by default. If GHCR is slow from mainland China, use a Docker mirror proxy:
+
+```bash
+# Option 1: Pull via mirror, then retag (replace ghcr.io with mirror host)
+docker pull docker.1ms.run/ghcr.io/ang77712829/angevoice-gpu:latest
+docker tag docker.1ms.run/ghcr.io/ang77712829/angevoice-gpu:latest ghcr.io/ang77712829/angevoice-gpu:latest
+
+# Option 2: Configure Docker daemon global mirror (recommended)
+# Edit /etc/docker/daemon.json and add:
+# { "registry-mirrors": ["https://docker.1ms.run"] }
+# Then restart Docker: sudo systemctl restart docker
+```
+
+> Common mirrors: `docker.1ms.run`, `docker.xuanyuan.me`, `dockerpull.org`. Mirror availability may vary; try an alternative if one is down.
+
 ### Editable pip install
 
 ```bash

@@ -192,6 +192,24 @@ cd docker/legacy-gpu && sudo docker compose up -d
 
 > 有 NVIDIA GPU 时建议先试 `docker/gpu`。Tesla P4/P40/V100 等老卡如果宿主机驱动较新，也可能在通用 `gpu` 画像下表现更好；`legacy-gpu` 不是性能最优保证，而是兼容保底。
 
+
+### 国内镜像加速
+
+Docker Compose 默认使用 GHCR（`ghcr.io`）拉取镜像。国内网络访问 GHCR 较慢时，可通过 Docker 镜像站加速：
+
+```bash
+# 方案 1：临时使用镜像站拉取（替换 ghcr.io 为镜像站地址）
+docker pull docker.1ms.run/ghcr.io/ang77712829/angevoice-gpu:latest
+docker tag docker.1ms.run/ghcr.io/ang77712829/angevoice-gpu:latest ghcr.io/ang77712829/angevoice-gpu:latest
+
+# 方案 2：配置 Docker daemon 全局镜像加速（推荐）
+# 编辑 /etc/docker/daemon.json，添加：
+# { "registry-mirrors": ["https://docker.1ms.run"] }
+# 然后重启 Docker：sudo systemctl restart docker
+```
+
+> 常用镜像站：`docker.1ms.run`、`docker.xuanyuan.me`、`dockerpull.org`。镜像站可用性可能变化，如遇问题请更换其他镜像站。
+
 ### pip 开发安装
 
 ```bash
