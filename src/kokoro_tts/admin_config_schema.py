@@ -676,6 +676,30 @@ _field(
 
 
 ADMIN_CONFIG_PROFILES: dict[str, dict[str, Any]] = {
+    "deploy_lan_default": {
+        "label": "部署预设：局域网易用",
+        "description": "适合家庭/NAS/内网，保留易访问体验并启用基础保护。",
+        "values": {
+            "public_status_endpoints": True,
+            "admin_allow_api_key": False,
+            "trust_proxy_headers": False,
+            "rate_limit_qps": 0.0,
+            "rate_limit_burst": 5,
+            "max_queue_length": 0,
+        },
+    },
+    "deploy_public_hardened": {
+        "label": "部署预设：公网加固",
+        "description": "公网暴露建议：收紧枚举接口并启用限流/队列保护。",
+        "values": {
+            "public_status_endpoints": False,
+            "admin_allow_api_key": False,
+            "trust_proxy_headers": False,
+            "rate_limit_qps": 3.0,
+            "rate_limit_burst": 6,
+            "max_queue_length": 64,
+        },
+    },
     "nas_stable": {
         "label": "NAS 稳定",
         "description": "默认推荐：8GB/P4/家用 NAS，优先中英文混合稳定、减少卡顿和低音量。",

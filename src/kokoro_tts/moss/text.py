@@ -134,7 +134,9 @@ def should_apply_full_angevoice_rules(text: str, mode) -> bool:
     if resolved == "false":
         return False
     stats = _text_mix_stats(text)
-    if stats["mixed"] or stats["technical"]:
+    # auto 模式：仅当混排（中英文混合）或纯英文技术文本时跳过完整规则；
+    # 纯中文 + 日期/数字/金额（technical=True 但 chinese_ratio>0）应继续使用完整中文规则。
+    if stats["mixed"] or (stats["technical"] and float(stats["chinese_ratio"]) == 0):
         return False
     # 纯中文 + 数字/日期/金额不应被误判为技术混排，继续使用完整中文规则。
     if float(stats["chinese_ratio"]) > 0:

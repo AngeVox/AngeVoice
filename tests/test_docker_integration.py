@@ -1,6 +1,5 @@
 """Docker 内集成测试 — 验证 HTTP + WebSocket 端点（mock 模型）"""
 
-import asyncio
 import json
 import struct
 import base64
@@ -114,8 +113,7 @@ class TestHTTPEndpoints:
             })
             assert resp.status_code == 200
 
-    @pytest.mark.asyncio
-    async def test_routes_intact(self, app_with_mock):
+    def test_routes_intact(self, app_with_mock):
         """验证所有原有路由未被破坏"""
         routes = [route.path for route in app_with_mock.routes]
         assert "/v1/audio/speech" in routes

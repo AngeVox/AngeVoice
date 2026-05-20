@@ -1,6 +1,22 @@
 let lastData = null;
 let lastConfigPayload = null;
 let activeGroup = 'quality';
+let activeAdminTab = 'overview';
+const adminSubtabs = {
+  config: [
+    { key: 'config.runtime', label: '运行配置' },
+    { key: 'config.quality', label: '音频质量' },
+  ],
+  security: [
+    { key: 'security.auth', label: '鉴权与访问' },
+    { key: 'security.deploy', label: '部署预设' },
+  ],
+  api: [
+    { key: 'api.diagnostics', label: '诊断与导出' },
+    { key: 'api.raw', label: '原始状态' },
+  ],
+};
+const activeSubtab = { config: 'config.runtime', security: 'security.auth', api: 'api.diagnostics' };
 
 const $ = id => document.getElementById(id);
 
@@ -26,6 +42,34 @@ function toast(message, isError = false) {
   el.classList.add('show');
   clearTimeout(toast.timer);
   toast.timer = setTimeout(() => el.classList.remove('show'), 2400);
+}
+
+function renderAdminTab() {
+  document.querySelectorAll('[data-admin-panel]').forEach(panel => {
+    panel.classList.toggle('hidden-panel', panel.dataset.adminPanel !== activeAdminTab);
+  });
+  document.querySelectorAll('[data-admin-tab]').forEach(btn => {
+    btn.classList.toggle('active', btn.dataset.adminTab === activeAdminTab);
+  });
+  renderAdminSubnav();
+}
+
+function renderAdminSubnav() {
+  const holder = $('admin-subnav');
+  const tabs = adminSubtabs[activeAdminTab] || [];
+  if (!tabs.length) {
+    holder.innerHTML = '';
+    holder.classList.remove('show');
+    // 不要移除所有 subpanel 的 hidden-panel，否则会把其他 tab 的面板全部显示出来
+    return;
+  }
+  holder.classList.add('show');
+  holder.innerHTML = tabs.map(tab => `<button class="admin-subnav-btn ${activeSubtab[activeAdminTab] === tab.key ? 'active' : ''}" data-admin-subtab="${escapeHtml(tab.key)}" type="button">${escapeHtml(tab.label)}</button>`).join('');
+  document.querySelectorAll('[data-admin-subpanel]').forEach(el => {
+    const key = el.dataset.adminSubpanel;
+    if (!key.startsWith(`${activeAdminTab}.`)) return;
+    el.classList.toggle('hidden-panel', key !== activeSubtab[activeAdminTab]);
+  });
 }
 
 function metricCard(title, value, tone = '') {
@@ -184,7 +228,13 @@ function renderConfigForms(payload) {
 
 function renderProfiles(payload) {
   const profiles = payload.schema?.profiles || [];
-  $('profile-grid').innerHTML = profiles.map(profile => `<button class="profile-card" data-profile="${escapeHtml(profile.key)}" type="button">
+  const tuningProfiles = profiles.filter(profile => !String(profile.key).startsWith('deploy_'));
+  $('profile-grid').innerHTML = tuningProfiles.map(profile => `<button class="profile-card" data-profile="${escapeHtml(profile.key)}" type="button">
+    <b>${escapeHtml(profile.label)}</b>
+    <span>${escapeHtml(profile.description)}</span>
+  </button>`).join('');
+  const deployProfiles = profiles.filter(profile => String(profile.key).startsWith('deploy_'));
+  $('deploy-profile-grid').innerHTML = deployProfiles.map(profile => `<button class="profile-card" data-profile="${escapeHtml(profile.key)}" type="button">
     <b>${escapeHtml(profile.label)}</b>
     <span>${escapeHtml(profile.description)}</span>
   </button>`).join('');
@@ -316,6 +366,9 @@ async function saveConfig() {
 }
 
 async function applyProfile(profile) {
+  if (profile === 'deploy_public_hardened') {
+    if (!confirm('将应用“公网加固”预设：会收紧公开接口并启用限流，是否继续？')) return;
+  }
   const result = await api('/admin/api/config/profile', {
     method: 'POST',
     headers: {'Content-Type': 'application/json'},
@@ -329,12 +382,23 @@ document.addEventListener('click', async event => {
   try {
     const target = event.target.closest('button');
     if (!target) return;
+    const adminTab = target.dataset.adminTab;
+    const adminSubtab = target.dataset.adminSubtab;
     const loadId = target.dataset.load;
     const switchId = target.dataset.switch;
     const unloadId = target.dataset.unload;
     const forceUnloadId = target.dataset.forceUnload;
     const group = target.dataset.configGroup;
     const profile = target.dataset.profile;
+    if (adminTab) {
+      activeAdminTab = adminTab;
+      renderAdminTab();
+    }
+    if (adminSubtab) {
+      const [group] = adminSubtab.split('.', 1);
+      activeSubtab[group] = adminSubtab;
+      renderAdminSubnav();
+    }
     if (loadId) await loadModel(loadId);
     if (switchId) await switchModel(switchId);
     if (unloadId) await unloadModel(unloadId, false);
@@ -392,3 +456,4 @@ $('export-env-btn').onclick = async () => {
 };
 
 refresh().catch(err => toast(err.message, true));
+renderAdminTab();

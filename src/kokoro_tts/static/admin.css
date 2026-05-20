@@ -8,8 +8,8 @@
 
 .admin-layout {
   display: grid;
-  grid-template-columns: minmax(0, 1.08fr) minmax(340px, 0.92fr);
-  gap: 14px;
+  grid-template-columns: 1fr;
+  gap: 12px;
   align-items: start;
 }
 
@@ -18,11 +18,20 @@
   padding: 18px;
 }
 
-.overview-panel,
-.tuning-panel,
-.diagnostics-panel {
-  grid-column: 1 / -1;
+.admin-nav { display:flex; gap:8px; flex-wrap:wrap; margin: 4px 0 10px; }
+.admin-nav-btn {
+  min-height: 36px; padding: 0 14px; border:1px solid var(--line); border-radius:999px;
+  background: var(--control-soft); color: var(--muted); font-weight: 800; cursor: pointer;
 }
+.admin-nav-btn.active { background:#172033; color:#fff; border-color: transparent; }
+.hidden-panel { display: none; }
+.admin-subnav { display:none; gap:8px; flex-wrap:wrap; margin: -4px 0 10px; }
+.admin-subnav.show { display:flex; }
+.admin-subnav-btn {
+  min-height: 32px; padding: 0 12px; border:1px solid var(--line); border-radius:999px;
+  background: var(--control); color: var(--muted); font-weight: 760; cursor: pointer;
+}
+.admin-subnav-btn.active { background: var(--control-soft); color: var(--text); border-color: rgba(40,100,255,.45); }
 
 .admin-metrics {
   grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
@@ -133,6 +142,10 @@
   grid-template-columns: repeat(4, minmax(0, 1fr));
   gap: 10px;
   margin-bottom: 14px;
+}
+.deploy-grid {
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  margin-bottom: 4px;
 }
 
 .profile-card {
@@ -400,10 +413,6 @@
 }
 
 @media (max-width: 1120px) {
-  .admin-layout {
-    grid-template-columns: 1fr;
-  }
-
   .profile-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }

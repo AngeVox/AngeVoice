@@ -718,10 +718,12 @@ class MossNanoEngine(MossStreamingMixin):
         if not force and self._last_vram_snapshot is not None and ttl > 0 and now - self._last_vram_refresh_at < ttl:
             return
         snapshot = get_cuda_vram_snapshot()
+        # 探测失败时不清除保护状态，也不缓存——等下次 TTL 过期后重试
+        if not snapshot.available or snapshot.free_mb is None:
+            self._last_vram_refresh_at = now
+            return
         self._last_vram_snapshot = snapshot
         self._last_vram_refresh_at = now
-        if not snapshot.available or snapshot.free_mb is None:
-            return
         safe = int(getattr(self.config, "moss_vram_safe_free_mb", 1200) or 0)
         critical = int(getattr(self.config, "moss_vram_critical_free_mb", 600) or 0)
         was_low = self._low_vram_mode
@@ -772,8 +774,10 @@ class MossNanoEngine(MossStreamingMixin):
     def _record_full_decode_oom(self, exc: BaseException) -> None:
         self._full_decode_oom_count += 1
         self._low_vram_mode = True
-        self._last_vram_refresh_at = 0.0
-        self._refresh_vram_guard(force=True)
+        # OOM 刚发生，不立即刷新 VRAM 探测——探测可能显示瞬时空闲但压力仍在，
+        # 清除 _low_vram_mode 会导致后续 chunk 重复 OOM。
+        # 保留 _low_vram_mode=True，等自然 TTL 过期后再探测。
+        self._last_vram_refresh_at = time.monotonic()
         self._disable_full_codec_decode(reason=f"decode OOM: {exc}")
 
     def _synthesize_single_chunk_incremental(self, chunk_text: str, prompt_audio_codes: list[list[int]]):

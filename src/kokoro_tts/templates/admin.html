@@ -28,8 +28,16 @@
       </div>
     </header>
 
+    <section class="admin-nav">
+      <button class="admin-nav-btn active" data-admin-tab="overview" type="button">概览</button>
+      <button class="admin-nav-btn" data-admin-tab="models" type="button">模型</button>
+      <button class="admin-nav-btn" data-admin-tab="config" type="button">配置</button>
+      <button class="admin-nav-btn" data-admin-tab="security" type="button">安全</button>
+      <button class="admin-nav-btn" data-admin-tab="api" type="button">API/诊断</button>
+    </section>
+    <section class="admin-subnav" id="admin-subnav"></section>
     <section class="admin-layout">
-      <article class="panel admin-panel overview-panel">
+      <article class="panel admin-panel overview-panel" data-admin-panel="overview">
         <div class="section-head compact">
           <div>
             <p class="eyebrow">Dashboard</p>
@@ -40,7 +48,7 @@
         <div class="metrics-grid admin-metrics" id="admin-metrics"></div>
       </article>
 
-      <article class="panel admin-panel models-panel">
+      <article class="panel admin-panel models-panel" data-admin-panel="models">
         <div class="section-head compact">
           <div>
             <p class="eyebrow">Models</p>
@@ -55,7 +63,7 @@
         <div class="model-list" id="models-body"></div>
       </article>
 
-      <article class="panel admin-panel tuning-panel">
+      <article class="panel admin-panel tuning-panel" data-admin-panel="config" data-admin-subpanel="config.runtime">
         <div class="section-head">
           <div>
             <p class="eyebrow">Tuning</p>
@@ -67,7 +75,6 @@
           </div>
         </div>
         <div class="runtime-config-note" id="runtime-config-note">配置来源检查中...</div>
-        <div class="profile-grid" id="profile-grid"></div>
         <nav class="config-tabs" id="config-tabs" aria-label="配置分组"></nav>
         <form class="config-form" id="config-form"></form>
         <details class="admin-details" id="advanced-config-details">
@@ -75,8 +82,17 @@
           <div class="config-form advanced-form" id="advanced-config-form"></div>
         </details>
       </article>
+      <article class="panel admin-panel tuning-panel" data-admin-panel="config" data-admin-subpanel="config.quality">
+        <div class="section-head compact">
+          <div>
+            <p class="eyebrow">Profiles</p>
+            <h2>质量/延迟预设</h2>
+          </div>
+        </div>
+        <div class="profile-grid" id="profile-grid"></div>
+      </article>
 
-      <article class="panel admin-panel security-panel">
+      <article class="panel admin-panel security-panel" data-admin-panel="security" data-admin-subpanel="security.auth">
         <div class="section-head compact">
           <div>
             <p class="eyebrow">Security</p>
@@ -92,8 +108,17 @@
           <div class="mini-list" id="security-summary"></div>
         </div>
       </article>
+      <article class="panel admin-panel security-panel" data-admin-panel="security" data-admin-subpanel="security.deploy">
+        <div class="section-head compact">
+          <div>
+            <p class="eyebrow">Deployment Presets</p>
+            <h2>部署预设</h2>
+          </div>
+        </div>
+        <div class="profile-grid deploy-grid" id="deploy-profile-grid"></div>
+      </article>
 
-      <article class="panel admin-panel diagnostics-panel">
+      <article class="panel admin-panel diagnostics-panel" data-admin-panel="api" data-admin-subpanel="api.diagnostics">
         <div class="section-head compact">
           <div>
             <p class="eyebrow">Diagnostics</p>
@@ -107,10 +132,15 @@
           <summary>ENV Patch</summary>
           <textarea id="env-patch" class="admin-textarea" spellcheck="false" readonly></textarea>
         </details>
-        <details class="admin-details">
-          <summary>原始状态 JSON</summary>
-          <pre id="admin-json" class="admin-json"></pre>
-        </details>
+      </article>
+      <article class="panel admin-panel diagnostics-panel" data-admin-panel="api" data-admin-subpanel="api.raw">
+        <div class="section-head compact">
+          <div>
+            <p class="eyebrow">Raw State</p>
+            <h2>原始状态 JSON</h2>
+          </div>
+        </div>
+        <pre id="admin-json" class="admin-json"></pre>
       </article>
     </section>
 
