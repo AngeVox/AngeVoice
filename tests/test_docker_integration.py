@@ -1,6 +1,5 @@
 """Docker 内集成测试 — 验证 HTTP + WebSocket 端点（mock 模型）"""
 
-import asyncio
 import json
 import struct
 import base64
@@ -40,85 +39,79 @@ def app_with_mock(mock_engine):
 class TestHTTPEndpoints:
     """HTTP 端点测试"""
 
-    def test_health(self, app_with_mock):
-        async def _run():
-            transport = ASGITransport(app=app_with_mock)
-            async with AsyncClient(transport=transport, base_url="http://test") as client:
-                resp = await client.get("/health")
-                assert resp.status_code == 200
-                data = resp.json()
-                assert data["status"] == "ok"
-                assert "device" in data
-        asyncio.run(_run())
+    @pytest.mark.asyncio
+    async def test_health(self, app_with_mock):
+        transport = ASGITransport(app=app_with_mock)
+        async with AsyncClient(transport=transport, base_url="http://test") as client:
+            resp = await client.get("/health")
+            assert resp.status_code == 200
+            data = resp.json()
+            assert data["status"] == "ok"
+            assert "device" in data
 
-    def test_voices(self, app_with_mock):
-        async def _run():
-            transport = ASGITransport(app=app_with_mock)
-            async with AsyncClient(transport=transport, base_url="http://test") as client:
-                resp = await client.get("/v1/audio/voices")
-                assert resp.status_code == 200
-                assert "voices" in resp.json()
-        asyncio.run(_run())
+    @pytest.mark.asyncio
+    async def test_voices(self, app_with_mock):
+        transport = ASGITransport(app=app_with_mock)
+        async with AsyncClient(transport=transport, base_url="http://test") as client:
+            resp = await client.get("/v1/audio/voices")
+            assert resp.status_code == 200
+            assert "voices" in resp.json()
 
-    def test_model_and_voice_lists_can_require_api_key(self, mock_engine):
-        async def _run():
-            from kokoro_tts.config import TTSConfig
-            from kokoro_tts.server import create_app
+    @pytest.mark.asyncio
+    async def test_model_and_voice_lists_can_require_api_key(self, mock_engine):
+        from kokoro_tts.config import TTSConfig
+        from kokoro_tts.server import create_app
 
-            config = TTSConfig(api_key="secret-token", public_status_endpoints=False)
-            app = create_app(config=config, engine=mock_engine)
-            transport = ASGITransport(app=app)
-            async with AsyncClient(transport=transport, base_url="http://test") as client:
-                assert (await client.get("/health")).status_code == 200
-                assert (await client.get("/v1/models")).status_code == 401
-                assert (await client.get("/v1/audio/voices")).status_code == 401
-                headers = {"Authorization": "Bearer secret-token"}
-                assert (await client.get("/v1/models", headers=headers)).status_code == 200
-                assert (await client.get("/v1/audio/voices", headers=headers)).status_code == 200
-        asyncio.run(_run())
+        config = TTSConfig(api_key="secret-token", public_status_endpoints=False)
+        app = create_app(config=config, engine=mock_engine)
+        transport = ASGITransport(app=app)
+        async with AsyncClient(transport=transport, base_url="http://test") as client:
+            assert (await client.get("/health")).status_code == 200
+            assert (await client.get("/v1/models")).status_code == 401
+            assert (await client.get("/v1/audio/voices")).status_code == 401
+            headers = {"Authorization": "Bearer secret-token"}
+            assert (await client.get("/v1/models", headers=headers)).status_code == 200
+            assert (await client.get("/v1/audio/voices", headers=headers)).status_code == 200
 
-    def test_openai_tts_success(self, app_with_mock, mock_engine):
-        async def _run():
-            mock_engine.synthesize.side_effect = None
-            mock_engine.synthesize.return_value = b"RIFF\x00\x00\x00\x00WAVE" + b"\x00" * 100
+    @pytest.mark.asyncio
+    async def test_openai_tts_success(self, app_with_mock, mock_engine):
+        mock_engine.synthesize.side_effect = None
+        mock_engine.synthesize.return_value = b"RIFF\x00\x00\x00\x00WAVE" + b"\x00" * 100
 
-            transport = ASGITransport(app=app_with_mock)
-            async with AsyncClient(transport=transport, base_url="http://test") as client:
-                resp = await client.post("/v1/audio/speech", json={
-                    "text": "你好世界",
-                    "voice": "zm_010",
-                    "speed": 1.0,
-                })
-                assert resp.status_code == 200
-                assert resp.headers["content-type"] == "audio/wav"
-        asyncio.run(_run())
+        transport = ASGITransport(app=app_with_mock)
+        async with AsyncClient(transport=transport, base_url="http://test") as client:
+            resp = await client.post("/v1/audio/speech", json={
+                "text": "你好世界",
+                "voice": "zm_010",
+                "speed": 1.0,
+            })
+            assert resp.status_code == 200
+            assert resp.headers["content-type"] == "audio/wav"
 
-    def test_openai_tts_empty_text(self, app_with_mock):
+    @pytest.mark.asyncio
+    async def test_openai_tts_empty_text(self, app_with_mock):
         """空文本应返回 400"""
-        async def _run():
-            transport = ASGITransport(app=app_with_mock)
-            async with AsyncClient(transport=transport, base_url="http://test") as client:
-                resp = await client.post("/v1/audio/speech", json={
-                    "text": "",
-                    "voice": "zm_010",
-                })
-                assert resp.status_code == 400
-        asyncio.run(_run())
+        transport = ASGITransport(app=app_with_mock)
+        async with AsyncClient(transport=transport, base_url="http://test") as client:
+            resp = await client.post("/v1/audio/speech", json={
+                "text": "",
+                "voice": "zm_010",
+            })
+            assert resp.status_code == 400
 
-    def test_api_tts_post(self, app_with_mock, mock_engine):
-        async def _run():
-            mock_engine.synthesize.side_effect = None
-            mock_engine.synthesize.return_value = b"RIFF\x00\x00\x00\x00WAVE" + b"\x00" * 100
+    @pytest.mark.asyncio
+    async def test_api_tts_post(self, app_with_mock, mock_engine):
+        mock_engine.synthesize.side_effect = None
+        mock_engine.synthesize.return_value = b"RIFF\x00\x00\x00\x00WAVE" + b"\x00" * 100
 
-            transport = ASGITransport(app=app_with_mock)
-            async with AsyncClient(transport=transport, base_url="http://test") as client:
-                resp = await client.post("/api/tts", json={
-                    "text": "测试接口",
-                    "voice": "zm_010",
-                    "speed": 1.0,
-                })
-                assert resp.status_code == 200
-        asyncio.run(_run())
+        transport = ASGITransport(app=app_with_mock)
+        async with AsyncClient(transport=transport, base_url="http://test") as client:
+            resp = await client.post("/api/tts", json={
+                "text": "测试接口",
+                "voice": "zm_010",
+                "speed": 1.0,
+            })
+            assert resp.status_code == 200
 
     def test_routes_intact(self, app_with_mock):
         """验证所有原有路由未被破坏"""
