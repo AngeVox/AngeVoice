@@ -49,6 +49,26 @@ def test_runtime_config_persists_only_changed_values(tmp_path):
     assert cfg2.moss_audio_polish_enabled is False
 
 
+def test_runtime_config_load_ignores_removed_legacy_keys(tmp_path):
+    cfg_path = tmp_path / "runtime-config.json"
+    cfg_path.write_text(
+        json.dumps(
+            {
+                "values": {
+                    "public_status_endpoints": False,
+                    "admin_allow_api_key": True,
+                }
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    cfg = TTSConfig(runtime_config_file=cfg_path, public_status_endpoints=True)
+    loaded = load_runtime_config(cfg)
+    assert loaded == ["public_status_endpoints"]
+    assert cfg.public_status_endpoints is False
+
+
 def test_export_env_patch_uses_schema_env_names():
     env = export_env_patch({"moss_segment_length": 120, "moss_audio_polish_enabled": True}, only=["moss_segment_length", "moss_audio_polish_enabled"])
     assert "MOSS_SEGMENT_LENGTH=120" in env

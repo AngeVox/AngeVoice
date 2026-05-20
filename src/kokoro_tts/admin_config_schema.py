@@ -840,10 +840,12 @@ def _coerce_field(field: AdminConfigField, value: Any) -> Any:
     return coerced
 
 
-def validate_admin_config_values(values: dict[str, Any]) -> dict[str, Any]:
+def validate_admin_config_values(values: dict[str, Any], *, allow_unknown: bool = False) -> dict[str, Any]:
     cleaned: dict[str, Any] = {}
     for key, value in values.items():
         if key not in ADMIN_CONFIG_FIELDS:
+            if allow_unknown:
+                continue
             raise KeyError(f"Unknown admin config field: {key}")
         cleaned[key] = _coerce_field(ADMIN_CONFIG_FIELDS[key], value)
     return cleaned
@@ -902,10 +904,13 @@ def load_runtime_config(cfg) -> list[str]:
     if not raw_values:
         return []
     try:
-        cleaned = validate_admin_config_values(raw_values)
+        cleaned = validate_admin_config_values(raw_values, allow_unknown=True)
     except Exception:
         logger.warning("忽略包含无效字段的 runtime config: %s", path, exc_info=True)
         return []
+    ignored_keys = sorted(set(raw_values) - set(cleaned))
+    if ignored_keys:
+        logger.info("runtime config 忽略已移除字段: %s", ", ".join(ignored_keys))
     for key, value in cleaned.items():
         setattr(cfg, key, value)
     logger.info("已加载 Admin runtime config: %s (%d fields)", path, len(cleaned))
