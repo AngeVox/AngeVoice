@@ -622,7 +622,7 @@ If upload must be enabled, restrict to internal network admin endpoints with rev
 | `MOSS_SEGMENT_LENGTH` | `120` | MOSS 专用分段长度，减少中英文混合尾部漂移、卡顿和失真；不影响 Kokoro 的 `KOKORO_SEGMENT_LENGTH` |
 | `MOSS_MIXED_ENGLISH_POLICY` | `translate` | MOSS 中英文混排策略；默认把常见英文词组转成自然中文，减少长停顿、怪声和尾部漂移；可设为 `preserve` 保留英文 |
 | `KOKORO_TRUST_PROXY_HEADERS` | `false` | 是否信任 `X-Forwarded-For`/`X-Real-IP`；裸露公网保持 false，反代后确认可信再开启 |
-| `KOKORO_ADMIN_ALLOW_API_KEY` | `false` | 是否允许普通 Bearer API Key 登录管理后台；共享 API Key 给客户端时保持 false |
+| `KOKORO_TTS_REQUEST_MAX_BYTES` | `2097152` | `/api/tts` 请求体统一上限（字节），要求带 `Content-Length`；缺失返回 `411`，超限返回 `413`，建议与反向代理 body 限制一致 |
 | `KOKORO_PUBLIC_STATUS_ENDPOINTS` | `true` | 是否公开 `/v1/models`、`/v1/models/current`、`/v1/audio/voices` 和页面模型目录 bootstrap；设为 false 后目录接口需要 Bearer Token，`/health` 仅返回最小健康信息 |
 | `MOSS_STREAM_BUDGET_THRESHOLD_LOW` | `0.25` | 音频播放余量低阈值（秒）：低于此值每次只解码 1 帧，优先保证点生成后尽快出声 |
 | `MOSS_STREAM_BUDGET_THRESHOLD_MID` | `0.65` | 音频播放余量中阈值（秒）：低于此值每次解码 2 帧 |

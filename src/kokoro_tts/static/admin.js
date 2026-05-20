@@ -247,7 +247,6 @@ function renderSecurity(data) {
   const source = security.api_key_auto_generated ? '自动生成' : '手动/环境变量';
   $('api-key-status').textContent = `API Key：${keyState} · ${source} · ${security.api_key_preview || '-'}`;
   $('security-summary').innerHTML = [
-    ['后台允许 API Key', config.admin_allow_api_key ? '是' : '否'],
     ['公开模型列表', config.public_status_endpoints ? '是' : '否'],
     ['信任反代 IP', config.trust_proxy_headers ? '是' : '否'],
     ['下载源', config.model_source_effective || config.model_source || 'auto'],

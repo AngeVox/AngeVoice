@@ -98,7 +98,6 @@ class TTSConfig:
     batch_max_items: int = 20
     batch_concurrency: int = 1
     admin_enabled: bool = False
-    admin_allow_api_key: bool = False
     voice_upload_enabled: bool = False
     voice_upload_max_bytes: int = 10 * 1024 * 1024
     mp3_enabled: bool = False
@@ -136,6 +135,7 @@ class TTSConfig:
     moss_default_voice: str = "Junhao"
     moss_prompt_audio_path: Optional[Path] = None
     moss_prompt_upload_max_bytes: int = 20 * 1024 * 1024
+    tts_request_max_bytes: int = 2 * 1024 * 1024
     moss_prompt_audio_max_seconds: float = 8.0
     moss_prompt_cache_max_items: int = 8
     moss_max_new_frames: int = 320

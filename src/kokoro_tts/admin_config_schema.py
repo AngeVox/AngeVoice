@@ -567,14 +567,6 @@ _field(
     True,
 )
 _field(
-    "admin_allow_api_key",
-    "KOKORO_ADMIN_ALLOW_API_KEY",
-    "API Key 可进后台",
-    "security",
-    "bool",
-    False,
-)
-_field(
     "model_source",
     "ANGEVOICE_MODEL_SOURCE",
     "模型下载源",
@@ -681,7 +673,6 @@ ADMIN_CONFIG_PROFILES: dict[str, dict[str, Any]] = {
         "description": "适合家庭/NAS/内网，保留易访问体验并启用基础保护。",
         "values": {
             "public_status_endpoints": True,
-            "admin_allow_api_key": False,
             "trust_proxy_headers": False,
             "rate_limit_qps": 0.0,
             "rate_limit_burst": 5,
@@ -693,7 +684,6 @@ ADMIN_CONFIG_PROFILES: dict[str, dict[str, Any]] = {
         "description": "公网暴露建议：收紧枚举接口并启用限流/队列保护。",
         "values": {
             "public_status_endpoints": False,
-            "admin_allow_api_key": False,
             "trust_proxy_headers": False,
             "rate_limit_qps": 3.0,
             "rate_limit_burst": 6,

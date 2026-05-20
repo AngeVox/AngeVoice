@@ -20,7 +20,6 @@ KOKORO_CORS_ORIGINS=https://your-domain.example
 # 公网敏感部署可关闭模型/音色列表和页面 bootstrap 公开访问；/health 只返回最小健康信息
 KOKORO_PUBLIC_STATUS_ENDPOINTS=false
 # 普通 TTS API Key 默认不能登录管理后台；不要给共享客户端管理权限
-KOKORO_ADMIN_ALLOW_API_KEY=false
 ```
 
 AngeVoice 会在启动时拒绝明显不安全的组合：
@@ -70,7 +69,7 @@ WebSocket 支持两种方式：
 
 建议只在本地或可信内网使用。公网部署时，必须把默认 `admin123` 改为强密码，并建议同时设置强 API Key、在反向代理层限制来源。没有 `ANGEVOICE_ADMIN_PASSWORD` 时开启管理后台会直接启动失败。
 
-默认情况下，普通 Bearer TTS API Key 不能登录 `/admin` 或调用管理接口，避免把客户端调用权限等同于管理权限。如需兼容旧用法或单人自用，可以显式设置 `KOKORO_ADMIN_ALLOW_API_KEY=true`。管理后台的 API Key 区域可查看/轮换 `KOKORO_API_KEY=auto` 生成的 key；如果环境变量写死了固定 key，重启后仍以环境变量为准。
+默认情况下，普通 Bearer TTS API Key 不能登录 `/admin` 或调用管理接口，避免把客户端调用权限等同于管理权限。管理后台的 API Key 区域可查看/轮换 `KOKORO_API_KEY=auto` 生成的 key；如果环境变量写死了固定 key，重启后仍以环境变量为准。
 
 ## `.pt` 音色上传
 

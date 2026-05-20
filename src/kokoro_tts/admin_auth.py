@@ -56,11 +56,6 @@ def parse_basic_header(auth: str) -> tuple[bytes, bytes] | None:
     return username, password
 
 
-def parse_bearer_header(auth: str) -> str:
-    if auth.lower().startswith("bearer "):
-        return auth[7:].strip()
-    return ""
-
 
 def auth_headers() -> dict[str, str]:
     return {"WWW-Authenticate": 'Basic realm="AngeVoice Admin", charset="UTF-8"'}
@@ -77,10 +72,6 @@ def make_verify_admin(cfg):
             raise HTTPException(status_code=503, detail="未配置管理后台密码")
 
         auth = request.headers.get("Authorization", "")
-        bearer = parse_bearer_header(auth)
-        if bool(getattr(cfg, "admin_allow_api_key", False)) and cfg.api_key and bearer and secrets.compare_digest(bearer, cfg.api_key):
-            return
-
         parsed = parse_basic_header(auth)
         if parsed is None:
             raise HTTPException(status_code=401, detail="需要登录", headers=auth_headers())

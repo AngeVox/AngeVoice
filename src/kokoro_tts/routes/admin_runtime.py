@@ -77,7 +77,6 @@ def security_snapshot(cfg, *, reveal: bool = False) -> dict:
         "api_key_auto_generated": bool(getattr(cfg, "api_key_auto_generated", False)),
         "api_key_file": str(key_file) if str(key_file) else "",
         "api_key_file_exists": bool(key_file.exists()) if str(key_file) else False,
-        "admin_allow_api_key": bool(getattr(cfg, "admin_allow_api_key", False)),
     }
 
 

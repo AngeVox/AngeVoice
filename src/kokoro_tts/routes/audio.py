@@ -16,6 +16,25 @@ from ..validation import validate_model_speed, validate_tts_text
 
 logger = logging.getLogger(__name__)
 
+
+def _parse_content_length(request: Request) -> int:
+    raw = request.headers.get("Content-Length")
+    if not raw:
+        raise HTTPException(status_code=411, detail="缺少 Content-Length")
+    try:
+        value = int(raw)
+    except (TypeError, ValueError):
+        raise HTTPException(status_code=400, detail="Content-Length 非法")
+    if value < 0:
+        raise HTTPException(status_code=400, detail="Content-Length 非法")
+    return value
+
+
+def _enforce_request_size_limit(request: Request, max_bytes: int) -> None:
+    length = _parse_content_length(request)
+    if length > max_bytes:
+        raise HTTPException(status_code=413, detail=f"请求体过大，最大 {max_bytes} 字节")
+
 async def _run_tts_call(callable_, request_id: str):
     try:
         return await callable_()
@@ -66,6 +85,7 @@ def create_audio_router(state: ServiceState, verify_api_key) -> APIRouter:
     async def tts_post(request: Request, _=Depends(verify_api_key)):
         request_id = state.new_request_id()
         content_type = request.headers.get("Content-Type", "")
+        _enforce_request_size_limit(request, cfg.tts_request_max_bytes)
         prompt_audio_path: str | None = None
         prompt_audio_id = ""
         if "application/json" in content_type:
