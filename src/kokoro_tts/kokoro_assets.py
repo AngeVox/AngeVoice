@@ -41,7 +41,7 @@ def is_git_lfs_pointer(path: Path) -> bool:
     return _read_head(path).lstrip().startswith(_GIT_LFS_PREFIX)
 
 
-def looks_like_text_placeholder(path: Path) -> bool:
+def looks_like_text_placeholder(path: Path, *, strict_ascii_short: bool = True) -> bool:
     """识别 HTML/JSON 错误页、LFS 指针等明显不是权重的文本文件。"""
 
     head = _read_head(path).lstrip().lower()
@@ -51,7 +51,7 @@ def looks_like_text_placeholder(path: Path) -> bool:
         return True
     # PyTorch 常见权重文件通常是 zip(`PK`) 或 pickle(0x80) 开头；纯 ASCII
     # 小文本更像下载错误页、LFS 指针或占位符。
-    if len(head) < 512 and all(byte in b"\t\n\r " or 32 <= byte < 127 for byte in head):
+    if strict_ascii_short and len(head) < 512 and all(byte in b"\t\n\r " or 32 <= byte < 127 for byte in head):
         return True
     return False
 
@@ -76,7 +76,7 @@ def is_valid_kokoro_weight_file(path: Path, *, min_bytes: int, label: str, log: 
             int(min_bytes),
         )
         return False
-    if is_git_lfs_pointer(path) or looks_like_text_placeholder(path):
+    if is_git_lfs_pointer(path) or looks_like_text_placeholder(path, strict_ascii_short=True):
         log.warning("跳过 %s：%s 看起来是 Git LFS 指针/文本占位符/下载错误页。", label, path)
         return False
     return True
@@ -101,7 +101,8 @@ def is_valid_kokoro_config_file(path: Path, *, log: logging.Logger | None = None
     path = Path(path)
     if not path.exists() or not path.is_file():
         return False
-    if is_git_lfs_pointer(path) or looks_like_text_placeholder(path):
+    # config.json 可能是紧凑 JSON（短且可打印），这里不能用“短 ASCII”规则误杀。
+    if is_git_lfs_pointer(path) or looks_like_text_placeholder(path, strict_ascii_short=False):
         log.warning("跳过 Kokoro 配置文件：%s 看起来不是有效 JSON 配置。", path)
         return False
     return True

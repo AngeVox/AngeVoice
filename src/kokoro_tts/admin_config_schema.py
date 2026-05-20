@@ -222,7 +222,7 @@ _field(
     "MOSS_MIXED_ENGLISH_POLICY",
     "中英文混排",
     "quality",
-    "select",
+    "choice",
     "translate",
     choices=(
         ("translate", "常见英文转自然中文"),
