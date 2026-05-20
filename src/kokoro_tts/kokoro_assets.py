@@ -95,15 +95,24 @@ def is_valid_kokoro_voice_file(path: Path, *, log: logging.Logger | None = None)
 
 
 def is_valid_kokoro_config_file(path: Path, *, log: logging.Logger | None = None) -> bool:
-    """校验 Kokoro config.json 是否不是 LFS/错误页。"""
+    """校验 Kokoro config.json 是否不是 LFS/错误页，且内容是合法 JSON。"""
 
     log = log or logger
     path = Path(path)
     if not path.exists() or not path.is_file():
         return False
-    if is_git_lfs_pointer(path) or looks_like_text_placeholder(path):
-        log.warning("跳过 Kokoro 配置文件：%s 看起来不是有效 JSON 配置。", path)
+    if is_git_lfs_pointer(path):
+        log.warning("跳过 Kokoro 配置文件：%s 是 Git LFS 指针。", path)
         return False
+    if looks_like_text_placeholder(path):
+        # 短文件可能被误判为占位符，额外尝试 JSON 解析验证
+        import json as _json
+        try:
+            with path.open("r", encoding="utf-8") as fh:
+                _json.load(fh)
+        except (ValueError, UnicodeDecodeError):
+            log.warning("跳过 Kokoro 配置文件：%s 看起来不是有效 JSON 配置。", path)
+            return False
     return True
 
 

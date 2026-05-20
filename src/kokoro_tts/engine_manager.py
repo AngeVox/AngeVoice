@@ -358,7 +358,9 @@ class EngineManager:
     def _static_capabilities(self, spec: EngineSpec) -> dict:
         if spec.backend != "moss-tts-nano-onnx":
             return {"modes": ["preset_voice"], "voice_clone_supported": False, "speed_supported": True, "text_rules_enabled": True}
-        return {"modes": ["preset_voice", "voice_clone"], "voice_clone_supported": True, "voice_clone_enabled": True, "default_voice": self.cfg.moss_default_voice, "speed_supported": False, "text_rules_enabled": bool(self.cfg.moss_apply_angevoice_rules), "sample_rate": 48000, "channels": 2}
+        text_rules_mode = str(getattr(self.cfg, "moss_apply_angevoice_rules", "auto")).strip().lower()
+        text_rules_enabled = text_rules_mode != "false"
+        return {"modes": ["preset_voice", "voice_clone"], "voice_clone_supported": True, "voice_clone_enabled": True, "default_voice": self.cfg.moss_default_voice, "speed_supported": False, "text_rules_enabled": text_rules_enabled, "sample_rate": 48000, "channels": 2}
 
     def _engine_metadata(self, engine) -> dict:
         metadata = getattr(engine, "metadata", None)
