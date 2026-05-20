@@ -115,6 +115,17 @@ python scripts/analyze_audio_quality.py output.wav
 - `max_silence_ms`：默认应被压到 550ms 附近；
 - `silence_ratio`：长文本旁白可有自然停顿，但过高会显得卡顿。
 
+## 后台防呆联动（自动收敛）
+
+从 2.6.5.x 起，管理后台在保存配置或应用预设时，会自动收敛几组高风险参数组合，避免“看似可配、实际不稳”：
+
+- `MOSS_VRAM_CRITICAL_FREE_MB` 会自动保持小于 `MOSS_VRAM_SAFE_FREE_MB`；
+- 开启实时流式解码时，`MOSS_STREAM_PREBUFFER_SECONDS` 不低于 `MOSS_STREAM_CHUNK_SECONDS`（且最低 0.35）；
+- `MOSS_VOICE_CLONE_MAX_TEXT_TOKENS` 不高于 `MOSS_SEGMENT_LENGTH * 0.5`（至少 40）；
+- `MOSS_OUTPUT_GAIN` 不高于 `MOSS_OUTPUT_TARGET_PEAK * 1.2`（软上限）。
+
+这样做的目标是：在保证实时对话首包速度的同时，减少爆音、断续、显存尖峰和长句后半段漂移。
+
 ## 排查建议
 
 1. 出现 2-5 秒卡顿：先确认 `MOSS_MAX_SILENCE_MS` 和 `MOSS_RUNTIME_PAUSE_MAX_MS` 是否生效。

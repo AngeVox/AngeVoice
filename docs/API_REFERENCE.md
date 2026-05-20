@@ -596,7 +596,7 @@ KOKORO_VOICE_UPLOAD_ENABLED=true
 如果必须开放，建议只在内网管理端使用，并配合反代 IP 白名单。
 `.pt` 文件是 PyTorch 序列化格式，理论上可执行任意代码。
 
-Enabling `KOKORO_VOICE_UPLOAD_ENABLED` on public-facing servers is **strongly discouraged**.
+不建议在公网暴露的服务上启用 `KOKORO_VOICE_UPLOAD_ENABLED`，除非你已在反向代理层做严格鉴权与来源限制。
 Only upload `.pt` files you generated yourself or from fully trusted sources.
 If upload must be enabled, restrict to internal network admin endpoints with reverse-proxy IP whitelisting.
 `.pt` files use PyTorch serialization which can theoretically execute arbitrary code.

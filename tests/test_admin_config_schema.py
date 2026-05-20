@@ -106,3 +106,28 @@ def test_runtime_config_info_and_delete(tmp_path):
     assert info["field_count"] == 1
     assert delete_runtime_config(cfg) is True
     assert runtime_config_info(cfg)["exists"] is False
+
+
+def test_admin_runtime_guards_clamp_risky_combinations(tmp_path):
+    from kokoro_tts.routes.admin_runtime import apply_config_patch
+
+    cfg = TTSConfig(runtime_config_file=tmp_path / "runtime-config.json")
+    patch = AdminConfigPatch(
+        moss_vram_safe_free_mb=1000,
+        moss_vram_critical_free_mb=1200,
+        moss_stream_chunk_seconds=0.6,
+        moss_stream_prebuffer_seconds=0.2,
+        moss_segment_length=120,
+        moss_voice_clone_max_text_tokens=200,
+        moss_output_target_peak=0.8,
+        moss_output_gain=2.0,
+    )
+    changed, _, _ = apply_config_patch(cfg, patch)
+    assert "moss_vram_critical_free_mb" in changed
+    assert "moss_stream_prebuffer_seconds" in changed
+    assert "moss_voice_clone_max_text_tokens" in changed
+    assert "moss_output_gain" in changed
+    assert cfg.moss_vram_critical_free_mb == 900
+    assert cfg.moss_stream_prebuffer_seconds == 0.6
+    assert cfg.moss_voice_clone_max_text_tokens == 60
+    assert cfg.moss_output_gain == pytest.approx(0.96)
