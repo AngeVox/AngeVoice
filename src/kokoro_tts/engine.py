@@ -17,6 +17,7 @@ from .audio import encode_audio_segment, normalize_audio_array, write_wav_bytes
 from .config import TTSConfig, load_config
 from .zh_rules import normalize_chinese_rules
 from .text_segmenter import segment_text_natural
+from .kokoro_assets import has_valid_kokoro_local_assets, is_valid_kokoro_voice_file
 from .model_sources import ensure_kokoro_model_dir, resolve_model_source
 
 logger = logging.getLogger(__name__)
@@ -301,6 +302,10 @@ class TTSEngine:
 
             if torch.cuda.is_available():
                 torch.cuda.empty_cache()
+                try:
+                    torch.cuda.ipc_collect()
+                except Exception:
+                    logger.debug("Kokoro CUDA IPC cleanup skipped", exc_info=True)
         except Exception:
             logger.debug("Kokoro CUDA cache cleanup skipped", exc_info=True)
 
@@ -334,11 +339,8 @@ class TTSEngine:
         else:
             candidates = [self.config.voices_dir / f"{name}.pt"]
         for candidate in candidates:
-            try:
-                if candidate.exists() and candidate.is_file() and candidate.stat().st_size > 100:
-                    return str(candidate)
-            except OSError:
-                continue
+            if is_valid_kokoro_voice_file(candidate, log=logger):
+                return str(candidate)
         return raw
 
     def load(self) -> "TTSEngine":
@@ -351,10 +353,14 @@ class TTSEngine:
         self._device = self.config.resolve_device()
         local_model = self.config.model_file
         local_config = self.config.model_dir / "config.json"
-        use_local = local_model.exists() and local_config.exists() and local_model.stat().st_size > 1000
+        use_local = has_valid_kokoro_local_assets(self.config.model_dir, log=logger)
         if not use_local:
-            ensure_kokoro_model_dir(self.config, logger=logger)
-            use_local = local_model.exists() and local_config.exists() and local_model.stat().st_size > 1000
+            resolved_dir = ensure_kokoro_model_dir(self.config, logger=logger)
+            if resolved_dir is not None:
+                self.config.model_dir = Path(resolved_dir)
+                local_model = self.config.model_file
+                local_config = self.config.model_dir / "config.json"
+            use_local = has_valid_kokoro_local_assets(self.config.model_dir, log=logger)
 
         # Kokoro 的 repo_id 必须始终是合法的 Hugging Face 仓库名。
         # 即使使用 /app/models 这样的本地模型目录，也不能把绝对路径传给 repo_id，
@@ -376,10 +382,20 @@ class TTSEngine:
             except Exception:
                 pass
 
-        if use_local:
-            self._model = KModel(repo_id=repo_id, config=str(local_config), model=str(local_model)).to(self._device).eval()
-        else:
-            self._model = KModel(repo_id=repo_id).to(self._device).eval()
+        try:
+            if use_local:
+                self._model = KModel(repo_id=repo_id, config=str(local_config), model=str(local_model)).to(self._device).eval()
+            else:
+                self._model = KModel(repo_id=repo_id).to(self._device).eval()
+        except Exception as exc:
+            message = str(exc)
+            if "WeightsUnpickler" in message or "Unsupported operand 118" in message:
+                raise RuntimeError(
+                    "Kokoro 模型权重加载失败：检测到 Git LFS 指针、损坏权重或不兼容缓存。"
+                    "请删除无效的 models/*.pth、models/voices/*.pt 或 Hugging Face 缓存后重试；"
+                    "也可以执行 git lfs pull 下载真实模型文件。"
+                ) from exc
+            raise
 
         self._en_pipeline = KPipeline(lang_code="a", repo_id=repo_id, model=False)
 
@@ -501,8 +517,17 @@ class TTSEngine:
         except ImportError:  # Unit tests and lightweight CI do not need torch.
             torch = None
 
-        generator = pipeline(segment, voice=self._resolve_voice_for_pipeline(voice), speed=speed_fn)
-        result = next(generator)
+        try:
+            generator = pipeline(segment, voice=self._resolve_voice_for_pipeline(voice), speed=speed_fn)
+            result = next(generator)
+        except Exception as exc:
+            message = str(exc)
+            if "WeightsUnpickler" in message or "Unsupported operand 118" in message:
+                raise RuntimeError(
+                    "Kokoro 音色权重加载失败：本地 voice 可能是 Git LFS 指针或损坏文件。"
+                    "请删除无效的 models/voices/*.pt，让服务从上游重新下载，或执行 git lfs pull。"
+                ) from exc
+            raise
         audio = result.audio
         if audio is None:
             return None

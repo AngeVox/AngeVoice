@@ -619,7 +619,8 @@ If upload must be enabled, restrict to internal network admin endpoints with rev
 |---|---|---|
 | `ANGEVOICE_RUNTIME_CONFIG_FILE` | `/app/outputs/runtime-config.json` | Admin 后台保存配置的位置；在环境变量之后加载，可导出 ENV patch |
 | `MOSS_REALTIME_STREAMING_DECODE` | `true` | 是否启用 MOSS 官方逐帧实时解码；默认开启以降低首包等待；如出现电流音/卡顿可改为 `false` 走质量优先整块生成后分包 |
-| `MOSS_SEGMENT_LENGTH` | `180` | MOSS 专用分段长度，减少长文本段间拼接、爆音和卡顿；不影响 Kokoro 的 `KOKORO_SEGMENT_LENGTH` |
+| `MOSS_SEGMENT_LENGTH` | `120` | MOSS 专用分段长度，减少中英文混合尾部漂移、卡顿和失真；不影响 Kokoro 的 `KOKORO_SEGMENT_LENGTH` |
+| `MOSS_MIXED_ENGLISH_POLICY` | `translate` | MOSS 中英文混排策略；默认把常见英文词组转成自然中文，减少长停顿、怪声和尾部漂移；可设为 `preserve` 保留英文 |
 | `KOKORO_TRUST_PROXY_HEADERS` | `false` | 是否信任 `X-Forwarded-For`/`X-Real-IP`；裸露公网保持 false，反代后确认可信再开启 |
 | `KOKORO_ADMIN_ALLOW_API_KEY` | `false` | 是否允许普通 Bearer API Key 登录管理后台；共享 API Key 给客户端时保持 false |
 | `KOKORO_PUBLIC_STATUS_ENDPOINTS` | `true` | 是否公开 `/v1/models`、`/v1/models/current`、`/v1/audio/voices` 和页面模型目录 bootstrap；设为 false 后目录接口需要 Bearer Token，`/health` 仅返回最小健康信息 |
@@ -628,7 +629,9 @@ If upload must be enabled, restrict to internal network admin endpoints with rev
 | `MOSS_STREAM_BUDGET_THRESHOLD_HIGH` | `1.20` | 音频播放余量高阈值（秒）：低于此值每次解码 4 帧，高于此值每次解码 8 帧以减少块间抖动 |
 | `MOSS_STREAM_CHUNK_MIN_FLOOR` | `0.10` | 最小流式分包时长下限（秒）：防止过短碎片导致听感卡顿 |
 | `MOSS_OUTPUT_DECLICK_ENABLED` | `true` | 是否启用 MOSS 孤立脉冲修复 |
-| `MOSS_OUTPUT_EDGE_FADE_MS` | `3` | MOSS 片段边缘淡入淡出毫秒数 |
+| `MOSS_OUTPUT_EDGE_FADE_MS` | `1.5` | MOSS 片段边缘淡入淡出毫秒数，减少爆音但避免过度抹平辅音 |
+| `MOSS_APPLY_ANGEVOICE_RULES` | `auto` | MOSS 文本规则：`auto` 中文为主走完整规则，中英文/技术文本保守处理；`true` 强制完整规则；`false` 仅温和清理 |
+| `MOSS_VRAM_SNAPSHOT_TTL_SECONDS` | `10` | MOSS 显存快照缓存 TTL（秒），避免流式过程中频繁 torch.cuda/nvidia-smi 查询造成同步卡顿；0=每次查询 |
 
 这三个阈值（`LOW` < `MID` < `HIGH`）不是显存占用比例，而是“已生成音频领先实时播放的秒数”。余量越少，解码越小块，优先降低首包延迟；余量越充足，解码块越大，减少块间抖动。
 

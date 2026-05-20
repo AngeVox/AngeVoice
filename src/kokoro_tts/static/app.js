@@ -801,7 +801,7 @@ async function synthesizeStream(text, voice, speed) {
     if (msg.type === 'started') {
       state.totalSegments = msg.segments || 0;
       state.totalAudioChunks = 0;
-      state.currentPlayer.setPrebuffer(msg.recommended_prebuffer_seconds || (state.selectedModel.startsWith('moss') ? 0.45 : 0.25));
+      state.currentPlayer.setPrebuffer(msg.recommended_prebuffer_seconds || (state.selectedModel.startsWith('moss') ? 0.75 : 0.25));
       setProgress(`流式合成开始：文本 ${state.totalSegments} 段，预缓冲 ${state.currentPlayer.prebufferSeconds.toFixed(2)}s`);
     } else if (msg.type === 'audio') {
       const doneCount = msg.index + 1;

@@ -52,6 +52,37 @@ git lfs pull
 # 或删除 pointer 文件后重启服务，让 AngeVoice 自动下载
 ```
 
+
+### Kokoro 报 `Weights only load failed` / `Unsupported operand 118`
+
+这个错误几乎总是因为本地 `kokoro-v1_1-zh.pth` 或 `models/voices/*.pt` 不是二进制权重，而是 Git LFS 指针文本。例如：
+
+```text
+version https://git-lfs.github.com/spec/v1
+oid sha256:...
+size ...
+```
+
+2.6.5.1 之后，AngeVoice 会同时检查 Kokoro 主模型和音色文件：
+
+- 主模型小于 10MB、音色小于 10KB 会被视为无效本地权重；
+- 内容以 Git LFS 指针、HTML/JSON 错误页开头会被跳过；
+- 无效本地音色不会作为本地路径传给 Kokoro，避免 `torch.load` 加载文本指针。
+
+如果仍然报错，通常是 Hugging Face / ModelScope 缓存里也残留了错误文件。可删除缓存后重启：
+
+```bash
+# Docker 默认缓存目录在项目根目录外的 hf_cache / modelscope_cache，按实际挂载路径删除
+rm -rf hf_cache/hub/models--hexgrad--Kokoro-82M-v1.1-zh
+rm -rf modelscope_cache/hub/AI-ModelScope_Kokoro-82M-v1.1-zh
+
+# 或直接把源码包里的 LFS 指针移走，让服务重新下载
+find models -type f -size -10k -name "*.pt" -delete
+rm -f models/kokoro-v1_1-zh.pth
+```
+
+不要为了解决该错误盲目把 `torch.load(weights_only=False)` 打开。只有完全可信的权重才能关闭 `weights_only`，否则存在任意代码执行风险。
+
 ## 2. Docker 能启动但 `/health` 很久才 ok
 
 首次加载模型会下载或初始化权重，GPU 机器也需要 CUDA 初始化。建议：
@@ -238,10 +269,10 @@ MOSS_STREAM_CHUNK_SECONDS=0.40
 MOSS_STREAM_CHUNK_MIN_FLOOR=0.10
 MOSS_OUTPUT_PEAK_NORMALIZE_ENABLED=true
 MOSS_REALTIME_STREAMING_DECODE=true
-MOSS_OUTPUT_TARGET_PEAK=0.78
-MOSS_OUTPUT_GAIN=0.88
+MOSS_OUTPUT_TARGET_PEAK=0.86
+MOSS_OUTPUT_GAIN=0.94
 MOSS_OUTPUT_DECLICK_ENABLED=true
-MOSS_OUTPUT_EDGE_FADE_MS=3
+MOSS_OUTPUT_EDGE_FADE_MS=1.5
 ```
 
 排查：
@@ -259,10 +290,10 @@ curl http://127.0.0.1:8101/v1/models/current
 
 ```bash
 MOSS_REALTIME_STREAMING_DECODE=true
-MOSS_OUTPUT_TARGET_PEAK=0.78
-MOSS_OUTPUT_GAIN=0.88
+MOSS_OUTPUT_TARGET_PEAK=0.86
+MOSS_OUTPUT_GAIN=0.94
 MOSS_OUTPUT_DECLICK_ENABLED=true
-MOSS_OUTPUT_EDGE_FADE_MS=3
+MOSS_OUTPUT_EDGE_FADE_MS=1.5
 ```
 
 `MOSS_REALTIME_STREAMING_DECODE=true` 会更早推送小音频块，但在部分参考音频、CUDA/ONNX 组合和小喇叭播放链路上容易放大 chunk 边界不连续，表现为“刺”“噗”“电流音”。默认开启逐帧实时解码以降低首包等待、改善 Web/小智体感；若个别设备出现噪声、卡顿或边界不连续，可改为 false 走质量优先整块生成。
@@ -535,7 +566,7 @@ def tts_with_retry(url, payload, max_retries=3):
 
 ## WebSocket 一直卡在“建立流式连接”
 
-如果长文本或 MOSS CUDA 合成中途刷新页面、点击停止后再次生成一直卡住，优先确认已经使用 2.6.5.0。当前版本做了三件事：
+如果长文本或 MOSS CUDA 合成中途刷新页面、点击停止后再次生成一直卡住，优先确认已经使用 2.6.5.1。当前版本做了三件事：
 
 1. WebSocket 发送失败会立即标记请求取消，不再把断开的连接当作服务端错误反复发送。
 2. MOSS 隔离 worker 的流式超时按“无任何事件的空闲时间”计算，而不是整段长文本的总时长。
@@ -592,4 +623,4 @@ KOKORO_TRUST_PROXY_HEADERS=true
 
 ## MOSS 长文本仍有卡顿/爆音
 
-优先确认 `MOSS_SEGMENT_LENGTH=180` 已生效。它只影响 MOSS 分段，不影响 Kokoro。长文本段数过多时，段间拼接会增加卡顿和爆音概率；可尝试 220~320。
+优先确认 `MOSS_SEGMENT_LENGTH=120` 和 `MOSS_MIXED_ENGLISH_POLICY=translate` 已生效。它只影响 MOSS 分段，不影响 Kokoro。P4/NAS 默认用较短分段降低中英文混合尾部变调、卡顿和失真；高显存机器可在后台尝试 180~260。

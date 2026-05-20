@@ -290,7 +290,7 @@ models/kokoro-v1_1-zh.pth
 models/voices/*.pt
 ```
 
-A normal `git clone` may only download Git LFS pointer files. Docker Compose profiles persist the Hugging Face cache to avoid repeated downloads after container recreation.
+A normal `git clone` or GitHub source archive may only include Git LFS pointer files. AngeVoice validates both `kokoro-v1_1-zh.pth` and `models/voices/*.pt`, skips LFS pointers, HTML/JSON error pages, and tiny incomplete files, and avoids passing those text placeholders to `torch.load`. This prevents `Weights only load failed` / `Unsupported operand 118` caused by LFS pointer files. Docker Compose profiles persist the Hugging Face / ModelScope cache to avoid repeated downloads after container recreation.
 
 ## Docker persistence
 
@@ -336,13 +336,18 @@ environment:
 | `MOSS_EXECUTION_PROVIDER` | `cpu` | MOSS ONNX provider: `cpu` / `cuda` |
 | `MOSS_CUDA_ENABLED` | `false` | Allow/register `moss-nano-cuda`; CPU/legacy-gpu keep it off, standard GPU enables it. |
 | `MOSS_PROMPT_UPLOAD_MAX_BYTES` | `20971520` | MOSS clone reference-audio upload limit |
-| `MOSS_SEGMENT_LENGTH` | `180` | MOSS-only long-text segment length. Reduces hard cuts, stitching, stutter and artifacts without changing Kokoro segmentation. |
+| `MOSS_SEGMENT_LENGTH` | `120` | MOSS-only stability-first segment length; reduces mixed-language drift, stutter and artifacts without changing Kokoro segmentation. |
 | `MOSS_PROMPT_AUDIO_MAX_SECONDS` | `8` | Reference-audio trim duration |
 | `MOSS_PROMPT_CACHE_MAX_ITEMS` | `8` | Encoded prompt-audio cache size |
+| `MOSS_APPLY_ANGEVOICE_RULES` | `auto` | Text rules for MOSS: full Chinese normalization for Chinese-major text, conservative cleanup for mixed English/technical text |
+| `MOSS_MIXED_ENGLISH_POLICY` | `translate` | Translate common mixed-English phrases into natural Chinese for MOSS; set `preserve` to keep original English |
 | `MOSS_AUTO_FALLBACK_CPU` | `true` | Fall back to CPU when CUDA self-test fails |
+| `MOSS_STREAM_PREBUFFER_SECONDS` | `0.75` | Browser prebuffer for MOSS streaming, reducing underflow on NAS/older GPUs |
+| `MOSS_STREAM_QUEUE_MAX_ITEMS` | `8` | MOSS streaming queue depth to absorb short decode/browser/network jitter |
 | `MOSS_PROCESS_ISOLATION_ENABLED` | `false` | Enable MOSS process isolation; loaded engines must be unloaded/rebuilt before this takes effect |
 | `MOSS_PROCESS_ISOLATION_PROVIDERS` | `cuda` | Providers executed in an isolated worker process |
 | `MOSS_PROCESS_KILL_GRACE_SECONDS` | `2` | Grace seconds before force-killing a timed-out worker |
+| `MOSS_VRAM_SNAPSHOT_TTL_SECONDS` | `10` | Cache CUDA VRAM snapshots to avoid frequent torch/nvidia-smi probes during streaming |
 | `MOSS_QUALITY_GATE_ENABLED` | `true` | Reject silent, NaN/Inf, or heavily clipped MOSS self-test output |
 | `ANGEVOICE_IDLE_TIMEOUT_SECONDS` | `600` | Auto-unload all loaded models after N idle seconds; 0 = disabled |
 | `ANGEVOICE_IDLE_CHECK_INTERVAL` | `30` | Idle check interval (seconds) |

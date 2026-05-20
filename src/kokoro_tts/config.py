@@ -17,6 +17,7 @@ logger = logging.getLogger(__name__)
 
 from .admin_config_schema import load_runtime_config
 from .config_env import apply_env
+from .kokoro_assets import is_valid_kokoro_model_file
 from .config_ids import (
     MODEL_FILENAME,
     MOSS_GENERIC_MODEL_IDS,
@@ -26,6 +27,12 @@ from .config_ids import (
 )
 
 def _find_models_dir() -> Path:
+    """查找可用的 Kokoro 模型目录。
+
+    GitHub 源码包里的 `models/` 可能只有 Git LFS 指针文件。这里会跳过
+    指针文件或不完整权重，避免后续 `torch.load` 把文本指针当成模型加载。
+    """
+
     candidates = [
         Path(os.environ.get("KOKORO_MODEL_DIR", "")),
         Path.cwd() / "models",
@@ -33,11 +40,18 @@ def _find_models_dir() -> Path:
         Path("/app/models"),
     ]
     for path in candidates:
-        if path and path.exists() and (path / MODEL_FILENAME).exists():
-            logger.info("找到模型目录: %s", path)
+        if not path or not path.exists():
+            continue
+        model_file = path / MODEL_FILENAME
+        if is_valid_kokoro_model_file(model_file, log=logger):
+            try:
+                size_mb = model_file.stat().st_size / (1024 * 1024)
+            except OSError:
+                size_mb = 0.0
+            logger.info("找到模型目录: %s (Kokoro 模型 %.1f MB)", path, size_mb)
             return path
     fallback = Path.cwd() / "models"
-    logger.warning("未找到模型目录，使用兜底路径: %s", fallback)
+    logger.warning("未找到有效的 Kokoro 本地模型目录，使用兜底路径: %s；运行时将尝试远程下载。", fallback)
     return fallback
 
 
@@ -56,7 +70,7 @@ class TTSConfig:
     max_text_length: int = 10000
     segment_length: int = 160
     text_single_newline_policy: str = "auto"
-    moss_segment_length: int = 180
+    moss_segment_length: int = 120
     default_speed: float = 1.0
     default_voice: str = "zm_010"
 
@@ -125,43 +139,45 @@ class TTSConfig:
     moss_prompt_audio_max_seconds: float = 8.0
     moss_prompt_cache_max_items: int = 8
     moss_max_new_frames: int = 320
-    moss_voice_clone_max_text_tokens: int = 64
+    moss_voice_clone_max_text_tokens: int = 56
     moss_sample_mode: str = "fixed"
     moss_seed: int = 1234
     moss_cuda_enabled: bool = True
     moss_cuda_memory_limit_mb: int = 0
     moss_enable_wetext_processing: bool = False
     moss_enable_normalize_tts_text: bool = True
-    moss_apply_angevoice_rules: bool = True
+    moss_apply_angevoice_rules: str | bool = "auto"
+    moss_mixed_english_policy: str = "translate"
     moss_realtime_streaming_decode: bool = True
     moss_stream_chunk_seconds: float = 0.40
-    moss_stream_queue_max_items: int = 4
-    moss_stream_prebuffer_seconds: float = 0.45
+    moss_stream_queue_max_items: int = 8
+    moss_stream_prebuffer_seconds: float = 0.75
     moss_cuda_self_test_enabled: bool = True
     moss_auto_fallback_cpu: bool = True
     moss_quality_gate_enabled: bool = True
     moss_max_clip_ratio: float = 0.02
     moss_output_peak_normalize_enabled: bool = True
-    moss_output_target_peak: float = 0.78
-    moss_output_gain: float = 0.88
+    moss_output_target_peak: float = 0.86
+    moss_output_gain: float = 0.94
     moss_process_isolation_enabled: bool = False
     moss_output_declick_enabled: bool = True
-    moss_output_edge_fade_ms: float = 3.0
+    moss_output_edge_fade_ms: float = 1.5
     moss_audio_polish_enabled: bool = True
     moss_trim_silence_enabled: bool = True
     moss_trim_silence_db: float = -45.0
-    moss_max_silence_ms: float = 850.0
-    moss_crossfade_ms: float = 25.0
-    moss_segment_pause_ms: float = 100.0
-    moss_runtime_pause_max_ms: float = 500.0
+    moss_max_silence_ms: float = 480.0
+    moss_crossfade_ms: float = 12.0
+    moss_segment_pause_ms: float = 80.0
+    moss_runtime_pause_max_ms: float = 350.0
     moss_vram_guard_enabled: bool = True
     moss_vram_safe_free_mb: int = 1200
     moss_vram_critical_free_mb: int = 600
-    moss_low_vram_segment_length: int = 160
-    moss_low_vram_max_new_frames: int = 300
-    moss_low_vram_text_tokens: int = 56
+    moss_low_vram_segment_length: int = 96
+    moss_low_vram_max_new_frames: int = 280
+    moss_low_vram_text_tokens: int = 48
     moss_disable_full_codec_after_oom: bool = True
     moss_full_codec_oom_cooldown_seconds: float = 600.0
+    moss_vram_snapshot_ttl_seconds: float = 10.0
     moss_process_isolation_providers: str = "cuda"
     moss_process_kill_grace_seconds: float = 2.0
 
@@ -252,6 +268,24 @@ class TTSConfig:
         self.moss_sample_mode = str(self.moss_sample_mode or "fixed").strip().lower()
         if self.moss_sample_mode not in {"greedy", "fixed", "full"}:
             raise ValueError("MOSS_SAMPLE_MODE must be greedy, fixed, or full")
+        rules_mode = str(self.moss_apply_angevoice_rules).strip().lower()
+        if rules_mode in {"1", "true", "yes", "on", "y"}:
+            self.moss_apply_angevoice_rules = "true"
+        elif rules_mode in {"0", "false", "no", "off", "n"}:
+            self.moss_apply_angevoice_rules = "false"
+        elif rules_mode in {"auto", "smart", "mixed"}:
+            self.moss_apply_angevoice_rules = "auto"
+        else:
+            raise ValueError("MOSS_APPLY_ANGEVOICE_RULES must be auto, true, or false")
+        mixed_policy = str(self.moss_mixed_english_policy or "translate").strip().lower()
+        if mixed_policy in {"0", "false", "no", "off", "n", "preserve", "keep", "none"}:
+            self.moss_mixed_english_policy = "preserve"
+        elif mixed_policy in {"spell", "letters"}:
+            self.moss_mixed_english_policy = "spell"
+        elif mixed_policy in {"auto", "translate", "cn", "zh", "meaning"}:
+            self.moss_mixed_english_policy = "translate"
+        else:
+            raise ValueError("MOSS_MIXED_ENGLISH_POLICY must be translate, preserve, or spell")
         self.text_single_newline_policy = str(self.text_single_newline_policy or "auto").strip().lower()
         if self.text_single_newline_policy not in {"auto", "preserve", "space"}:
             raise ValueError("ANGEVOICE_SINGLE_NEWLINE_POLICY must be auto, preserve, or space")

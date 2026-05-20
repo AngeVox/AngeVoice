@@ -6,6 +6,41 @@ Format based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and [Se
 
 ---
 
+## [2.6.5.2] - 2026-05-20
+
+### 🔊 MOSS 中英文混排修复
+- 新增 `MOSS_MIXED_ENGLISH_POLICY=translate`：默认把常见职场/日常英文词组转成自然中文含义，重点改善 `deadline`、`anxiety`、`self-reflection`、`work-life balance`、`personal growth` 等中英文混排长句导致的停顿、怪声和尾部漂移。
+- MOSS 流式路径现在也会压缩异常长静音，减少播放中“像卡住几秒”的听感。
+- 默认连续静音压缩上限从 `550ms` 收敛到 `480ms`，更适合 NAS/Tesla P4 长文本流式。
+- 保留 `MOSS_MIXED_ENGLISH_POLICY=preserve`，需要严格保留英文原文或专有名词时可手动切换。
+
+### 🛠️ Kokoro 模型资产校验
+- 继续保留 2.6.5.1 的 Kokoro Git LFS 指针/错误页/不完整权重校验，避免把 100 多字节的 LFS 指针当模型传给 `torch.load`。
+
+---
+
+## [2.6.5.1] - 2026-05-20
+
+### 🔊 MOSS 生产体验优化
+- 默认 MOSS 分段改为 `MOSS_SEGMENT_LENGTH=120`、`MOSS_VOICE_CLONE_MAX_TEXT_TOKENS=56`，优先降低 P4/NAS 上中英文混合长文本尾部变调、卡顿和失真。
+- MOSS 流式默认缓冲提高到 `MOSS_STREAM_PREBUFFER_SECONDS=0.75`，队列提高到 `MOSS_STREAM_QUEUE_MAX_ITEMS=8`，减少浏览器播放 underflow 和短抖动造成的断续。
+- MOSS 后处理改为更自然的 `MOSS_OUTPUT_TARGET_PEAK=0.86` / `MOSS_OUTPUT_GAIN=0.94`，并把边缘淡入淡出降到 `1.5ms`，避免声音过低、过平和辅音被抹掉。
+- 连续静音压缩上限改为 `MOSS_MAX_SILENCE_MS=480`，默认段间停顿和 runtime pause 更保守，减少“卡住几秒”的听感。
+- 新增 `MOSS_APPLY_ANGEVOICE_RULES=auto`：中文为主文本使用完整中文规则；中英文混排、URL、版本号、API 名称和英文缩写走温和清理，减少混排文本读坏和卡顿。
+
+### 🛡️ 稳定性与资源释放
+- Kokoro 本地权重校验改为统一逻辑：主模型、config 与 voices 音色都会识别 Git LFS 指针、HTML/JSON 错误页和过小的不完整文件，避免把 100 多字节的指针文件传给 `torch.load` 触发 `Weights only load failed` / `Unsupported operand 118`。
+- 新增 `MOSS_VRAM_SNAPSHOT_TTL_SECONDS=10`，缓存 CUDA 显存快照，避免长文本流式过程中频繁 `torch.cuda.mem_get_info()` / `nvidia-smi` 查询造成同步卡顿。
+- Kokoro 与 MOSS 卸载时额外尝试 `torch.cuda.ipc_collect()`；文档明确说明 `nvidia-smi` 无进程但仍有约 100MiB 占用通常是 NVIDIA 驱动 baseline，不代表模型未释放。
+- 保持 MOSS 进程级隔离默认关闭；默认路径优先保证实时流式体验，隔离模式作为 CUDA/ONNX Runtime 卡死排查选项。
+
+### 🧪 测试与文档
+- 补充 MOSS 自动文本规则和 VRAM Guard TTL 单测。
+- README、API Reference、Model Runtime、Service Profiles、Troubleshooting、MOSS Audio Quality 与 Docker env/compose 默认值重新对齐到生产默认参数。
+- 清理源码包中的 `__pycache__` 和 `.pytest_cache`。
+
+---
+
 ## [2.6.5.0] - 2026-05-16
 
 ### 🎙️ 长文本自然合成
@@ -44,7 +79,7 @@ Format based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and [Se
 ### 🧪 测试、文档与发布
 - 新增 `scripts/analyze_audio_quality.py`，可分析 wav 时长、采样率、声道、峰值、RMS、削波比例、长静音段、最大静音和静音占比。
 - 新增/补强分句、音频后处理、Admin schema、VRAM Guard、缓存限制、runtime-config、中文换行策略等单元测试。
-- README、README_EN、API Reference、Architecture、Roadmap、Troubleshooting、Docker env/compose 对齐 2.6.5.0 的最终默认值：默认 180，均衡 220，旁白 260+。
+- README、README_EN、API Reference、Architecture、Roadmap、Troubleshooting、Docker env/compose 对齐 2.6.5.0 的最终默认值：默认 120，均衡/旁白通过后台预设按需切换。
 - Docker CPU/GPU/legacy-gpu compose 默认全部切回 NAS/P4 安全档；legacy CUDA 单独更保守。
 - 版本统一为 `2.6.5.0`。
 

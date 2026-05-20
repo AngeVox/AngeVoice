@@ -8,6 +8,8 @@ import urllib.error
 import urllib.request
 from pathlib import Path
 
+from .kokoro_assets import has_valid_kokoro_local_assets
+
 logger = logging.getLogger(__name__)
 
 _CHINA_COUNTRY_CODES = {"CN"}
@@ -127,19 +129,26 @@ def _modelscope_snapshot_download(repo_id: str, target_dir: Path, *, logger: log
 
 
 def ensure_kokoro_model_dir(config, *, logger: logging.Logger) -> Path | None:
+    """确保 Kokoro 本地模型目录可用。
+
+    只在 ModelScope 模式下主动预取。若本地目录只有 Git LFS 指针或损坏文件，
+    不会误判为可用；Hugging Face 模式则交给上游 `kokoro` 包按 repo_id 下载。
+    """
+
+    if has_valid_kokoro_local_assets(Path(config.model_dir), log=logger):
+        return Path(config.model_dir)
     if resolve_model_source(config) != "modelscope":
         return None
-    model_file = config.model_dir / "kokoro-v1_1-zh.pth"
-    config_file = config.model_dir / "config.json"
-    if model_file.exists() and config_file.exists() and model_file.stat().st_size > 1000:
-        return config.model_dir
     repo = str(getattr(config, "kokoro_modelscope_repo", "") or "").strip()
     if not repo:
         return None
     path = _modelscope_snapshot_download(repo, Path(config.model_dir), logger=logger)
-    if path and model_file.exists() and config_file.exists():
-        return config.model_dir
-    return path
+    if has_valid_kokoro_local_assets(Path(config.model_dir), log=logger):
+        return Path(config.model_dir)
+    if path and has_valid_kokoro_local_assets(Path(path), log=logger):
+        return Path(path)
+    logger.warning("ModelScope 下载后仍未找到有效 Kokoro 权重，将回退到上游 repo_id 下载路径。")
+    return None
 
 
 def ensure_moss_model_dir(config, *, logger: logging.Logger) -> Path | None:

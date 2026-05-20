@@ -1,9 +1,8 @@
-"""Small VRAM guard helpers for MOSS CUDA inference.
+"""MOSS CUDA 显存保护辅助函数。
 
-The guard is deliberately lightweight: it never depends on torch being present
-at import time and falls back to ``nvidia-smi`` when possible. It does not try
-to be a scheduler; it only provides enough information for AngeVoice to choose
-safer per-request limits and avoid repeating expensive full-codec OOM attempts.
+这里保持轻量：导入时不强依赖 torch，可用时优先用 ``torch.cuda.mem_get_info``，
+否则兜底调用 ``nvidia-smi``。它不是调度器，只提供足够信息让 AngeVoice
+选择更保守的单次请求限制，并避免反复触发高成本 full-codec OOM。
 """
 
 from __future__ import annotations
@@ -32,7 +31,7 @@ class VramSnapshot:
 
 
 def get_cuda_vram_snapshot() -> VramSnapshot:
-    """Return current CUDA VRAM info, if it can be queried safely."""
+    """尽量安全地返回当前 CUDA 显存信息。"""
 
     try:
         import torch  # type: ignore
@@ -78,7 +77,7 @@ def get_cuda_vram_snapshot() -> VramSnapshot:
 
 
 def is_memory_allocation_error(exc: BaseException) -> bool:
-    """Best-effort detector for ORT/CUDA allocation failures."""
+    """尽力识别 ONNX Runtime / CUDA 显存分配失败。"""
 
     text = f"{type(exc).__name__}: {exc}".lower()
     patterns = (

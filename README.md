@@ -344,7 +344,7 @@ models/kokoro-v1_1-zh.pth
 models/voices/*.pt
 ```
 
-普通 `git clone` 或 GitHub Source code ZIP 可能只拿到 Git LFS 指针文件，不一定是真实模型文件。如果文件内容以 `version https://git-lfs.github.com/spec/v1` 开头，它只是指针，不是真模型。服务会在首次运行时自动下载真实权重；Docker Compose 已持久化 Hugging Face/ModelScope 缓存，避免容器重建后重复下载。
+普通 `git clone` 或 GitHub Source code ZIP 可能只拿到 Git LFS 指针文件，不一定是真实模型文件。如果文件内容以 `version https://git-lfs.github.com/spec/v1` 开头，它只是指针，不是真模型。服务会同时校验 `kokoro-v1_1-zh.pth` 和 `models/voices/*.pt`，自动跳过 LFS 指针、HTML/JSON 错误页或过小的不完整文件，避免触发 `Weights only load failed` / `Unsupported operand 118`。Docker Compose 已持久化 Hugging Face/ModelScope 缓存，避免容器重建后重复下载。
 
 ## Docker 持久化
 
@@ -390,25 +390,31 @@ environment:
 | `MOSS_EXECUTION_PROVIDER` | `cpu` | MOSS ONNX provider：`cpu` / `cuda` |
 | `MOSS_CUDA_ENABLED` | `false` | 是否允许注册/切换 `moss-nano-cuda`；CPU/legacy-gpu 默认关闭，通用 GPU 画像开启 |
 | `MOSS_PROMPT_UPLOAD_MAX_BYTES` | `20971520` | MOSS 克隆参考音频上传大小上限 |
-| `MOSS_SEGMENT_LENGTH` | `180` | MOSS 专用长文本分段长度，减少长文本硬切、段间拼接和卡顿；不影响 Kokoro 的 `KOKORO_SEGMENT_LENGTH` |
+| `MOSS_SEGMENT_LENGTH` | `120` | MOSS 专用长文本分段长度，降低中英文混合尾部漂移、卡顿和失真；不影响 Kokoro 的 `KOKORO_SEGMENT_LENGTH` |
 | `MOSS_PROMPT_AUDIO_MAX_SECONDS` | `8` | 克隆参考音频裁剪时长 |
 | `MOSS_PROMPT_CACHE_MAX_ITEMS` | `8` | 参考音频编码缓存条目数 |
+| `MOSS_APPLY_ANGEVOICE_RULES` | `auto` | MOSS 文本规则：中文为主走完整中文规则，中英文/技术文本保守处理，减少版本号、API、英文缩写读坏 |
+| `MOSS_MIXED_ENGLISH_POLICY` | `translate` | MOSS 中英文混排策略；默认把常见英文词组转成自然中文，减少长停顿、怪声和尾部漂移 |
 | `MOSS_AUTO_FALLBACK_CPU` | `true` | CUDA 自检失败时回退 CPU |
 | `MOSS_REALTIME_STREAMING_DECODE` | `true` | 是否启用 MOSS 官方逐帧实时解码；默认开启以降低首包等待；如出现电流音/卡顿可改为 `false` 走质量优先整块生成后分包 |
+| `MOSS_STREAM_PREBUFFER_SECONDS` | `0.75` | MOSS 浏览器流式播放预缓冲，减少老显卡长文本 underflow/断续 |
+| `MOSS_STREAM_QUEUE_MAX_ITEMS` | `8` | MOSS 流式队列深度，避免短抖动直接造成播放断流 |
 | `MOSS_PROCESS_ISOLATION_ENABLED` | `false` | 是否启用 MOSS 进程级隔离；已加载 engine 需要卸载/重建后生效，管理后台会提示/尝试卸载 |
 | `MOSS_PROCESS_ISOLATION_PROVIDERS` | `cuda` | 哪些 provider 走隔离子进程，逗号分隔 |
 | `MOSS_PROCESS_KILL_GRACE_SECONDS` | `2` | 超时后终止 worker 的宽限秒数 |
 | `MOSS_QUALITY_GATE_ENABLED` | `true` | 拒绝静音、NaN/Inf 或明显 clipping 的 MOSS 自检输出 |
-| `MOSS_OUTPUT_TARGET_PEAK` | `0.78` | MOSS 输出峰值目标，降低小喇叭/Opus链路爆音风险 |
-| `MOSS_OUTPUT_GAIN` | `0.88` | MOSS 后处理预衰减，保留动态同时降低失真 |
+| `MOSS_OUTPUT_TARGET_PEAK` | `0.86` | MOSS 输出峰值目标，兼顾动态和爆音保护 |
+| `MOSS_OUTPUT_GAIN` | `0.94` | MOSS 后处理轻增益，避免默认声音过低并保留动态 |
 | `MOSS_OUTPUT_DECLICK_ENABLED` | `true` | 修复孤立瞬态尖峰，降低“噗”“刺”“电流音” |
-| `MOSS_OUTPUT_EDGE_FADE_MS` | `3` | MOSS 片段头尾短淡入淡出毫秒数，减少拼接爆音 |
+| `MOSS_OUTPUT_EDGE_FADE_MS` | `1.5` | MOSS 片段头尾短淡入淡出毫秒数，减少拼接爆音且尽量不抹掉辅音 |
+| `MOSS_MAX_SILENCE_MS` | `480` | MOSS 最终音频中连续静音压缩上限，减少 1 秒以上卡顿感 |
 | `ANGEVOICE_IDLE_TIMEOUT_SECONDS` | `600` | 空闲超时自动卸载所有已加载模型（秒），0=禁用 |
 | `ANGEVOICE_IDLE_CHECK_INTERVAL` | `30` | 空闲检查间隔（秒） |
 | `MOSS_STREAM_BUDGET_THRESHOLD_LOW` | `0.25` | 音频播放余量低阈值（秒），低于此值每次解码 1 帧以尽快出声 |
 | `MOSS_STREAM_BUDGET_THRESHOLD_MID` | `0.65` | 音频播放余量中阈值（秒），低于此值每次解码 2 帧 |
 | `MOSS_STREAM_BUDGET_THRESHOLD_HIGH` | `1.20` | 音频播放余量高阈值（秒），低于此值每次解码 4 帧，高于此值每次解码 8 帧 |
 | `MOSS_STREAM_CHUNK_MIN_FLOOR` | `0.10` | 流式最小分包时长下限（秒），避免过短碎片造成卡顿感 |
+| `MOSS_VRAM_SNAPSHOT_TTL_SECONDS` | `10` | MOSS 显存快照缓存 TTL，减少流式过程中频繁查询 torch/nvidia-smi 造成的卡顿 |
 | `KOKORO_RATE_LIMIT_QPS` | `0` | 按 API Key 或客户端 IP 限流，0=关闭；运行中修改需重启中间件生效 |
 | `KOKORO_MAX_QUEUE_LENGTH` | `0` | 全局 in-flight 请求上限，0=关闭；运行中修改需重启中间件生效 |
 | `KOKORO_TRUST_PROXY_HEADERS` | `false` | 默认不信任 `X-Forwarded-For`/`X-Real-IP`，避免裸露公网时被伪造绕过限流；确认在可信反代后面才设 true |

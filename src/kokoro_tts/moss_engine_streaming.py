@@ -67,7 +67,7 @@ class MossStreamingMixin:
             "dtype": "s16le" if fmt == "pcm_s16le" else "wav",
             "model": self.engine_id,
             "voice_clone": bool(prompt_audio),
-            "recommended_prebuffer_seconds": float(getattr(self.config, "moss_stream_prebuffer_seconds", 0.45)),
+            "recommended_prebuffer_seconds": float(getattr(self.config, "moss_stream_prebuffer_seconds", 0.75)),
         }
 
         item_queue: queue.Queue = queue.Queue(maxsize=max(1, int(self.config.moss_stream_queue_max_items)))
@@ -393,7 +393,12 @@ class MossStreamingMixin:
     ) -> int:
         if is_cancelled():
             raise _MossStreamCancelled()
-        processed = self._postprocess_waveform(waveform, update_quality=not is_pause, edge_fade=edge_fade and not is_pause)
+        processed = self._postprocess_waveform(
+            waveform,
+            update_quality=not is_pause,
+            edge_fade=edge_fade and not is_pause,
+            compress_silence=not is_pause,
+        )
         if not is_pause and stream_state["first_audio_emitted_at_perf"] is None and getattr(processed, "size", 0):
             stream_state["first_audio_emitted_at_perf"] = time.perf_counter()
         stream_state["emitted_samples_total"] = int(stream_state["emitted_samples_total"]) + int(processed.shape[0])

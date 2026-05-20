@@ -49,7 +49,7 @@ def normalize_waveform(
     *,
     channels: int,
     gain: float = 1.0,
-    target_peak: float = 0.78,
+    target_peak: float = 0.86,
     peak_normalize_enabled: bool = True,
     declick_enabled: bool = True,
     edge_fade_samples: int = 0,

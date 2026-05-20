@@ -7,7 +7,7 @@ from unittest.mock import MagicMock, patch
 import pytest
 
 sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
-EXPECTED_VERSION = "2.6.5.0"
+EXPECTED_VERSION = "2.6.5.2"
 
 
 def _has_module(name: str) -> bool:
@@ -48,11 +48,18 @@ class TestConfig:
         assert config.moss_process_isolation_enabled is False
         assert config.moss_process_isolation_providers == "cuda"
         assert config.moss_realtime_streaming_decode is True
-        assert config.moss_segment_length == 180
+        assert config.moss_segment_length == 120
         assert config.moss_max_new_frames == 320
-        assert config.moss_voice_clone_max_text_tokens == 64
-        assert config.moss_max_silence_ms == 850
+        assert config.moss_voice_clone_max_text_tokens == 56
+        assert config.moss_max_silence_ms == 480
         assert config.moss_vram_guard_enabled is True
+        assert config.moss_stream_queue_max_items == 8
+        assert config.moss_stream_prebuffer_seconds == 0.75
+        assert config.moss_output_target_peak == 0.86
+        assert config.moss_output_gain == 0.94
+        assert config.moss_apply_angevoice_rules == "auto"
+        assert config.moss_mixed_english_policy == "translate"
+        assert config.moss_vram_snapshot_ttl_seconds == 10.0
         assert config.cache_max_items == 64
         assert config.cache_max_bytes == 512 * 1024 * 1024
         assert config.text_single_newline_policy == "auto"
@@ -67,6 +74,7 @@ class TestConfig:
         monkeypatch.setenv("MOSS_PROCESS_ISOLATION_ENABLED", "false")
         monkeypatch.setenv("MOSS_SEGMENT_LENGTH", "160")
         monkeypatch.setenv("ANGEVOICE_MODEL_SOURCE", "modelscope")
+        monkeypatch.setenv("MOSS_MIXED_ENGLISH_POLICY", "preserve")
         from kokoro_tts.config import load_config
         config = load_config()
         assert config.port == 9000
@@ -77,6 +85,7 @@ class TestConfig:
         assert config.moss_process_isolation_enabled is False
         assert config.moss_segment_length == 160
         assert config.model_source == "modelscope"
+        assert config.moss_mixed_english_policy == "preserve"
 
 
     def test_auto_api_key_generates_persistent_secret(self, monkeypatch, tmp_path):
@@ -511,7 +520,7 @@ class TestKokoroLocalPathRegression:
 
         model_dir = tmp_path / "models"
         model_dir.mkdir()
-        (model_dir / "kokoro-v1_1-zh.pth").write_bytes(b"x" * 2048)
+        (model_dir / "kokoro-v1_1-zh.pth").write_bytes(b"PK" + b"x" * (11 * 1024 * 1024))
         (model_dir / "config.json").write_text("{}", encoding="utf-8")
         engine = TTSEngine(TTSConfig(model_dir=model_dir))
         assert engine._safe_kokoro_repo_id() == "hexgrad/Kokoro-82M-v1.1-zh"
@@ -525,8 +534,108 @@ class TestKokoroLocalPathRegression:
         voices = model_dir / "voices"
         voices.mkdir(parents=True)
         voice_file = voices / "zm_010.pt"
-        voice_file.write_bytes(b"v" * 2048)
+        voice_file.write_bytes(b"PK" + b"v" * (16 * 1024))
         engine = TTSEngine(TTSConfig(model_dir=model_dir))
         assert engine._resolve_voice_for_pipeline("zm_010") == str(voice_file)
         assert engine._resolve_voice_for_pipeline("../zm_010.pt") == str(voice_file)
         assert engine._resolve_voice_for_pipeline("missing_voice") == "missing_voice"
+
+    def test_lfs_pointer_model_and_voice_are_not_used_locally(self, tmp_path):
+        from kokoro_tts.config import TTSConfig
+        from kokoro_tts.engine import TTSEngine
+        from kokoro_tts.kokoro_assets import has_valid_kokoro_local_assets, is_valid_kokoro_voice_file
+
+        model_dir = tmp_path / "models"
+        voices = model_dir / "voices"
+        voices.mkdir(parents=True)
+        (model_dir / "kokoro-v1_1-zh.pth").write_text(
+            "version https://git-lfs.github.com/spec/v1\n"
+            "oid sha256:deadbeef\n"
+            "size 327247856\n",
+            encoding="utf-8",
+        )
+        (model_dir / "config.json").write_text("{}", encoding="utf-8")
+        voice_file = voices / "zm_010.pt"
+        voice_file.write_text(
+            "version https://git-lfs.github.com/spec/v1\n"
+            "oid sha256:deadbeef\n"
+            "size 523331\n",
+            encoding="utf-8",
+        )
+
+        engine = TTSEngine(TTSConfig(model_dir=model_dir))
+        assert has_valid_kokoro_local_assets(model_dir) is False
+        assert is_valid_kokoro_voice_file(voice_file) is False
+        assert engine._resolve_voice_for_pipeline("zm_010") == "zm_010"
+
+
+class TestMossProductionDefaults:
+    def test_moss_auto_text_rules_keep_technical_mixed_text(self):
+        from kokoro_tts.moss.text import clean_text
+
+        text = "AngeVoice v2.6.5.1 调用 OpenAI API，地址是 192.168.1.2:8101。"
+        cleaned = clean_text(text, apply_angevoice_rules="auto", model="moss")
+        assert "v2.6.5.1" in cleaned
+        assert "OpenAI API" in cleaned
+        assert "192.168.1.2:8101" in cleaned
+
+    def test_moss_auto_text_rules_still_normalize_chinese_date(self):
+        from kokoro_tts.moss.text import clean_text
+
+        cleaned = clean_text("今天是2026-05-20。", apply_angevoice_rules="auto", model="moss")
+        assert "二零二六年五月二十日" in cleaned
+
+
+    def test_moss_mixed_english_policy_translates_common_workplace_text(self):
+        from kokoro_tts.moss.text import clean_text
+
+        text = (
+            "被各种deadline追着跑，很容易产生anxiety。"
+            "做一个self-reflection，明确core competitiveness。"
+            "保持work-life balance，提升creativity和productivity，"
+            "实现personal growth，成为best version of yourself。"
+        )
+        cleaned = clean_text(text, apply_angevoice_rules="auto", model="moss")
+        assert "deadline" not in cleaned
+        assert "anxiety" not in cleaned
+        assert "self-reflection" not in cleaned
+        assert "core competitiveness" not in cleaned
+        assert "work-life balance" not in cleaned
+        assert "personal growth" not in cleaned
+        assert "best version of yourself" not in cleaned
+        assert "截止日期" in cleaned
+        assert "焦虑" in cleaned
+        assert "自我反思" in cleaned
+        assert "核心竞争力" in cleaned
+        assert "工作生活平衡" in cleaned
+        assert "个人成长" in cleaned
+        assert "最好的自己" in cleaned
+
+    def test_moss_mixed_english_policy_can_preserve_original_words(self):
+        from kokoro_tts.moss.text import clean_text
+
+        cleaned = clean_text("deadline 和 anxiety", apply_angevoice_rules="auto", model="moss", mixed_english_policy="preserve")
+        assert "deadline" in cleaned
+        assert "anxiety" in cleaned
+
+    def test_moss_vram_snapshot_ttl_reuses_recent_probe(self, monkeypatch):
+        from kokoro_tts.config import TTSConfig
+        from kokoro_tts.moss.vram import VramSnapshot
+        import kokoro_tts.moss_engine as moss_engine_module
+        from kokoro_tts.moss_engine import MossNanoEngine
+
+        calls = {"count": 0}
+
+        def fake_snapshot():
+            calls["count"] += 1
+            return VramSnapshot(True, free_mb=7000, total_mb=7680, source="test")
+
+        monkeypatch.setattr(moss_engine_module, "get_cuda_vram_snapshot", fake_snapshot)
+        engine = MossNanoEngine(
+            TTSConfig(moss_vram_guard_enabled=True, moss_vram_snapshot_ttl_seconds=60),
+            execution_provider="cuda",
+            engine_id="moss-nano-cuda",
+        )
+        assert engine._effective_segment_length() == 120
+        assert engine._effective_text_tokens() == 56
+        assert calls["count"] == 1

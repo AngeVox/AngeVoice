@@ -85,6 +85,7 @@ class MossNanoEngine(MossStreamingMixin):
         self._executor_lock = threading.Lock()
         self._consecutive_timeouts = 0
         self._last_vram_snapshot = None
+        self._last_vram_refresh_at = 0.0
         self._low_vram_mode = False
         self._full_decode_disabled_until = 0.0
         self._full_decode_oom_count = 0
@@ -170,7 +171,8 @@ class MossNanoEngine(MossStreamingMixin):
             "stream_chunk_seconds": self.config.moss_stream_chunk_seconds,
             "stream_queue_max_items": self.config.moss_stream_queue_max_items,
             "speed_supported": False,
-            "text_rules_enabled": bool(self.config.moss_apply_angevoice_rules),
+            "text_rules_enabled": str(self.config.moss_apply_angevoice_rules).lower() != "false",
+            "text_rules_mode": str(self.config.moss_apply_angevoice_rules),
             "experimental": self.execution_provider == "cuda",
             "error": self._load_error,
             "self_test": self._self_test,
@@ -278,6 +280,7 @@ class MossNanoEngine(MossStreamingMixin):
             self._consecutive_timeouts = 0
             self._low_vram_mode = False
             self._last_vram_snapshot = None
+            self._last_vram_refresh_at = 0.0
             with self._prompt_cache_lock:
                 self._prompt_audio_code_cache.clear()
         self._rebuild_executor()
@@ -287,6 +290,10 @@ class MossNanoEngine(MossStreamingMixin):
 
             if torch.cuda.is_available():
                 torch.cuda.empty_cache()
+                try:
+                    torch.cuda.ipc_collect()
+                except Exception:
+                    logger.debug("MOSS CUDA IPC cleanup skipped", exc_info=True)
         except Exception:
             logger.debug("MOSS CUDA cache cleanup skipped", exc_info=True)
 
@@ -537,7 +544,15 @@ class MossNanoEngine(MossStreamingMixin):
             logger=logger,
         )
 
-    def _postprocess_waveform(self, waveform, *, update_quality: bool = True, edge_fade: bool = True, trim_silence: bool = False):
+    def _postprocess_waveform(
+        self,
+        waveform,
+        *,
+        update_quality: bool = True,
+        edge_fade: bool = True,
+        trim_silence: bool = False,
+        compress_silence: bool = False,
+    ):
         processed, quality = normalize_waveform(
             waveform,
             channels=self.channels,
@@ -546,12 +561,25 @@ class MossNanoEngine(MossStreamingMixin):
             peak_normalize_enabled=bool(self.config.moss_output_peak_normalize_enabled),
             declick_enabled=bool(getattr(self.config, "moss_output_declick_enabled", True)),
             edge_fade_samples=(
-                int(self.sample_rate * float(getattr(self.config, "moss_output_edge_fade_ms", 2.0)) / 1000.0)
+                int(self.sample_rate * float(getattr(self.config, "moss_output_edge_fade_ms", 1.5)) / 1000.0)
                 if bool(edge_fade)
                 else 0
             ),
         )
         quality_dict = quality.as_dict()
+        if compress_silence and bool(getattr(self.config, "moss_audio_polish_enabled", True)):
+            processed, silence_metrics = compress_long_silence(
+                processed,
+                sample_rate=self.sample_rate,
+                channels=self.channels,
+                threshold_db=float(getattr(self.config, "moss_trim_silence_db", -45.0)),
+                max_silence_ms=float(getattr(self.config, "moss_max_silence_ms", 550.0)),
+            )
+            quality_dict.update({
+                "stream_long_silence_count_before": silence_metrics.get("long_silence_count", 0),
+                "stream_max_silence_ms_before": silence_metrics.get("max_silence_ms", 0.0),
+                "stream_silence_ratio_before": silence_metrics.get("silence_ratio", 0.0),
+            })
         if trim_silence and bool(getattr(self.config, "moss_trim_silence_enabled", True)):
             processed, trimmed_start_ms, trimmed_end_ms = trim_silence_edges(
                 processed,
@@ -656,7 +684,8 @@ class MossNanoEngine(MossStreamingMixin):
     def _clean_text(self, text: str) -> str:
         return moss_clean_text(
             text,
-            apply_angevoice_rules=bool(self.config.moss_apply_angevoice_rules),
+            apply_angevoice_rules=self.config.moss_apply_angevoice_rules,
+            mixed_english_policy=getattr(self.config, "moss_mixed_english_policy", "translate"),
             model=self.engine_id,
         )
 
@@ -669,10 +698,9 @@ class MossNanoEngine(MossStreamingMixin):
         )
 
     def _vram_status(self) -> dict:
+        if self.execution_provider == "cuda" and bool(getattr(self.config, "moss_vram_guard_enabled", True)):
+            self._refresh_vram_guard(force=False)
         snapshot = self._last_vram_snapshot
-        if snapshot is None and self.execution_provider == "cuda" and bool(getattr(self.config, "moss_vram_guard_enabled", True)):
-            snapshot = get_cuda_vram_snapshot()
-            self._last_vram_snapshot = snapshot
         data = snapshot.as_dict() if snapshot is not None else {"available": False, "source": "not-checked"}
         data.update({
             "low_vram_mode": self._low_vram_mode,
@@ -681,20 +709,26 @@ class MossNanoEngine(MossStreamingMixin):
         })
         return data
 
-    def _refresh_vram_guard(self) -> None:
+    def _refresh_vram_guard(self, *, force: bool = False) -> None:
         if self.execution_provider != "cuda" or not bool(getattr(self.config, "moss_vram_guard_enabled", True)):
             self._low_vram_mode = False
             return
+        now = time.monotonic()
+        ttl = max(0.0, float(getattr(self.config, "moss_vram_snapshot_ttl_seconds", 10.0) or 0.0))
+        if not force and self._last_vram_snapshot is not None and ttl > 0 and now - self._last_vram_refresh_at < ttl:
+            return
         snapshot = get_cuda_vram_snapshot()
         self._last_vram_snapshot = snapshot
+        self._last_vram_refresh_at = now
         if not snapshot.available or snapshot.free_mb is None:
             return
         safe = int(getattr(self.config, "moss_vram_safe_free_mb", 1200) or 0)
         critical = int(getattr(self.config, "moss_vram_critical_free_mb", 600) or 0)
+        was_low = self._low_vram_mode
         self._low_vram_mode = snapshot.free_mb < safe if safe > 0 else False
         if snapshot.free_mb < critical and critical > 0:
             self._disable_full_codec_decode(reason=f"critical free VRAM {snapshot.free_mb}MB < {critical}MB")
-        if self._low_vram_mode:
+        if self._low_vram_mode and not was_low:
             logger.warning(
                 "MOSS VRAM guard: low free VRAM %s/%s MB, using conservative limits",
                 snapshot.free_mb,
@@ -738,6 +772,8 @@ class MossNanoEngine(MossStreamingMixin):
     def _record_full_decode_oom(self, exc: BaseException) -> None:
         self._full_decode_oom_count += 1
         self._low_vram_mode = True
+        self._last_vram_refresh_at = 0.0
+        self._refresh_vram_guard(force=True)
         self._disable_full_codec_decode(reason=f"decode OOM: {exc}")
 
     def _synthesize_single_chunk_incremental(self, chunk_text: str, prompt_audio_codes: list[list[int]]):

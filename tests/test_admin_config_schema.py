@@ -50,8 +50,8 @@ def test_runtime_config_persists_only_changed_values(tmp_path):
 
 
 def test_export_env_patch_uses_schema_env_names():
-    env = export_env_patch({"moss_segment_length": 180, "moss_audio_polish_enabled": True}, only=["moss_segment_length", "moss_audio_polish_enabled"])
-    assert "MOSS_SEGMENT_LENGTH=180" in env
+    env = export_env_patch({"moss_segment_length": 120, "moss_audio_polish_enabled": True}, only=["moss_segment_length", "moss_audio_polish_enabled"])
+    assert "MOSS_SEGMENT_LENGTH=120" in env
     assert "MOSS_AUDIO_POLISH_ENABLED=true" in env
 
 
@@ -86,11 +86,13 @@ def test_admin_config_routes_expose_schema_and_reject_unknown(monkeypatch, tmp_p
 
 def test_nas_stable_profile_is_actually_safe():
     values = profile_values("nas_stable")
-    assert values["moss_segment_length"] == 180
-    assert values["moss_voice_clone_max_text_tokens"] == 64
+    assert values["moss_segment_length"] == 120
+    assert values["moss_voice_clone_max_text_tokens"] == 56
     assert values["moss_max_new_frames"] == 320
-    assert values["moss_stream_queue_max_items"] == 4
+    assert values["moss_stream_queue_max_items"] == 8
     assert values["moss_vram_guard_enabled"] is True
+    assert values["moss_apply_angevoice_rules"] == "auto"
+    assert values["moss_vram_snapshot_ttl_seconds"] == 10.0
 
 
 def test_runtime_config_info_and_delete(tmp_path):
@@ -98,7 +100,7 @@ def test_runtime_config_info_and_delete(tmp_path):
 
     cfg = TTSConfig(runtime_config_file=tmp_path / "runtime-config.json")
     assert runtime_config_info(cfg)["exists"] is False
-    save_runtime_config_values(cfg, {"moss_segment_length": 180})
+    save_runtime_config_values(cfg, {"moss_segment_length": 120})
     info = runtime_config_info(cfg)
     assert info["exists"] is True
     assert info["field_count"] == 1

@@ -37,7 +37,7 @@ MOSS_EXECUTION_PROVIDER=cpu
 MOSS_CUDA_ENABLED=false
 MOSS_PROCESS_ISOLATION_ENABLED=false
 MOSS_REALTIME_STREAMING_DECODE=true
-MOSS_SEGMENT_LENGTH=180
+MOSS_SEGMENT_LENGTH=120
 ```
 
 Meaning / 含义：
@@ -45,12 +45,12 @@ Meaning / 含义：
 - Kokoro uses GPU.
 - MOSS uses CPU by default for stability.
 - MOSS CUDA is not exposed by default because older cards may hit `CUBLAS_STATUS_ALLOC_FAILED`, fallback CPU, low GPU utilization, stutter, or artifacts.
-- MOSS uses a longer segment length (`MOSS_SEGMENT_LENGTH=180`) to reduce long-text stitching artifacts.
+- MOSS uses a stability-first segment length (`MOSS_SEGMENT_LENGTH=120`) to reduce mixed-language drift, stutter and artifacts.
 
 - Kokoro 默认使用 GPU。
 - MOSS 默认走 CPU，优先稳定。
 - 默认不开放 MOSS CUDA，因为旧卡上可能出现 `CUBLAS_STATUS_ALLOC_FAILED`、fallback CPU、GPU 利用率低、卡顿或失真。
-- MOSS 使用更长分段（`MOSS_SEGMENT_LENGTH=180`），减少长文本段间拼接、爆音和卡顿。
+- MOSS 使用稳定优先短分段（`MOSS_SEGMENT_LENGTH=120`），减少中英文混合尾部漂移、卡顿和失真。
 
 ## Optional MOSS CUDA / 可选 MOSS CUDA
 

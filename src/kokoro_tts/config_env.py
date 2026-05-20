@@ -83,6 +83,8 @@ STR_ENV: dict[str, str] = {
     "MOSS_DEFAULT_VOICE": "moss_default_voice",
     "MOSS_SAMPLE_MODE": "moss_sample_mode",
     "MOSS_PROCESS_ISOLATION_PROVIDERS": "moss_process_isolation_providers",
+    "MOSS_APPLY_ANGEVOICE_RULES": "moss_apply_angevoice_rules",
+    "MOSS_MIXED_ENGLISH_POLICY": "moss_mixed_english_policy",
 }
 
 INT_ENV: dict[str, IntEnvSpec] = {
@@ -142,6 +144,7 @@ FLOAT_ENV: dict[str, FloatEnvSpec] = {
     "MOSS_SEGMENT_PAUSE_MS": FloatEnvSpec("moss_segment_pause_ms", 0.0, 2000.0),
     "MOSS_RUNTIME_PAUSE_MAX_MS": FloatEnvSpec("moss_runtime_pause_max_ms", 0.0, 3000.0),
     "MOSS_FULL_CODEC_OOM_COOLDOWN_SECONDS": FloatEnvSpec("moss_full_codec_oom_cooldown_seconds", 0.0, 86400.0),
+    "MOSS_VRAM_SNAPSHOT_TTL_SECONDS": FloatEnvSpec("moss_vram_snapshot_ttl_seconds", 0.0, 3600.0),
     "ANGEVOICE_MODEL_SOURCE_DETECT_TIMEOUT_SECONDS": FloatEnvSpec("model_source_detect_timeout_seconds", 0.1, 10.0),
     "ANGEVOICE_MODEL_SOURCE_PROBE_TIMEOUT_SECONDS": FloatEnvSpec("model_source_probe_timeout_seconds", 0.1, 10.0),
     "ANGEVOICE_IDLE_TIMEOUT_SECONDS": FloatEnvSpec("model_idle_timeout_seconds", 0.0),
@@ -165,7 +168,6 @@ BOOL_ENV: dict[str, str] = {
     "MOSS_CUDA_ENABLED": "moss_cuda_enabled",
     "MOSS_ENABLE_WETEXT_PROCESSING": "moss_enable_wetext_processing",
     "MOSS_ENABLE_NORMALIZE_TTS_TEXT": "moss_enable_normalize_tts_text",
-    "MOSS_APPLY_ANGEVOICE_RULES": "moss_apply_angevoice_rules",
     "MOSS_REALTIME_STREAMING_DECODE": "moss_realtime_streaming_decode",
     "MOSS_CUDA_SELF_TEST_ENABLED": "moss_cuda_self_test_enabled",
     "MOSS_AUTO_FALLBACK_CPU": "moss_auto_fallback_cpu",
