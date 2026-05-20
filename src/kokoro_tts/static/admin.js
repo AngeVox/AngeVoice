@@ -60,7 +60,7 @@ function renderAdminSubnav() {
   if (!tabs.length) {
     holder.innerHTML = '';
     holder.classList.remove('show');
-    document.querySelectorAll('[data-admin-subpanel]').forEach(el => el.classList.remove('hidden-panel'));
+    // 不要移除所有 subpanel 的 hidden-panel，否则会把其他 tab 的面板全部显示出来
     return;
   }
   holder.classList.add('show');

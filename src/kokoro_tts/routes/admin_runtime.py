@@ -6,6 +6,7 @@ import os
 from pathlib import Path
 
 from ..admin_config_schema import (
+    ADMIN_CONFIG_FIELDS,
     apply_admin_config_values,
     config_values,
     delete_runtime_config,
@@ -139,6 +140,10 @@ def apply_config_patch(cfg, patch: AdminConfigPatch) -> tuple[list[str], list[st
     for key in adjusted:
         if key not in changed:
             changed.append(key)
+        # guards 调整了 rebuild_moss 字段时，需要重新标记
+        field_def = ADMIN_CONFIG_FIELDS.get(key)
+        if field_def and getattr(field_def, "rebuild_moss", False):
+            rebuild_moss = True
     if changed:
         save_runtime_config_values(cfg, {name: getattr(cfg, name) for name in changed})
     return changed, restart_required, rebuild_moss
@@ -151,6 +156,9 @@ def apply_config_profile(cfg, profile: str) -> tuple[list[str], list[str], bool]
     for key in adjusted:
         if key not in changed:
             changed.append(key)
+        field_def = ADMIN_CONFIG_FIELDS.get(key)
+        if field_def and getattr(field_def, "rebuild_moss", False):
+            rebuild_moss = True
     if changed:
         save_runtime_config_values(cfg, {name: getattr(cfg, name) for name in changed})
     return changed, restart_required, rebuild_moss
