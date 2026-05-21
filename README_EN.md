@@ -94,6 +94,7 @@ Good fits:
 | OpenAI-compatible API | `POST /v1/audio/speech` with `model/input/voice/speed/response_format` |
 | MOSS-TTS-Nano | OpenMOSS ONNX runtime adapter with preset voices, reference-audio cloning, CPU baseline, and experimental CUDA mode; process isolation is off by default to reduce process overhead on NAS/older GPUs, and can be enabled manually when hard isolation is required |
 | Multi-model runtime | `/v1/models` lists, loads, unloads, and switches engines; cache keys are isolated by model |
+| TTS capabilities | `GET /v1/tts/capabilities` returns current model capabilities, available encodings, and voice details |
 | WebSocket streaming | `WS /ws/v1/tts`; bounded chunks, `cancel` / `stop`, MOSS clone audio in the first JSON message |
 | Chinese text rules | Auto pause punctuation, jieba-first segmentation, fallback lexicon, and common polyphone overrides |
 | Batch synthesis | `POST /v1/audio/batch` returns a ZIP and `manifest.json` |
@@ -209,7 +210,8 @@ Docker health checks treat both `ok` and `idle` as healthy.
 |---|---|
 | Health / metrics / requests | `GET /health`, `GET /stats`, `GET /requests` |
 | Model list / current / switch | `GET /v1/models`, `GET /v1/models/current`, `POST /v1/models/switch` |
-| Voices / formats | `GET /v1/audio/voices`, `GET /v1/audio/formats` |
+| Voices / formats | `GET /v1/audio/voices` (supports `?detail=true` for gender/display name), `GET /v1/audio/formats` |
+| TTS capabilities | `GET /v1/tts/capabilities` |
 | OpenAI-compatible speech | `POST /v1/audio/speech` |
 | Legacy speech / MOSS clone upload | `GET /api/tts`, `POST /api/tts` |
 | WebSocket streaming / MOSS clone streaming | `WS /ws/v1/tts` |

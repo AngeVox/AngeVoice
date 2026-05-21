@@ -35,11 +35,10 @@ class WsSessionState(str, Enum):
 
 
 class TtsWebSocketSession:
-    """One WebSocket request session.
+    """单次 WebSocket 请求会话。
 
-    The route is intentionally thin; parsing, validation, producer lifecycle and
-    cancellation handling live here so future WS features do not keep bloating a
-    single ``ws_tts`` function.
+    路由层保持精简；解析、校验、生产者生命周期和取消处理
+    都在此类中，避免未来新功能不断膨胀单个 ws_tts 函数。
     """
 
     def __init__(self, *, websocket: WebSocket, state: ServiceState):
