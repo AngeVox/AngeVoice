@@ -16,7 +16,7 @@ _CHINA_COUNTRY_CODES = {"CN"}
 
 
 
-_MOSS_VALID_MODEL_SUFFIXES = {".onnx", ".ort", ".bin", ".safetensors"}
+_MOSS_VALID_MODEL_SUFFIXES = {".onnx", ".ort", ".bin", ".safetensors", ".data"}
 _MOSS_BROWSER_MANIFEST = "browser_poc_manifest.json"
 _MOSS_BROWSER_DIR_NAMES = ("", "MOSS-TTS-Nano-100M-ONNX", "MOSS-TTS-Nano-ONNX-CPU")
 
@@ -48,12 +48,19 @@ def _has_runtime_manifest(path: Path) -> bool:
     return (Path(path) / _MOSS_BROWSER_MANIFEST).is_file()
 
 
-def _has_large_model_file(path: Path) -> bool:
-    """判断目录下是否有真实模型权重文件。"""
+def _has_real_moss_asset(path: Path) -> bool:
+    """判断目录下是否有官方 runtime 可用的真实 MOSS 资产。
+
+    ModelScope 仓库里的大权重主要是 ``*.data``，而部分 ``*.onnx``
+    只是几十 KB 的图结构文件。旧逻辑只接受大于 1MB 的 ONNX/ORT/BIN，
+    会把已经下载完成的官方模型误判为无效。
+    """
 
     root = Path(path)
     if not root.exists() or not root.is_dir():
         return False
+    total_bytes = 0
+    has_manifest = _has_runtime_manifest(root)
     for file_path in root.rglob("*"):
         if not file_path.is_file():
             continue
@@ -61,13 +68,18 @@ def _has_large_model_file(path: Path) -> bool:
             continue
         if file_path.suffix.lower() not in _MOSS_VALID_MODEL_SUFFIXES:
             continue
+        if _is_probably_lfs_pointer(file_path):
+            continue
         try:
             size = file_path.stat().st_size
         except OSError:
             continue
-        if size >= 1024 * 1024 and not _is_probably_lfs_pointer(file_path):
+        if size <= 0:
+            continue
+        total_bytes += size
+        if file_path.suffix.lower() == ".data" and size >= 1024 * 1024:
             return True
-    return False
+    return has_manifest and total_bytes >= 1024 * 1024
 
 
 def resolve_valid_moss_model_dir(path: Path, *, log: logging.Logger | None = None) -> Path | None:
@@ -77,7 +89,7 @@ def resolve_valid_moss_model_dir(path: Path, *, log: logging.Logger | None = Non
     if not root.exists() or not root.is_dir():
         return None
     for candidate in _moss_browser_asset_dirs(root):
-        if _has_runtime_manifest(candidate) and _has_large_model_file(candidate):
+        if _has_runtime_manifest(candidate) and _has_real_moss_asset(candidate):
             return candidate
     if log and any(root.rglob("*")):
         lfs_files = [item for item in root.rglob("*") if item.is_file() and _is_probably_lfs_pointer(item)]
@@ -285,6 +297,9 @@ def _moss_download_plan(config) -> list[tuple[str, str]]:
         add("huggingface", hf_repo)
         # MOSS ONNX 默认仓库主要通过 ModelScope 配置，HF 未配置或失败时仍需兜底。
         add("modelscope", ms_repo)
+    else:
+        add("modelscope", ms_repo)
+        add("huggingface", hf_repo)
     return plan
 
 
@@ -322,13 +337,15 @@ def ensure_moss_model_dir(config, *, logger: logging.Logger) -> Path | None:
 
     downloaded = _download_moss_model_assets(config, target, logger=logger)
     if downloaded:
-        config.moss_model_dir = downloaded
-        return downloaded
+        resolved = resolve_valid_moss_model_dir(downloaded, log=logger) or resolve_valid_moss_model_dir(target, log=logger)
+        if resolved:
+            config.moss_model_dir = resolved
+            return resolved
 
-    config.moss_model_dir = None
+    config.moss_model_dir = target
     logger.warning(
         "未找到有效的 MOSS ONNX 模型资产，已尝试自动下载但仍不可用。"
         "请检查网络，或手动把 browser_poc_manifest.json 及 ONNX 资产放入：%s",
         target,
     )
-    return None
+    return target

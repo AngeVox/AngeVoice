@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "angevoice"
-version = "2.6.5.3.1"
+version = "2.6.5.3.2"
 description = "AngeVoice: lightweight Chinese TTS service built on Kokoro v1.1"
 readme = "README.md"
 license = {text = "MIT"}

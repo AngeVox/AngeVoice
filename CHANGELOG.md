@@ -6,12 +6,13 @@ Format based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and [Se
 
 ---
 
-## [2.6.5.3.1] - 2026-05-21
+## [2.6.5.3.2] - 2026-05-21
 
 ### 🚑 紧急修复
-- 修复 MOSS ONNX 自动下载兜底：当 `/app/models/MOSS-TTS-Nano-100M-ONNX` 目录存在但缺少 `browser_poc_manifest.json` 或真实 ONNX 资产时，不再直接交给官方 runtime 报 500，而是自动尝试从 `MOSS_MODELSCOPE_REPO` 下载补全。
+- 修复 MOSS ONNX 自动下载兜底：当 `/app/models/MOSS-TTS-Nano-100M-ONNX` 目录存在但缺少 `browser_poc_manifest.json` 或真实模型资产时，不再直接交给官方 runtime 报 500，而是自动尝试从 `MOSS_MODELSCOPE_REPO` 下载补全。
+- 修复 MOSS 资产有效性误判：官方 ModelScope 包里的大权重主要是 `*.data`，部分 `*.onnx` 只有几十 KB。现在会把 `browser_poc_manifest.json` + 真实 `*.data` 权重识别为有效模型，避免下载成功后仍被判定为失败。
+- 修复 Kokoro 音色库为空：上游 `kokoro` 下载的音色可能位于 Hugging Face 缓存快照 `snapshots/<sha>/voices`，现在音色列表和本地音色解析都会扫描该目录。
 - 新增可选 `MOSS_HF_REPO`，如上游提供 Hugging Face ONNX 仓库可手动填写；默认继续使用 ModelScope 作为 MOSS 模型兜底源。
-
 
 ### 🎤 TTS 后端完整包
 - 集成用户提交的 TTS 后端补丁（130 文件），新增 `/v1/tts/capabilities` 端点、`response_encoding=base64` JSON 响应、`/v1/audio/voices?detail=true` 音色详情、`emotion`/`emotion_strength`/`style_prompt` 保留字段。

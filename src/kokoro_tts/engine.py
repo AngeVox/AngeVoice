@@ -19,7 +19,7 @@ from .audio import encode_audio_segment, normalize_audio_array, write_wav_bytes
 from .config import TTSConfig, load_config
 from .zh_rules import normalize_chinese_rules
 from .text_segmenter import segment_text_natural
-from .kokoro_assets import has_valid_kokoro_local_assets, is_valid_kokoro_voice_file, models_root
+from .kokoro_assets import has_valid_kokoro_local_assets, is_valid_kokoro_voice_file, kokoro_voice_dir_candidates
 from .model_sources import ensure_kokoro_model_dir, resolve_model_source
 
 logger = logging.getLogger(__name__)
@@ -338,38 +338,29 @@ class TTSEngine:
 
 
     def _safe_kokoro_repo_id(self) -> str:
-        """Return a valid repository id for Kokoro internals.
+        """返回可交给 Kokoro 上游内部使用的仓库 ID。
 
-        Local model directories such as /app/models are passed separately via
-        explicit config/model paths. They must not be used as repo_id because
-        huggingface_hub validates repo_id even when files are local.
+        本地模型目录会通过显式 config/model 参数传入，不能被误当成
+        repo_id，否则 huggingface_hub 会在校验阶段报错。
         """
         repo_id = str(getattr(self.config, "kokoro_hf_repo", self.HF_REPO) or self.HF_REPO).strip()
-        if not repo_id or repo_id.startswith(('/', './', '../')):
+        if not repo_id or repo_id.startswith(("/", "./", "../")):
             return self.HF_REPO
         return repo_id
 
     def _resolve_voice_for_pipeline(self, voice: str) -> str:
-        """Resolve a voice name to a local .pt file when available.
+        """优先把音色名解析成本地 ``.pt`` 文件。
 
-        This keeps offline Docker/NAS deployments from asking Kokoro to fetch
-        voices from Hugging Face when the unified models directory already contains them.
+        兼容统一模型目录、旧 ``models/voices`` 目录，以及 Hugging Face
+        缓存快照目录。若本地文件无效，则把音色名交给上游 Kokoro 处理。
         """
         raw = str(voice or "").strip()
         if not raw:
             return raw
-        # 不允许任意路径穿越，但允许读取配置音色目录中的文件。
-        #
         name = Path(raw).name
         filename = name if name.endswith(".pt") else f"{name}.pt"
-        # 新布局优先：models/models--hexgrad--Kokoro-82M-v1.1-zh/voices。
-        # 兼容旧布局：models/voices。若文件是 LFS 指针或下载错误页，
-        # 校验函数只会对同一路径 warning 一次，避免长文本刷屏。
-        candidates = [
-            self.config.voices_dir / filename,
-            models_root() / "voices" / filename,
-        ]
-        for candidate in candidates:
+        for voice_dir in kokoro_voice_dir_candidates(self.config.model_dir):
+            candidate = voice_dir / filename
             if is_valid_kokoro_voice_file(candidate, log=logger):
                 return str(candidate)
         return raw

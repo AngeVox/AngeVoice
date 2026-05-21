@@ -459,6 +459,14 @@ docker exec -it angevoice-gpu ls -lh /app/models/models--hexgrad--Kokoro-82M-v1.
 
 如果目录为空，重新下载模型音色。
 
+从 2.6.5.3.2 起，前端音色库也会扫描 Hugging Face 缓存快照目录：
+
+```text
+/app/models/models--hexgrad--Kokoro-82M-v1.1-zh/snapshots/<sha>/voices/
+```
+
+因此即使上游 `kokoro` 包把音色下载到缓存快照里，Studio 也应能显示音色。若仍显示 0，请检查 `.pt` 是否是 100 多字节的 Git LFS 指针，或是否是 HTML/JSON 下载错误页。
+
 ## 13. 上传 Kokoro `.pt` 音色失败
 
 上传接口需要同时开启：
@@ -631,4 +639,4 @@ KOKORO_TRUST_PROXY_HEADERS=true
 
 ## MOSS 切换时报 browser_onnx model assets not found
 
-如果切换 `moss-nano-cpu` 或 `moss-nano-cuda` 时看到 `browser_onnx model assets not found under the provided --model-dir`，说明 `MOSS_MODEL_DIR` 存在但没有真正的 ONNX 模型资产。2.6.5.3.1 起，服务会在目录为空、只有 README、Git LFS 指针或占位文件时自动尝试从 `MOSS_MODELSCOPE_REPO` 下载。仍失败时请检查网络，或手动把 `browser_poc_manifest.json` 和 ONNX 文件放入 `/app/models/MOSS-TTS-Nano-100M-ONNX`。
+如果切换 `moss-nano-cpu` 或 `moss-nano-cuda` 时看到 `browser_onnx model assets not found under the provided --model-dir`，说明 `MOSS_MODEL_DIR` 存在但没有真正的 ONNX 模型资产。2.6.5.3.2 起，服务会在目录为空、只有 README、Git LFS 指针或占位文件时自动尝试从 `MOSS_MODELSCOPE_REPO` 下载。官方 ModelScope 包中的大权重文件是 `*.data`，不是所有 ONNX 图文件都会超过 1MB；2.6.5.3.2 已按 `browser_poc_manifest.json` + 真实 `*.data`/ONNX 资产判断。仍失败时请检查网络，或手动把 `browser_poc_manifest.json`、`moss_tts_global_shared.data`、`moss_tts_local_shared.data` 及 ONNX 文件放入 `/app/models/MOSS-TTS-Nano-100M-ONNX`。

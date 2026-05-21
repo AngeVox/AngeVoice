@@ -17,7 +17,13 @@ logger = logging.getLogger(__name__)
 
 from .admin_config_schema import load_runtime_config
 from .config_env import apply_env
-from .kokoro_assets import default_kokoro_model_dir, is_valid_kokoro_model_file, kokoro_model_dir_candidates, models_root
+from .kokoro_assets import (
+    default_kokoro_model_dir,
+    is_valid_kokoro_model_file,
+    is_valid_kokoro_voice_file,
+    kokoro_model_dir_candidates,
+    kokoro_voice_dir_candidates,
+)
 from .config_ids import (
     MODEL_FILENAME,
     MOSS_GENERIC_MODEL_IDS,
@@ -73,7 +79,7 @@ class TTSConfig:
     default_speed: float = 1.0
     default_voice: str = "zm_010"
     _voices_cache: list[str] = field(default_factory=list, init=False, repr=False)
-    _voices_cache_signature: tuple[tuple[str, int], ...] = field(default_factory=tuple, init=False, repr=False)
+    _voices_cache_signature: tuple[tuple[str, int, int], ...] = field(default_factory=tuple, init=False, repr=False)
 
     cors_origins: list = field(default_factory=lambda: ["http://localhost:8000"])
     api_key: Optional[str] = None
@@ -214,16 +220,17 @@ class TTSConfig:
         return self.model_dir / "voices"
 
     def get_voices(self) -> list[str]:
-        """列出 Kokoro 音色名称，兼容新旧模型目录布局。
+        """列出 Kokoro 音色名称，兼容本地目录和 Hugging Face 缓存快照。
 
-        音色列表会被前端和状态接口频繁读取，因此这里做轻量缓存。
-        缓存失效使用 **per-file mtime** 组合签名，避免在时间戳粒度
-        较粗的文件系统（FAT32 / 部分 NAS）上因目录 mtime 未变而
-        漏掉新增的音色文件。
+        上游 ``kokoro`` 包下载音色时会放到 Hugging Face 缓存快照目录，
+        例如 ``models--hexgrad--Kokoro-82M-v1.1-zh/snapshots/<sha>/voices``。
+        统一模型目录后如果只扫描 ``KOKORO_MODEL_DIR/voices``，前端音色库
+        会显示为 0。这里统一扫描新目录、旧目录和缓存快照目录，并过滤
+        Git LFS 指针、HTML 错误页等无效 ``.pt`` 文件。
         """
 
-        voice_dirs = [self.voices_dir, models_root() / "voices"]
-        signature: list[tuple[str, int]] = []
+        voice_dirs = kokoro_voice_dir_candidates(self.model_dir)
+        signature: list[tuple[str, int, int]] = []
         for voice_dir in voice_dirs:
             if not voice_dir.is_dir():
                 continue
@@ -231,9 +238,9 @@ class TTSConfig:
                 for f in sorted(voice_dir.glob("*.pt")):
                     try:
                         st = f.stat()
-                        signature.append((str(f), int(st.st_mtime_ns)))
+                        signature.append((str(f), int(st.st_mtime_ns), int(st.st_size)))
                     except OSError:
-                        signature.append((str(f), -1))
+                        signature.append((str(f), -1, -1))
             except OSError:
                 continue
 
@@ -243,8 +250,11 @@ class TTSConfig:
 
         voices: set[str] = set()
         for voice_dir in voice_dirs:
-            if voice_dir.exists():
-                voices.update(f.stem for f in voice_dir.glob("*.pt"))
+            if not voice_dir.is_dir():
+                continue
+            for item in sorted(voice_dir.glob("*.pt")):
+                if is_valid_kokoro_voice_file(item, log=logger):
+                    voices.add(item.stem)
         self._voices_cache = sorted(voices)
         self._voices_cache_signature = current_signature
         return list(self._voices_cache)

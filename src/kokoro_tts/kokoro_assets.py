@@ -97,6 +97,37 @@ def _has_torch_signature(path: Path) -> bool:
     return _read_head(path, 8).startswith(_TORCH_SIGNATURES)
 
 
+
+
+def kokoro_voice_dir_candidates(model_dir: Path | None = None) -> list[Path]:
+    """返回 Kokoro 音色目录候选，兼容本地目录和 Hugging Face 缓存快照。"""
+
+    root = models_root()
+    repo_dir = default_kokoro_model_dir(root)
+    candidates: list[Path] = []
+    if model_dir:
+        base = Path(model_dir).expanduser()
+        candidates.append(base / "voices")
+        candidates.extend(sorted((base / "snapshots").glob("*/voices")))
+    candidates.extend(
+        [
+            repo_dir / "voices",
+            root / "voices",
+        ]
+    )
+    candidates.extend(sorted((repo_dir / "snapshots").glob("*/voices")))
+    candidates.extend(sorted((root / "models--hexgrad--Kokoro-82M-v1.1-zh" / "snapshots").glob("*/voices")))
+
+    seen: set[str] = set()
+    deduped: list[Path] = []
+    for item in candidates:
+        key = str(item)
+        if key in seen:
+            continue
+        seen.add(key)
+        deduped.append(item)
+    return deduped
+
 def is_valid_kokoro_weight_file(path: Path, *, min_bytes: int, label: str, log: logging.Logger | None = None) -> bool:
     """校验 Kokoro 模型/音色权重是否像真实本地文件。"""
 

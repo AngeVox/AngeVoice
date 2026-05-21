@@ -41,13 +41,8 @@ def create_runtime(*, config, provider: str, provider_patch_lock: Lock, logger):
         ) from exc
 
     model_dir = ensure_moss_model_dir(config, logger=logger)
-    if not model_dir:
-        raise RuntimeError(
-            "MOSS 模型目录无效或下载失败。"
-            "请检查网络连接，或手动将 browser_poc_manifest.json 及 ONNX 资产放入 models/MOSS-TTS-Nano-100M-ONNX/ 目录。"
-        )
     runtime_kwargs = {
-        "model_dir": str(model_dir),
+        "model_dir": str(model_dir) if model_dir else None,
         "thread_count": config.moss_cpu_threads,
         "max_new_frames": config.moss_max_new_frames,
         "do_sample": config.moss_sample_mode != "greedy",

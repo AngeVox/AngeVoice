@@ -7,7 +7,7 @@ from unittest.mock import MagicMock, patch
 import pytest
 
 sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
-EXPECTED_VERSION = "2.6.5.3.1"
+EXPECTED_VERSION = "2.6.5.3.2"
 
 
 def _has_module(name: str) -> bool:
@@ -601,9 +601,9 @@ class TestMossProductionDefaults:
     def test_moss_auto_text_rules_keep_technical_mixed_text(self):
         from kokoro_tts.moss.text import clean_text
 
-        text = "AngeVoice v2.6.5.3.1 调用 OpenAI API，地址是 192.168.1.2:8101。"
+        text = "AngeVoice v2.6.5.3.2 调用 OpenAI API，地址是 192.168.1.2:8101。"
         cleaned = clean_text(text, apply_angevoice_rules="auto", model="moss")
-        assert "v2.6.5.3.1" in cleaned
+        assert "v2.6.5.3.2" in cleaned
         assert "OpenAI API" in cleaned
         assert "192.168.1.2:8101" in cleaned
 
