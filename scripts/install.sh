@@ -216,6 +216,7 @@ prepare_model_dirs() {
   mkdir -p \
     models/models--hexgrad--Kokoro-82M-v1.1-zh/voices \
     models/MOSS-TTS-Nano-100M-ONNX \
+    models/MOSS-Audio-Tokenizer-Nano-ONNX \
     models/modelscope-cache \
     models/.hf \
     outputs
@@ -229,6 +230,10 @@ prepare_model_dirs() {
   if [[ -d moss_models && -z "$(find models/MOSS-TTS-Nano-100M-ONNX -mindepth 1 -maxdepth 1 -print -quit 2>/dev/null)" ]]; then
     log "迁移旧 MOSS 模型目录：moss_models -> models/MOSS-TTS-Nano-100M-ONNX"
     cp -a moss_models/. models/MOSS-TTS-Nano-100M-ONNX/ || warn "旧 MOSS 模型迁移失败，可忽略并让服务重新下载。"
+  fi
+  if [[ -d moss_audio_tokenizer && -z "$(find models/MOSS-Audio-Tokenizer-Nano-ONNX -mindepth 1 -maxdepth 1 -print -quit 2>/dev/null)" ]]; then
+    log "迁移旧 MOSS Audio Tokenizer 目录：moss_audio_tokenizer -> models/MOSS-Audio-Tokenizer-Nano-ONNX"
+    cp -a moss_audio_tokenizer/. models/MOSS-Audio-Tokenizer-Nano-ONNX/ || warn "旧 MOSS Audio Tokenizer 迁移失败，可忽略并让服务重新下载。"
   fi
 }
 

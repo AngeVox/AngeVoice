@@ -1,4 +1,4 @@
-"""模型源选择与可选 ModelScope 预取工具。"""
+"""模型源选择与可选 ModelScope / Hugging Face 预取工具。"""
 
 from __future__ import annotations
 
@@ -8,17 +8,27 @@ import urllib.error
 import urllib.request
 from pathlib import Path
 
-from .kokoro_assets import default_kokoro_model_dir, default_moss_model_dir, has_valid_kokoro_local_assets
+from .kokoro_assets import (
+    KOKORO_MODEL_FILENAME,
+    default_kokoro_model_dir,
+    default_moss_audio_tokenizer_dir,
+    default_moss_model_dir,
+    has_valid_kokoro_local_assets,
+    is_valid_kokoro_voice_file,
+    kokoro_voice_dir_candidates,
+)
 
 logger = logging.getLogger(__name__)
 
 _CHINA_COUNTRY_CODES = {"CN"}
 
-
-
 _MOSS_VALID_MODEL_SUFFIXES = {".onnx", ".ort", ".bin", ".safetensors", ".data"}
 _MOSS_BROWSER_MANIFEST = "browser_poc_manifest.json"
 _MOSS_BROWSER_DIR_NAMES = ("", "MOSS-TTS-Nano-100M-ONNX", "MOSS-TTS-Nano-ONNX-CPU")
+_MOSS_TOKENIZER_META = "codec_browser_onnx_meta.json"
+_MOSS_TOKENIZER_DIR_NAMES = ("", "MOSS-Audio-Tokenizer-Nano-ONNX")
+_KOKORO_MIN_PREFETCHED_VOICES = 2
+_KOKORO_HF_ALLOW_PATTERNS = ("config.json", KOKORO_MODEL_FILENAME, "voices/*.pt")
 
 
 def _is_probably_lfs_pointer(path: Path) -> bool:
@@ -30,16 +40,26 @@ def _is_probably_lfs_pointer(path: Path) -> bool:
     return head.startswith(b"version https://git-lfs.github.com/spec/v1")
 
 
-def _moss_browser_asset_dirs(path: Path) -> list[Path]:
-    """返回官方 runtime 会尝试读取 browser_onnx 资产的目录。"""
-
+def _asset_candidate_dirs(path: Path, names: tuple[str, ...]) -> list[Path]:
     root = Path(path).expanduser()
     dirs: list[Path] = []
-    for name in _MOSS_BROWSER_DIR_NAMES:
+    for name in names:
         candidate = root / name if name else root
         if candidate not in dirs:
             dirs.append(candidate)
     return dirs
+
+
+def _moss_browser_asset_dirs(path: Path) -> list[Path]:
+    """返回官方 runtime 会尝试读取 browser_onnx 资产的目录。"""
+
+    return _asset_candidate_dirs(path, _MOSS_BROWSER_DIR_NAMES)
+
+
+def _moss_audio_tokenizer_asset_dirs(path: Path) -> list[Path]:
+    """返回 MOSS codec/audio-tokenizer 资产目录候选。"""
+
+    return _asset_candidate_dirs(path, _MOSS_TOKENIZER_DIR_NAMES)
 
 
 def _has_runtime_manifest(path: Path) -> bool:
@@ -48,19 +68,17 @@ def _has_runtime_manifest(path: Path) -> bool:
     return (Path(path) / _MOSS_BROWSER_MANIFEST).is_file()
 
 
-def _has_real_moss_asset(path: Path) -> bool:
-    """判断目录下是否有官方 runtime 可用的真实 MOSS 资产。
+def _has_tokenizer_meta(path: Path) -> bool:
+    """判断目录是否包含 MOSS Audio Tokenizer 必需的 codec meta。"""
 
-    ModelScope 仓库里的大权重主要是 ``*.data``，而部分 ``*.onnx``
-    只是几十 KB 的图结构文件。旧逻辑只接受大于 1MB 的 ONNX/ORT/BIN，
-    会把已经下载完成的官方模型误判为无效。
-    """
+    return (Path(path) / _MOSS_TOKENIZER_META).is_file()
 
+
+def _has_real_onnx_asset(path: Path, *, min_total_bytes: int = 1024 * 1024) -> bool:
     root = Path(path)
     if not root.exists() or not root.is_dir():
         return False
     total_bytes = 0
-    has_manifest = _has_runtime_manifest(root)
     for file_path in root.rglob("*"):
         if not file_path.is_file():
             continue
@@ -77,9 +95,32 @@ def _has_real_moss_asset(path: Path) -> bool:
         if size <= 0:
             continue
         total_bytes += size
-        if file_path.suffix.lower() == ".data" and size >= 1024 * 1024:
+        if file_path.suffix.lower() == ".data" and size >= min_total_bytes:
             return True
-    return has_manifest and total_bytes >= 1024 * 1024
+    return total_bytes >= min_total_bytes
+
+
+def _has_real_moss_asset(path: Path) -> bool:
+    """判断目录下是否有官方 runtime 可用的真实 MOSS 资产。
+
+    ModelScope 仓库里的大权重主要是 ``*.data``，而部分 ``*.onnx``
+    只是几十 KB 的图结构文件。旧逻辑只接受大于 1MB 的 ONNX/ORT/BIN，
+    会把已经下载完成的官方模型误判为无效。
+    """
+
+    root = Path(path)
+    if not root.exists() or not root.is_dir():
+        return False
+    return _has_runtime_manifest(root) and _has_real_onnx_asset(root)
+
+
+def _has_real_moss_audio_tokenizer_asset(path: Path) -> bool:
+    """判断目录下是否有 MOSS Audio Tokenizer 的真实 ONNX 资产。"""
+
+    root = Path(path)
+    if not root.exists() or not root.is_dir():
+        return False
+    return _has_tokenizer_meta(root) and _has_real_onnx_asset(root)
 
 
 def resolve_valid_moss_model_dir(path: Path, *, log: logging.Logger | None = None) -> Path | None:
@@ -89,7 +130,7 @@ def resolve_valid_moss_model_dir(path: Path, *, log: logging.Logger | None = Non
     if not root.exists() or not root.is_dir():
         return None
     for candidate in _moss_browser_asset_dirs(root):
-        if _has_runtime_manifest(candidate) and _has_real_moss_asset(candidate):
+        if _has_real_moss_asset(candidate):
             return candidate
     if log and any(root.rglob("*")):
         lfs_files = [item for item in root.rglob("*") if item.is_file() and _is_probably_lfs_pointer(item)]
@@ -104,10 +145,39 @@ def resolve_valid_moss_model_dir(path: Path, *, log: logging.Logger | None = Non
     return None
 
 
+def resolve_valid_moss_audio_tokenizer_dir(path: Path, *, log: logging.Logger | None = None) -> Path | None:
+    """解析可直接交给官方 runtime 的 MOSS Audio Tokenizer 目录。"""
+
+    root = Path(path).expanduser()
+    if not root.exists() or not root.is_dir():
+        return None
+    for candidate in _moss_audio_tokenizer_asset_dirs(root):
+        if _has_real_moss_audio_tokenizer_asset(candidate):
+            return candidate
+    if log and any(root.rglob("*")):
+        lfs_files = [item for item in root.rglob("*") if item.is_file() and _is_probably_lfs_pointer(item)]
+        if lfs_files:
+            log.warning("MOSS Audio Tokenizer 目录 %s 似乎只有 Git LFS 指针或不完整文件，将继续尝试下载/补全。", root)
+        else:
+            log.warning(
+                "MOSS Audio Tokenizer 目录 %s 缺少 %s 或真实 ONNX 权重，将继续尝试下载/补全。",
+                root,
+                _MOSS_TOKENIZER_META,
+            )
+    return None
+
+
 def has_valid_moss_model_assets(path: Path, *, log: logging.Logger | None = None) -> bool:
     """判断 MOSS 模型目录是否能被官方 runtime 直接加载。"""
 
     return resolve_valid_moss_model_dir(path, log=log) is not None
+
+
+def has_valid_moss_audio_tokenizer_assets(path: Path, *, log: logging.Logger | None = None) -> bool:
+    """判断 MOSS Audio Tokenizer 目录是否能被官方 runtime 直接加载。"""
+
+    return resolve_valid_moss_audio_tokenizer_dir(path, log=log) is not None
+
 
 def _detect_country(config) -> str:
     cached = str(getattr(config, "model_source_country", "") or "").strip().upper()
@@ -221,69 +291,42 @@ def _modelscope_snapshot_download(repo_id: str, target_dir: Path, *, logger: log
     return Path(path)
 
 
-def _huggingface_snapshot_download(repo_id: str, target_dir: Path, *, logger: logging.Logger) -> Path | None:
+def _huggingface_snapshot_download(
+    repo_id: str,
+    target_dir: Path,
+    *,
+    logger: logging.Logger,
+    allow_patterns: tuple[str, ...] | list[str] | None = None,
+) -> Path | None:
     try:
         from huggingface_hub import snapshot_download
     except Exception:
         logger.warning(
-            "huggingface_hub 不可用，无法从 Hugging Face 下载 MOSS 模型：%s",
+            "huggingface_hub 不可用，无法从 Hugging Face 下载模型：%s",
             repo_id,
         )
         return None
     target_dir.mkdir(parents=True, exist_ok=True)
-    logger.info("从 Hugging Face 下载 MOSS 模型：%s -> %s", repo_id, target_dir)
+    logger.info("从 Hugging Face 下载模型：%s -> %s", repo_id, target_dir)
     try:
-        path = snapshot_download(
-            repo_id=repo_id,
-            local_dir=str(target_dir),
-            local_dir_use_symlinks=False,
-        )
+        kwargs = {
+            "repo_id": repo_id,
+            "local_dir": str(target_dir),
+            "local_dir_use_symlinks": False,
+        }
+        if allow_patterns:
+            kwargs["allow_patterns"] = list(allow_patterns)
+        path = snapshot_download(**kwargs)
     except Exception:
-        logger.warning("Hugging Face MOSS 模型下载失败：%s", repo_id, exc_info=True)
+        logger.warning("Hugging Face 模型下载失败：%s", repo_id, exc_info=True)
         return None
     return Path(path)
 
 
-def ensure_kokoro_model_dir(config, *, logger: logging.Logger) -> Path | None:
-    """确保 Kokoro 本地模型目录可用。
-
-    只在 ModelScope 模式下主动预取。若本地目录只有 Git LFS 指针或损坏文件，
-    不会误判为可用；Hugging Face 模式则交给上游 ``kokoro`` 包按 repo_id 下载。
-    ModelScope 下载目标也统一放进 ``models/models--hexgrad--Kokoro-82M-v1.1-zh``。
-    """
-
-    current_dir = Path(config.model_dir)
-    if has_valid_kokoro_local_assets(current_dir, log=logger):
-        return current_dir
-    target_dir = default_kokoro_model_dir()
-    if has_valid_kokoro_local_assets(target_dir, log=logger):
-        config.model_dir = target_dir
-        return target_dir
-    if resolve_model_source(config) != "modelscope":
-        config.model_dir = target_dir
-        return None
-    repo = str(getattr(config, "kokoro_modelscope_repo", "") or "").strip()
-    if not repo:
-        config.model_dir = target_dir
-        return None
-    path = _modelscope_snapshot_download(repo, target_dir, logger=logger)
-    if has_valid_kokoro_local_assets(target_dir, log=logger):
-        config.model_dir = target_dir
-        return target_dir
-    if path and has_valid_kokoro_local_assets(Path(path), log=logger):
-        config.model_dir = Path(path)
-        return Path(path)
-    logger.warning("ModelScope 下载后仍未找到有效 Kokoro 权重，将回退到上游 repo_id 下载路径。")
-    config.model_dir = target_dir
-    return None
-
-
-def _moss_download_plan(config) -> list[tuple[str, str]]:
-    """返回 MOSS 模型下载顺序。"""
-
+def _generic_download_plan(config, *, hf_attr: str, ms_attr: str) -> list[tuple[str, str]]:
     source = resolve_model_source(config)
-    hf_repo = str(getattr(config, "moss_hf_repo", "") or "").strip()
-    ms_repo = str(getattr(config, "moss_modelscope_repo", "") or "").strip()
+    hf_repo = str(getattr(config, hf_attr, "") or "").strip()
+    ms_repo = str(getattr(config, ms_attr, "") or "").strip()
     plan: list[tuple[str, str]] = []
 
     def add(kind: str, repo: str) -> None:
@@ -295,12 +338,111 @@ def _moss_download_plan(config) -> list[tuple[str, str]]:
         add("huggingface", hf_repo)
     elif source == "huggingface":
         add("huggingface", hf_repo)
-        # MOSS ONNX 默认仓库主要通过 ModelScope 配置，HF 未配置或失败时仍需兜底。
+        # 部分模型默认只有 ModelScope 仓库配置，HF 未配置或失败时仍需兜底。
         add("modelscope", ms_repo)
     else:
         add("modelscope", ms_repo)
         add("huggingface", hf_repo)
     return plan
+
+
+def _kokoro_download_plan(config) -> list[tuple[str, str]]:
+    return _generic_download_plan(config, hf_attr="kokoro_hf_repo", ms_attr="kokoro_modelscope_repo")
+
+
+def _moss_download_plan(config) -> list[tuple[str, str]]:
+    """返回 MOSS 模型下载顺序。"""
+
+    return _generic_download_plan(config, hf_attr="moss_hf_repo", ms_attr="moss_modelscope_repo")
+
+
+def _moss_audio_tokenizer_download_plan(config) -> list[tuple[str, str]]:
+    """返回 MOSS Audio Tokenizer 下载顺序。"""
+
+    return _generic_download_plan(
+        config,
+        hf_attr="moss_audio_tokenizer_hf_repo",
+        ms_attr="moss_audio_tokenizer_modelscope_repo",
+    )
+
+
+def _kokoro_voice_count(model_dir: Path) -> int:
+    count = 0
+    for voice_dir in kokoro_voice_dir_candidates(model_dir):
+        if not voice_dir.is_dir():
+            continue
+        for item in voice_dir.glob("*.pt"):
+            if is_valid_kokoro_voice_file(item, log=logger):
+                count += 1
+    return count
+
+
+def _download_kokoro_assets(config, target: Path, *, logger: logging.Logger) -> Path | None:
+    """按可用源预取 Kokoro 主模型、config 和全部 voices/*.pt。"""
+
+    for source, repo in _kokoro_download_plan(config):
+        if source == "modelscope":
+            path = _modelscope_snapshot_download(repo, target, logger=logger)
+        else:
+            path = _huggingface_snapshot_download(
+                repo,
+                target,
+                logger=logger,
+                allow_patterns=_KOKORO_HF_ALLOW_PATTERNS,
+            )
+        candidates = [target]
+        if path:
+            candidates.insert(0, Path(path).expanduser())
+        for candidate in candidates:
+            if has_valid_kokoro_local_assets(candidate, log=logger):
+                return candidate
+        logger.warning("从 %s 下载后仍未发现有效 Kokoro 模型资产：%s", source, repo)
+    return None
+
+
+def ensure_kokoro_model_dir(config, *, logger: logging.Logger) -> Path | None:
+    """确保 Kokoro 本地模型目录可用，并尽量预取完整音色库。
+
+    旧逻辑在 Hugging Face 模式下把下载交给 ``kokoro`` 上游包懒加载，
+    结果只会在用户第一次选择某个音色时下载该 ``.pt``，前端音色库经常
+    只剩 ``zm_010``。这里统一在模型目录中预取 ``config.json``、主权重
+    和 ``voices/*.pt``，让 Docker 持久化目录真正自洽。
+    """
+
+    current_dir = Path(config.model_dir).expanduser()
+    prefetch_voices = bool(getattr(config, "kokoro_prefetch_voices", True))
+
+    def _is_good_enough(path: Path) -> bool:
+        if not has_valid_kokoro_local_assets(path, log=logger):
+            return False
+        if not prefetch_voices:
+            return True
+        return _kokoro_voice_count(path) >= _KOKORO_MIN_PREFETCHED_VOICES
+
+    if _is_good_enough(current_dir):
+        return current_dir
+
+    target_dir = default_kokoro_model_dir()
+    if _is_good_enough(target_dir):
+        config.model_dir = target_dir
+        return target_dir
+
+    # 若模型已有效但音色不足，仍尝试在同一目录补齐 voices/*.pt。
+    download_target = current_dir if has_valid_kokoro_local_assets(current_dir, log=logger) else target_dir
+    path = _download_kokoro_assets(config, download_target, logger=logger)
+    for candidate in [Path(path).expanduser()] if path else []:
+        if has_valid_kokoro_local_assets(candidate, log=logger):
+            config.model_dir = candidate
+            return candidate
+    if has_valid_kokoro_local_assets(download_target, log=logger):
+        config.model_dir = download_target
+        if prefetch_voices and _kokoro_voice_count(download_target) < _KOKORO_MIN_PREFETCHED_VOICES:
+            logger.warning("Kokoro 主模型可用，但音色预取不完整；运行时仍可能按需下载缺失音色。")
+        return download_target
+
+    logger.warning("下载后仍未找到有效 Kokoro 权重，将回退到上游 repo_id 懒加载路径。")
+    config.model_dir = target_dir
+    return None
 
 
 def _download_moss_model_assets(config, target: Path, *, logger: logging.Logger) -> Path | None:
@@ -318,6 +460,24 @@ def _download_moss_model_assets(config, target: Path, *, logger: logging.Logger)
             if has_valid_moss_model_assets(candidate, log=logger):
                 return candidate
         logger.warning("从 %s 下载后仍未发现有效 MOSS 模型资产：%s", source, repo)
+    return None
+
+
+def _download_moss_audio_tokenizer_assets(config, target: Path, *, logger: logging.Logger) -> Path | None:
+    """按可用源下载 MOSS Audio Tokenizer / codec ONNX 资产。"""
+
+    for source, repo in _moss_audio_tokenizer_download_plan(config):
+        if source == "modelscope":
+            path = _modelscope_snapshot_download(repo, target, logger=logger)
+        else:
+            path = _huggingface_snapshot_download(repo, target, logger=logger)
+        candidates = [target]
+        if path:
+            candidates.insert(0, Path(path).expanduser())
+        for candidate in candidates:
+            if has_valid_moss_audio_tokenizer_assets(candidate, log=logger):
+                return candidate
+        logger.warning("从 %s 下载后仍未发现有效 MOSS Audio Tokenizer 资产：%s", source, repo)
     return None
 
 
@@ -346,6 +506,41 @@ def ensure_moss_model_dir(config, *, logger: logging.Logger) -> Path | None:
     logger.warning(
         "未找到有效的 MOSS ONNX 模型资产，已尝试自动下载但仍不可用。"
         "请检查网络，或手动把 browser_poc_manifest.json 及 ONNX 资产放入：%s",
+        target,
+    )
+    return target
+
+
+def ensure_moss_audio_tokenizer_dir(config, *, logger: logging.Logger) -> Path | None:
+    """确保 MOSS Audio Tokenizer / codec ONNX 模型目录可用。
+
+    OpenMOSS 官方 runtime 不只需要 ``MOSS-TTS-Nano-100M-ONNX``，还会读取
+    同级 ``MOSS-Audio-Tokenizer-Nano-ONNX/codec_browser_onnx_meta.json``。
+    之前只下载 TTS ONNX 仓库，导致切换 MOSS 后在 codec meta 处 500。
+    """
+
+    if getattr(config, "moss_audio_tokenizer_model_dir", None):
+        target = Path(config.moss_audio_tokenizer_model_dir).expanduser()
+    else:
+        moss_dir = Path(getattr(config, "moss_model_dir", None) or default_moss_model_dir()).expanduser()
+        target = default_moss_audio_tokenizer_dir(moss_dir.parent)
+
+    resolved = resolve_valid_moss_audio_tokenizer_dir(target, log=logger)
+    if resolved:
+        config.moss_audio_tokenizer_model_dir = resolved
+        return resolved
+
+    downloaded = _download_moss_audio_tokenizer_assets(config, target, logger=logger)
+    if downloaded:
+        resolved = resolve_valid_moss_audio_tokenizer_dir(downloaded, log=logger) or resolve_valid_moss_audio_tokenizer_dir(target, log=logger)
+        if resolved:
+            config.moss_audio_tokenizer_model_dir = resolved
+            return resolved
+
+    config.moss_audio_tokenizer_model_dir = target
+    logger.warning(
+        "未找到有效的 MOSS Audio Tokenizer ONNX 资产，已尝试自动下载但仍不可用。"
+        "请检查网络，或手动把 codec_browser_onnx_meta.json 及 ONNX 资产放入：%s",
         target,
     )
     return target

@@ -246,3 +246,77 @@ def test_ensure_moss_model_dir_rejects_readme_only_dir(monkeypatch, tmp_path):
     resolved = model_sources.ensure_moss_model_dir(cfg, logger=MagicMock())
     assert resolved == target
     assert not model_sources.has_valid_moss_model_assets(target)
+
+
+def test_moss_audio_tokenizer_assets_require_codec_meta(tmp_path):
+    """MOSS codec 目录必须包含 codec_browser_onnx_meta.json 和真实 ONNX/data 资产。"""
+
+    from kokoro_tts.model_sources import has_valid_moss_audio_tokenizer_assets
+
+    tokenizer_dir = tmp_path / "MOSS-Audio-Tokenizer-Nano-ONNX"
+    tokenizer_dir.mkdir()
+    with (tokenizer_dir / "codec_decoder.onnx").open("wb") as handle:
+        handle.seek(1024 * 1024)
+        handle.write(b"\0")
+    assert not has_valid_moss_audio_tokenizer_assets(tokenizer_dir)
+
+    (tokenizer_dir / "codec_browser_onnx_meta.json").write_text("{}", encoding="utf-8")
+    assert has_valid_moss_audio_tokenizer_assets(tokenizer_dir)
+
+
+def test_ensure_moss_audio_tokenizer_dir_downloads_missing_sibling(monkeypatch, tmp_path):
+    """只下载 MOSS-TTS 目录不够；缺失同级 Audio Tokenizer 时应自动补齐。"""
+
+    from kokoro_tts import model_sources
+
+    moss_dir = tmp_path / "MOSS-TTS-Nano-100M-ONNX"
+    moss_dir.mkdir()
+    cfg = TTSConfig(moss_model_dir=moss_dir, model_source="modelscope")
+    target = tmp_path / "MOSS-Audio-Tokenizer-Nano-ONNX"
+    calls: list[tuple[str, str]] = []
+
+    def fake_modelscope(repo_id, target_dir, *, logger):
+        calls.append((repo_id, str(target_dir)))
+        target_dir.mkdir(parents=True, exist_ok=True)
+        (target_dir / "codec_browser_onnx_meta.json").write_text("{}", encoding="utf-8")
+        with (target_dir / "codec_global_shared.data").open("wb") as handle:
+            handle.seek(1024 * 1024)
+            handle.write(b"\0")
+        return target_dir
+
+    monkeypatch.setattr(model_sources, "resolve_model_source", lambda _cfg: "modelscope")
+    monkeypatch.setattr(model_sources, "_modelscope_snapshot_download", fake_modelscope)
+
+    resolved = model_sources.ensure_moss_audio_tokenizer_dir(cfg, logger=MagicMock())
+    assert resolved == target
+    assert calls == [(cfg.moss_audio_tokenizer_modelscope_repo, str(target))]
+    assert model_sources.has_valid_moss_audio_tokenizer_assets(target)
+
+
+def test_ensure_kokoro_model_dir_prefetches_voices_when_model_exists(monkeypatch, tmp_path):
+    """即使 Kokoro 主模型已存在，音色不足时也应继续补齐 voices/*.pt。"""
+
+    from kokoro_tts import model_sources
+
+    model_dir = tmp_path / "models--hexgrad--Kokoro-82M-v1.1-zh"
+    voices = model_dir / "voices"
+    voices.mkdir(parents=True)
+    (model_dir / "kokoro-v1_1-zh.pth").write_bytes(b"PK\x03\x04" + b"m" * (11 * 1024 * 1024))
+    (model_dir / "config.json").write_text("{}", encoding="utf-8")
+    (voices / "zm_010.pt").write_bytes(b"PK\x03\x04" + b"v" * 700)
+    cfg = TTSConfig(model_dir=model_dir, model_source="huggingface", kokoro_prefetch_voices=True)
+    calls: list[tuple[str, str]] = []
+
+    def fake_hf(repo_id, target_dir, *, logger, allow_patterns=None):
+        calls.append((repo_id, str(target_dir)))
+        assert "voices/*.pt" in allow_patterns
+        (target_dir / "voices" / "zf_001.pt").write_bytes(b"PK\x03\x04" + b"v" * 700)
+        return target_dir
+
+    monkeypatch.setattr(model_sources, "resolve_model_source", lambda _cfg: "huggingface")
+    monkeypatch.setattr(model_sources, "_huggingface_snapshot_download", fake_hf)
+
+    resolved = model_sources.ensure_kokoro_model_dir(cfg, logger=MagicMock())
+    assert resolved == model_dir
+    assert calls == [(cfg.kokoro_hf_repo, str(model_dir))]
+    assert sorted(cfg.get_voices()) == ["zf_001", "zm_010"]

@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import inspect
+import os
 import sys
 import tempfile
 from pathlib import Path
@@ -10,7 +12,7 @@ from threading import Lock
 import numpy as np
 
 from ..audio import normalize_audio_array
-from ..model_sources import ensure_moss_model_dir
+from ..model_sources import ensure_moss_audio_tokenizer_dir, ensure_moss_model_dir
 
 
 def ensure_import_path(repo_path) -> None:
@@ -41,6 +43,12 @@ def create_runtime(*, config, provider: str, provider_patch_lock: Lock, logger):
         ) from exc
 
     model_dir = ensure_moss_model_dir(config, logger=logger)
+    tokenizer_dir = ensure_moss_audio_tokenizer_dir(config, logger=logger)
+    if tokenizer_dir:
+        # 兼容官方 runtime 通过环境变量或 model_dir 同级目录寻找 codec 资产的实现。
+        os.environ["MOSS_AUDIO_TOKENIZER_MODEL_DIR"] = str(tokenizer_dir)
+        os.environ.setdefault("MOSS_AUDIO_TOKENIZER_DIR", str(tokenizer_dir))
+
     runtime_kwargs = {
         "model_dir": str(model_dir) if model_dir else None,
         "thread_count": config.moss_cpu_threads,
@@ -49,6 +57,24 @@ def create_runtime(*, config, provider: str, provider_patch_lock: Lock, logger):
         "sample_mode": config.moss_sample_mode,
         "execution_provider": provider,
     }
+    try:
+        parameters = inspect.signature(OnnxTtsRuntime).parameters
+    except (TypeError, ValueError):
+        parameters = {}
+    if tokenizer_dir:
+        # 不同 OpenMOSS runtime 版本对 codec/tokenizer 目录参数命名可能不同；
+        # 只在签名明确支持或接收 **kwargs 时传入，避免旧版本 TypeError。
+        accepts_var_kwargs = any(param.kind == inspect.Parameter.VAR_KEYWORD for param in parameters.values())
+        for candidate_key in (
+            "codec_model_dir",
+            "codec_dir",
+            "audio_tokenizer_dir",
+            "audio_tokenizer_model_dir",
+            "tokenizer_model_dir",
+        ):
+            if candidate_key in parameters or accepts_var_kwargs:
+                runtime_kwargs[candidate_key] = str(tokenizer_dir)
+                break
     if provider != "cuda" or int(config.moss_cuda_memory_limit_mb) <= 0:
         return OnnxTtsRuntime(**runtime_kwargs)
 

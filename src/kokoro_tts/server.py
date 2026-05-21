@@ -27,6 +27,7 @@ _WORKER_ENV_EXPORTS = {
     "KOKORO_MODEL_DIR": "model_path",
     "KOKORO_DEVICE": "device",
     "KOKORO_DEFAULT_VOICE": "default_voice",
+    "KOKORO_PREFETCH_VOICES": "kokoro_prefetch_voices",
     "KOKORO_STREAM_FORMAT": "stream_format",
     "KOKORO_STREAM_CHUNK_SECONDS": "stream_chunk_seconds",
     "KOKORO_STREAM_PREBUFFER_SECONDS": "stream_prebuffer_seconds",
@@ -74,6 +75,8 @@ _WORKER_ENV_EXPORTS = {
     "KOKORO_MODELSCOPE_REPO": "kokoro_modelscope_repo",
     "MOSS_MODELSCOPE_REPO": "moss_modelscope_repo",
     "MOSS_HF_REPO": "moss_hf_repo",
+    "MOSS_AUDIO_TOKENIZER_MODELSCOPE_REPO": "moss_audio_tokenizer_modelscope_repo",
+    "MOSS_AUDIO_TOKENIZER_HF_REPO": "moss_audio_tokenizer_hf_repo",
     "ANGEVOICE_IDLE_TIMEOUT_SECONDS": "model_idle_timeout_seconds",
     "ANGEVOICE_IDLE_CHECK_INTERVAL": "model_idle_check_interval",
     "ANGEVOICE_IDLE_UNLOAD_CURRENT": "model_idle_unload_current",
@@ -153,6 +156,8 @@ def _export_config_for_workers(cfg: TTSConfig) -> None:
         os.environ["KOKORO_API_KEY"] = cfg.api_key
     if cfg.moss_model_dir:
         os.environ["MOSS_MODEL_DIR"] = str(cfg.moss_model_dir)
+    if cfg.moss_audio_tokenizer_model_dir:
+        os.environ["MOSS_AUDIO_TOKENIZER_MODEL_DIR"] = str(cfg.moss_audio_tokenizer_model_dir)
     if cfg.moss_repo_path:
         os.environ["MOSS_TTS_NANO_PATH"] = str(cfg.moss_repo_path)
     if cfg.moss_prompt_audio_path:
