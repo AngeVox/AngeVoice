@@ -12,20 +12,24 @@ services:
       KOKORO_HOST: 0.0.0.0
       KOKORO_PORT: "8000"
 
+      # 模型目录
       ANGEVOICE_MODELS_ROOT: /app/models
       KOKORO_MODEL_DIR: /app/models/models--hexgrad--Kokoro-82M-v1.1-zh
       MOSS_MODEL_DIR: /app/models/MOSS-TTS-Nano-100M-ONNX
       MOSS_AUDIO_TOKENIZER_MODEL_DIR: /app/models/MOSS-Audio-Tokenizer-Nano-ONNX
 
+      # HuggingFace / ModelScope 缓存
       HF_HUB_CACHE: /app/models
       HUGGINGFACE_HUB_CACHE: /app/models
       HF_HOME: /app/models/.hf
       MODELSCOPE_CACHE: /app/models/modelscope-cache
 
+      # 输出目录
       ANGEVOICE_OUTPUT_DIR: /app/outputs
       ANGEVOICE_RUNTIME_CONFIG_FILE: /app/outputs/runtime-config.json
       ANGEVOICE_API_KEY_FILE: /app/outputs/.angevoice-api-key
 
+      # ---- 基础配置 ----
       KOKORO_DEVICE: cpu
       ANGEVOICE_ENABLED_MODELS: kokoro,moss-nano-cpu
       ANGEVOICE_DEFAULT_MODEL: kokoro
@@ -40,17 +44,92 @@ services:
       ANGEVOICE_MODEL_SOURCE: ${wizard_model_source:-modelscope}
       KOKORO_PREFETCH_VOICES: "true"
 
+      # ---- 并发与超时 ----
       KOKORO_WORKERS: "1"
       KOKORO_MAX_CONCURRENT_REQUESTS: "1"
       KOKORO_REQUEST_TIMEOUT_SECONDS: "300"
 
+      # ---- 休眠管理 ----
       ANGEVOICE_IDLE_TIMEOUT_SECONDS: "600"
       ANGEVOICE_IDLE_CHECK_INTERVAL: "30"
       ANGEVOICE_IDLE_UNLOAD_CURRENT: "true"
 
+      # ---- 访问控制 ----
       KOKORO_PUBLIC_STATUS_ENDPOINTS: "true"
       KOKORO_RATE_LIMIT_QPS: "0"
       KOKORO_RATE_LIMIT_BURST: "5"
+
+      # ---- MOSS CPU 调优（与原版 docker/cpu 一致）----
+      MOSS_CPU_THREADS: "2"
+      MOSS_DEFAULT_VOICE: Junhao
+      MOSS_SEGMENT_LENGTH: "120"
+      MOSS_MAX_NEW_FRAMES: "320"
+      MOSS_SAMPLE_MODE: fixed
+      MOSS_SEED: "1234"
+      MOSS_PROMPT_AUDIO_MAX_SECONDS: "8"
+      MOSS_PROMPT_CACHE_MAX_ITEMS: "8"
+      MOSS_VOICE_CLONE_MAX_TEXT_TOKENS: "56"
+
+      # ---- MOSS 文本处理 ----
+      MOSS_ENABLE_WETEXT_PROCESSING: "false"
+      MOSS_ENABLE_NORMALIZE_TTS_TEXT: "true"
+      MOSS_APPLY_ANGEVOICE_RULES: auto
+      MOSS_MIXED_ENGLISH_POLICY: translate
+
+      # ---- MOSS 流式合成（关键性能参数）----
+      MOSS_REALTIME_STREAMING_DECODE: "true"
+      MOSS_STREAM_CHUNK_SECONDS: "0.40"
+      MOSS_STREAM_QUEUE_MAX_ITEMS: "8"
+      MOSS_STREAM_PREBUFFER_SECONDS: "0.75"
+      MOSS_STREAM_BUDGET_THRESHOLD_LOW: "0.25"
+      MOSS_STREAM_BUDGET_THRESHOLD_MID: "0.65"
+      MOSS_STREAM_BUDGET_THRESHOLD_HIGH: "1.20"
+      MOSS_STREAM_CHUNK_MIN_FLOOR: "0.10"
+
+      # ---- MOSS 音频后处理 ----
+      MOSS_AUDIO_POLISH_ENABLED: "true"
+      MOSS_OUTPUT_PEAK_NORMALIZE_ENABLED: "true"
+      MOSS_OUTPUT_TARGET_PEAK: "0.86"
+      MOSS_OUTPUT_GAIN: "0.94"
+      MOSS_OUTPUT_DECLICK_ENABLED: "true"
+      MOSS_OUTPUT_EDGE_FADE_MS: "1.5"
+      MOSS_TRIM_SILENCE_ENABLED: "true"
+      MOSS_TRIM_SILENCE_DB: "-45"
+      MOSS_MAX_SILENCE_MS: "480"
+      MOSS_CROSSFADE_MS: "12"
+      MOSS_SEGMENT_PAUSE_MS: "80"
+      MOSS_RUNTIME_PAUSE_MAX_MS: "350"
+
+      # ---- MOSS 进程隔离（默认关闭）----
+      MOSS_PROCESS_ISOLATION_ENABLED: "false"
+      MOSS_PROCESS_ISOLATION_PROVIDERS: cuda
+      MOSS_PROCESS_KILL_GRACE_SECONDS: "2"
+
+      # ---- MOSS 显存保护（CPU下无需，但保留默认值）----
+      MOSS_VRAM_GUARD_ENABLED: "true"
+      MOSS_VRAM_SAFE_FREE_MB: "1200"
+      MOSS_VRAM_CRITICAL_FREE_MB: "600"
+      MOSS_LOW_VRAM_SEGMENT_LENGTH: "96"
+      MOSS_LOW_VRAM_MAX_NEW_FRAMES: "280"
+      MOSS_LOW_VRAM_TEXT_TOKENS: "48"
+      MOSS_AUTO_FALLBACK_CPU: "true"
+      MOSS_CUDA_SELF_TEST_ENABLED: "true"
+      MOSS_DISABLE_FULL_CODEC_AFTER_OOM: "true"
+      MOSS_FULL_CODEC_OOM_COOLDOWN_SECONDS: "600"
+      MOSS_VRAM_SNAPSHOT_TTL_SECONDS: "10"
+
+      # ---- MOSS 质量门控 ----
+      MOSS_QUALITY_GATE_ENABLED: "true"
+
+      # ---- MOSS 模型源 ----
+      MOSS_MODELSCOPE_REPO: openmoss/MOSS-TTS-Nano-100M-ONNX
+      MOSS_AUDIO_TOKENIZER_MODELSCOPE_REPO: openmoss/MOSS-Audio-Tokenizer-Nano-ONNX
+
+      # ---- Kokoro 流式 ----
+      KOKORO_STREAM_FORMAT: pcm_s16le
+      KOKORO_STREAM_BINARY_ENABLED: "true"
+      KOKORO_STREAM_CHUNK_SECONDS: "0.55"
+      KOKORO_STREAM_PREBUFFER_SECONDS: "0.25"
 
     volumes:
       - ${TRIM_PKGVAR}/models:/app/models
