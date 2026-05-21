@@ -169,7 +169,7 @@ class MossStreamingMixin:
             self._loaded = False
             self.load()
         if self._process_client is None:
-            # Loading may have been cancelled/replaced by tests or by an outer cancel path.
+            # 加载可能已被测试或外层取消路径取消/替换。
             yield {"type": "done", "total_segments": 0, "total_audio_chunks": 0}
             return
         try:

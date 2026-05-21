@@ -793,7 +793,7 @@ class MossNanoEngine(MossStreamingMixin):
             pending_count = len(pending_decode_frames)
             if pending_count <= 0:
                 return
-            # Keep frame batches small enough to avoid the full-codec memory spike.
+            # 保持帧批次足够小，避免完整编解码器的内存峰值。
             budget = 12 if self._low_vram_mode else 24
             if not force and pending_count < budget:
                 return

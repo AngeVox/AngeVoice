@@ -36,10 +36,9 @@ class AdminProfileAction(StrictModel):
     profile: str
 
 
-# Keep the admin editable field list single-sourced in admin_config_schema.
-# Pydantic still rejects unknown fields here; value ranges/types are enforced by
-# validate_admin_config_values() so adding a new editable field only touches one
-# schema table.
+# 后台可编辑字段列表保持单一来源，定义在 admin_config_schema 中。
+# Pydantic 仍会拒绝未知字段；值范围/类型由 validate_admin_config_values() 校验，
+# 因此新增可编辑字段只需修改一处 schema 表。
 AdminConfigPatch = create_model(
     "AdminConfigPatch",
     __base__=StrictModel,

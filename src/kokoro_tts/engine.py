@@ -183,8 +183,8 @@ def normalize_text_for_tts(text: str, model: str = "kokoro") -> str:
         year, month, day = match.groups()
         return f"{_spell_digits(year)}年{_read_small_int(int(month))}月{_read_small_int(int(day))}日"
 
-    # Avoid \b for Chinese context. In Python regex, many Chinese characters are
-    # word characters, so \b does not reliably match between Chinese and digits.
+    # 中文语境下避免使用 \b。Python 正则中许多中文字符属于 word 字符，
+    # 因此 \b 无法可靠匹配中文与数字之间的边界。
     text = re.sub(r"(?<!\d)(20\d{2}|19\d{2})[-/.](\d{1,2})[-/.](\d{1,2})(?!\d)", repl_date, text)
     text = _normalize_short_month_day(text)
 
@@ -331,8 +331,7 @@ class TTSEngine:
         raw = str(voice or "").strip()
         if not raw:
             return raw
-        # Do not allow arbitrary path traversal, but support files stored in
-        # the configured voices directory.
+        # 不允许任意路径穿越，但支持读取配置的 voices 目录下的文件。
         name = Path(raw).name
         if name.endswith(".pt"):
             candidates = [self.config.voices_dir / name]
