@@ -19,6 +19,7 @@ logger = logging.getLogger(__name__)
 KOKORO_MODEL_FILENAME = "kokoro-v1_1-zh.pth"
 KOKORO_REPO_CACHE_DIR = "models--hexgrad--Kokoro-82M-v1.1-zh"
 MOSS_ONNX_DIR = "MOSS-TTS-Nano-100M-ONNX"
+MOSS_AUDIO_TOKENIZER_DIR = "MOSS-Audio-Tokenizer-Nano-ONNX"
 KOKORO_MODEL_MIN_BYTES = 10 * 1024 * 1024
 # Kokoro 音色文件确实比主模型小很多，不能只用 10KB 这类粗阈值判断。
 # 这里用文件头识别 PyTorch zip/pickle 权重，只把 LFS 指针、HTML/JSON 错误页
@@ -53,6 +54,12 @@ def default_moss_model_dir(root: Path | None = None) -> Path:
     """返回 MOSS ONNX 推荐持久化目录。"""
 
     return (root or models_root()) / MOSS_ONNX_DIR
+
+
+def default_moss_audio_tokenizer_dir(root: Path | None = None) -> Path:
+    """返回 MOSS Audio Tokenizer ONNX 推荐持久化目录。"""
+
+    return (root or models_root()) / MOSS_AUDIO_TOKENIZER_DIR
 
 
 def _warn_once(log: logging.Logger, key: str, message: str, *args) -> None:

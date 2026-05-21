@@ -80,6 +80,8 @@ STR_ENV: dict[str, str] = {
     "KOKORO_MODELSCOPE_REPO": "kokoro_modelscope_repo",
     "MOSS_MODELSCOPE_REPO": "moss_modelscope_repo",
     "MOSS_HF_REPO": "moss_hf_repo",
+    "MOSS_AUDIO_TOKENIZER_MODELSCOPE_REPO": "moss_audio_tokenizer_modelscope_repo",
+    "MOSS_AUDIO_TOKENIZER_HF_REPO": "moss_audio_tokenizer_hf_repo",
     "MOSS_EXECUTION_PROVIDER": "moss_execution_provider",
     "MOSS_DEFAULT_VOICE": "moss_default_voice",
     "MOSS_SAMPLE_MODE": "moss_sample_mode",
@@ -166,6 +168,7 @@ BOOL_ENV: dict[str, str] = {
     "ANGEVOICE_MODEL_UNLOAD_ON_SWITCH": "model_unload_on_switch",
     "ANGEVOICE_SAVE_OUTPUTS": "save_outputs",
     "ANGEVOICE_IDLE_UNLOAD_CURRENT": "model_idle_unload_current",
+    "KOKORO_PREFETCH_VOICES": "kokoro_prefetch_voices",
     "MOSS_CUDA_ENABLED": "moss_cuda_enabled",
     "MOSS_ENABLE_WETEXT_PROCESSING": "moss_enable_wetext_processing",
     "MOSS_ENABLE_NORMALIZE_TTS_TEXT": "moss_enable_normalize_tts_text",
@@ -227,6 +230,8 @@ def apply_env(config) -> None:
         config.enabled_models = [item.strip().lower() for item in os.environ["ANGEVOICE_ENABLED_MODELS"].split(",") if item.strip()]
     if os.environ.get("MOSS_MODEL_DIR"):
         config.moss_model_dir = Path(os.environ["MOSS_MODEL_DIR"]).expanduser()
+    if os.environ.get("MOSS_AUDIO_TOKENIZER_MODEL_DIR"):
+        config.moss_audio_tokenizer_model_dir = Path(os.environ["MOSS_AUDIO_TOKENIZER_MODEL_DIR"]).expanduser()
     if os.environ.get("MOSS_TTS_NANO_PATH"):
         config.moss_repo_path = Path(os.environ["MOSS_TTS_NANO_PATH"]).expanduser()
     if os.environ.get("MOSS_PROMPT_AUDIO_PATH"):

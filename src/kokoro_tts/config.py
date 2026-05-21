@@ -78,6 +78,7 @@ class TTSConfig:
     moss_segment_length: int = 120
     default_speed: float = 1.0
     default_voice: str = "zm_010"
+    kokoro_prefetch_voices: bool = True
     _voices_cache: list[str] = field(default_factory=list, init=False, repr=False)
     _voices_cache_signature: tuple[tuple[str, int, int], ...] = field(default_factory=tuple, init=False, repr=False)
 
@@ -135,8 +136,11 @@ class TTSConfig:
     kokoro_modelscope_repo: str = "AI-ModelScope/Kokoro-82M-v1.1-zh"
     moss_modelscope_repo: str = "openmoss/MOSS-TTS-Nano-100M-ONNX"
     moss_hf_repo: str = ""
+    moss_audio_tokenizer_modelscope_repo: str = "openmoss/MOSS-Audio-Tokenizer-Nano-ONNX"
+    moss_audio_tokenizer_hf_repo: str = ""
 
     moss_model_dir: Optional[Path] = None
+    moss_audio_tokenizer_model_dir: Optional[Path] = None
     moss_repo_path: Optional[Path] = None
     moss_execution_provider: str = "cpu"
     moss_cpu_threads: int = 4
@@ -378,5 +382,15 @@ def load_config(
         config.api_key_file = Path(config.api_key_file).expanduser()
     if isinstance(config.runtime_config_file, str):
         config.runtime_config_file = Path(config.runtime_config_file).expanduser()
+    if isinstance(config.model_dir, str):
+        config.model_dir = Path(config.model_dir).expanduser()
+    if isinstance(config.moss_model_dir, str):
+        config.moss_model_dir = Path(config.moss_model_dir).expanduser()
+    if isinstance(config.moss_audio_tokenizer_model_dir, str):
+        config.moss_audio_tokenizer_model_dir = Path(config.moss_audio_tokenizer_model_dir).expanduser()
+    if isinstance(config.moss_repo_path, str):
+        config.moss_repo_path = Path(config.moss_repo_path).expanduser()
+    if isinstance(config.moss_prompt_audio_path, str):
+        config.moss_prompt_audio_path = Path(config.moss_prompt_audio_path).expanduser()
     config.validate_security()
     return config
