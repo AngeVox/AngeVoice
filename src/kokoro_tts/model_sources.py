@@ -22,7 +22,8 @@ _MOSS_VALID_METADATA_SUFFIXES = {".json", ".yaml", ".yml", ".txt"}
 
 def _is_probably_lfs_pointer(path: Path) -> bool:
     try:
-        head = path.read_bytes()[:256]
+        with open(path, "rb") as f:
+            head = f.read(256)
     except OSError:
         return False
     return head.startswith(b"version https://git-lfs.github.com/spec/v1")

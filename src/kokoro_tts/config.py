@@ -215,20 +215,26 @@ class TTSConfig:
     def get_voices(self) -> list[str]:
         """列出 Kokoro 音色名称，兼容新旧模型目录布局。
 
-        音色列表会被前端和状态接口频繁读取，因此这里用目录 mtime 做
-        轻量缓存。用户新增、删除或替换 ``*.pt`` 文件时，目录 mtime 会
-        变化，下一次调用会自动重新扫描。
+        音色列表会被前端和状态接口频繁读取，因此这里做轻量缓存。
+        缓存失效使用 **per-file mtime** 组合签名，避免在时间戳粒度
+        较粗的文件系统（FAT32 / 部分 NAS）上因目录 mtime 未变而
+        漏掉新增的音色文件。
         """
 
         voice_dirs = [self.voices_dir, models_root() / "voices"]
         signature: list[tuple[str, int]] = []
         for voice_dir in voice_dirs:
+            if not voice_dir.is_dir():
+                continue
             try:
-                stat = voice_dir.stat()
+                for f in sorted(voice_dir.glob("*.pt")):
+                    try:
+                        st = f.stat()
+                        signature.append((str(f), int(st.st_mtime_ns)))
+                    except OSError:
+                        signature.append((str(f), -1))
             except OSError:
                 continue
-            if voice_dir.is_dir():
-                signature.append((str(voice_dir), int(stat.st_mtime_ns)))
 
         current_signature = tuple(signature)
         if current_signature == self._voices_cache_signature:
