@@ -1,7 +1,8 @@
 [
     {
         "description": "",
-        "inputs": [
+        "stepTitle": "AngeVoice 设置",
+        "items": [
             {
                 "type": "radio",
                 "field": "wizard_model_source",
@@ -43,7 +44,6 @@
                     }
                 ]
             }
-        ],
-        "stepTitle": "AngeVoice 设置"
+        ]
     }
 ]

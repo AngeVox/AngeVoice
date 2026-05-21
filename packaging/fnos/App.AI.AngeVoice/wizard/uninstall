@@ -1,7 +1,8 @@
 [
     {
         "description": "卸载后应用将从系统中移除。\n\n**模型数据较大**，您可以选择是否保留：\n- 保留：模型文件保留在磁盘上，重新安装后可直接使用\n- 删除：释放磁盘空间，重新安装后需重新下载",
-        "inputs": [
+        "stepTitle": "确认卸载 AngeVoice",
+        "items": [
             {
                 "type": "radio",
                 "field": "wizard_keep_data",
@@ -24,7 +25,6 @@
                     }
                 ]
             }
-        ],
-        "stepTitle": "确认卸载 AngeVoice"
+        ]
     }
 ]
