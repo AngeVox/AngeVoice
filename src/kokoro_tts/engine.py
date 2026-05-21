@@ -4,6 +4,8 @@ Built on Kokoro v1.1 Chinese model. Heavy dependencies such as numpy, torch and
 kokoro are imported lazily when the model is loaded or audio is encoded.
 """
 
+from __future__ import annotations
+
 import base64
 import concurrent.futures
 import logging
@@ -17,7 +19,7 @@ from .audio import encode_audio_segment, normalize_audio_array, write_wav_bytes
 from .config import TTSConfig, load_config
 from .zh_rules import normalize_chinese_rules
 from .text_segmenter import segment_text_natural
-from .kokoro_assets import has_valid_kokoro_local_assets, is_valid_kokoro_voice_file
+from .kokoro_assets import has_valid_kokoro_local_assets, is_valid_kokoro_voice_file, models_root
 from .model_sources import ensure_kokoro_model_dir, resolve_model_source
 
 logger = logging.getLogger(__name__)
@@ -77,23 +79,41 @@ def _read_under_10000(value: int) -> str:
 
 
 def _read_small_int(value: int) -> str:
-    """Read common Chinese integers used by TN rules.
+    """按中文习惯读取整数，覆盖金额、日期和常见数量场景。
 
-    The previous implementation fell back to spelling digits for values >=1000,
-    which made amounts such as 1000元 sound like IDs. This helper keeps natural
-    Chinese readings up to the ten-thousands range used by money/date rules.
+    旧实现只覆盖到亿以内金额，十亿以上会因为 ``_read_under_10000``
+    收到过大的高位组而失败。这里按 4 位一组处理，支持到京级别；
+    超过该范围时回退逐位读，避免异常中断合成。
     """
+
     if value < 0:
         return "负" + _read_small_int(-value)
     if value < 10000:
         return _read_under_10000(value)
-    high, low = divmod(value, 10000)
-    spoken = _read_under_10000(high) + "万"
-    if low:
-        if low < 1000:
-            spoken += "零"
-        spoken += _read_under_10000(low)
-    return spoken
+
+    group_units = ["", "万", "亿", "兆", "京"]
+    groups: list[int] = []
+    number = int(value)
+    while number > 0:
+        groups.append(number % 10000)
+        number //= 10000
+
+    if len(groups) > len(group_units):
+        return _spell_digits(str(value))
+
+    parts: list[str] = []
+    zero_pending = False
+    for index in range(len(groups) - 1, -1, -1):
+        group = groups[index]
+        if group == 0:
+            if parts:
+                zero_pending = True
+            continue
+        if parts and (zero_pending or group < 1000):
+            parts.append("零")
+        zero_pending = False
+        parts.append(_read_under_10000(group) + group_units[index])
+    return "".join(parts) or "零"
 
 
 def _read_time_hour(value: int) -> str:
@@ -183,8 +203,8 @@ def normalize_text_for_tts(text: str, model: str = "kokoro") -> str:
         year, month, day = match.groups()
         return f"{_spell_digits(year)}年{_read_small_int(int(month))}月{_read_small_int(int(day))}日"
 
-    # 中文语境下避免使用 \b。Python 正则中许多中文字符属于 word 字符，
-    # 因此 \b 无法可靠匹配中文与数字之间的边界。
+    # 中文上下文避免使用 \b。Python 正则会把许多中文字符视为
+    # 单词字符，因此 \b 在中文和数字之间的匹配不可靠。
     text = re.sub(r"(?<!\d)(20\d{2}|19\d{2})[-/.](\d{1,2})[-/.](\d{1,2})(?!\d)", repl_date, text)
     text = _normalize_short_month_day(text)
 
@@ -209,11 +229,18 @@ def normalize_text_for_tts(text: str, model: str = "kokoro") -> str:
                 spoken += _DIGITS_ZH[frac[1]] + "分"
         return spoken
 
-    text = re.sub(r"(?<![\dA-Za-z])(¥|￥)?(\d{1,9}(?:\.\d{1,2})?)(元)?(?![\dA-Za-z])", repl_money, text)
+    text = re.sub(r"(?<![\dA-Za-z])(¥|￥)?(\d{1,16}(?:\.\d{1,2})?)(元)?(?![\dA-Za-z])", repl_money, text)
 
     def repl_percent(match):
         value = match.group(1)
-        return "百分之" + _spell_digits(value.replace(".", "点"))
+        integer, dot, frac = value.partition(".")
+        try:
+            spoken = _read_small_int(int(integer))
+        except ValueError:
+            spoken = _spell_digits(integer)
+        if dot and frac:
+            spoken += "点" + _spell_digits(frac)
+        return "百分之" + spoken
 
     text = re.sub(r"(?<!\d)(\d+(?:\.\d+)?)%(?!\d)", repl_percent, text)
 
@@ -326,17 +353,22 @@ class TTSEngine:
         """Resolve a voice name to a local .pt file when available.
 
         This keeps offline Docker/NAS deployments from asking Kokoro to fetch
-        voices from Hugging Face when /app/models/voices already contains them.
+        voices from Hugging Face when the unified models directory already contains them.
         """
         raw = str(voice or "").strip()
         if not raw:
             return raw
-        # 不允许任意路径穿越，但支持读取配置的 voices 目录下的文件。
+        # 不允许任意路径穿越，但允许读取配置音色目录中的文件。
+        #
         name = Path(raw).name
-        if name.endswith(".pt"):
-            candidates = [self.config.voices_dir / name]
-        else:
-            candidates = [self.config.voices_dir / f"{name}.pt"]
+        filename = name if name.endswith(".pt") else f"{name}.pt"
+        # 新布局优先：models/models--hexgrad--Kokoro-82M-v1.1-zh/voices。
+        # 兼容旧布局：models/voices。若文件是 LFS 指针或下载错误页，
+        # 校验函数只会对同一路径 warning 一次，避免长文本刷屏。
+        candidates = [
+            self.config.voices_dir / filename,
+            models_root() / "voices" / filename,
+        ]
         for candidate in candidates:
             if is_valid_kokoro_voice_file(candidate, log=logger):
                 return str(candidate)
@@ -391,7 +423,7 @@ class TTSEngine:
             if "WeightsUnpickler" in message or "Unsupported operand 118" in message:
                 raise RuntimeError(
                     "Kokoro 模型权重加载失败：检测到 Git LFS 指针、损坏权重或不兼容缓存。"
-                    "请删除无效的 models/*.pth、models/voices/*.pt 或 Hugging Face 缓存后重试；"
+                    "请删除无效的 models/models--hexgrad--Kokoro-82M-v1.1-zh/*.pth、voices/*.pt 或 Hugging Face 缓存后重试；"
                     "也可以执行 git lfs pull 下载真实模型文件。"
                 ) from exc
             raise
@@ -410,7 +442,7 @@ class TTSEngine:
 
         self._zh_pipeline = KPipeline(lang_code="z", repo_id=repo_id, model=self._model, en_callable=en_callable)
         self._loaded = True
-        logger.info(f"模型加载完成 (device={self._device})")
+        logger.info("模型加载完成 (device=%s)", self._device)
         return self
 
     def synthesize(self, text: str, voice: str = "zm_010", speed: float = 1.0) -> bytes:
@@ -443,7 +475,7 @@ class TTSEngine:
         path = Path(output_path)
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_bytes(audio_bytes)
-        logger.info(f"音频已保存: {path} ({len(audio_bytes)} bytes)")
+        logger.info("音频已保存: %s (%d bytes)", path, len(audio_bytes))
         return str(path)
 
     def _validate_request(self, text: str, voice: str, speed: float) -> None:
@@ -487,12 +519,12 @@ class TTSEngine:
         speed = float(speed)
         return lambda len_ps: speed
 
-    def _do_synthesize(self, text: str, voice: str, speed: float):
+    def _do_synthesize(self, text: str, voice: str, speed: float) -> "np.ndarray":
         import numpy as np
 
         lang = self._detect_language(text)
         segments = self._segment_text(text)
-        logger.info(f"合成: lang={lang}, segments={len(segments)}, voice={voice}, speed={speed}")
+        logger.info("合成: lang=%s, segments=%d, voice=%s, speed=%s", lang, len(segments), voice, speed)
 
         all_wavs = []
         speed_fn = self._make_speed_fn(speed)
@@ -502,7 +534,7 @@ class TTSEngine:
                 if wav_seg is not None:
                     all_wavs.append(self._postprocess_segment(wav_seg))
             except Exception as e:
-                logger.warning(f"段落 {i + 1} 合成失败: {e}")
+                logger.warning("段落 %d 合成失败: %s", i + 1, e)
 
         if not all_wavs:
             raise RuntimeError("所有段落合成均失败，无有效音频数据")
@@ -513,7 +545,7 @@ class TTSEngine:
 
         try:
             import torch
-        except ImportError:  # Unit tests and lightweight CI do not need torch.
+        except ImportError:  # 单元测试和轻量 CI 不需要 torch。
             torch = None
 
         try:
@@ -524,7 +556,7 @@ class TTSEngine:
             if "WeightsUnpickler" in message or "Unsupported operand 118" in message:
                 raise RuntimeError(
                     "Kokoro 音色权重加载失败：本地 voice 可能是 Git LFS 指针或损坏文件。"
-                    "请删除无效的 models/voices/*.pt，让服务从上游重新下载，或执行 git lfs pull。"
+                    "请删除无效的 models/models--hexgrad--Kokoro-82M-v1.1-zh/voices/*.pt，让服务从上游重新下载，或执行 git lfs pull。"
                 ) from exc
             raise
         audio = result.audio
@@ -603,7 +635,7 @@ class TTSEngine:
                         }
                         audio_index += 1
             except Exception as e:
-                logger.warning(f"段落 {i + 1} 合成失败: {e}")
+                logger.warning("段落 %d 合成失败: %s", i + 1, e)
                 yield {"type": "segment_error", "index": i, "message": str(e)}
 
         yield {"type": "done", "total_segments": len(segments), "total_audio_chunks": audio_index}

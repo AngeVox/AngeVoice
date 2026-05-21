@@ -90,7 +90,7 @@ ANGEVOICE_DEFAULT_MODEL=kokoro
 MOSS_EXECUTION_PROVIDER=cpu
 MOSS_CUDA_ENABLED=false
 MOSS_CPU_THREADS=2
-MOSS_MODEL_DIR=/opt/MOSS-TTS-Nano/models
+MOSS_MODEL_DIR=/app/models/MOSS-TTS-Nano-100M-ONNX
 MOSS_PROMPT_UPLOAD_MAX_BYTES=20971520
 MOSS_PROMPT_AUDIO_MAX_SECONDS=8
 MOSS_PROMPT_CACHE_MAX_ITEMS=8
@@ -124,7 +124,7 @@ WebSocket 输出会按固定时长切成小音频包。Kokoro 仍按官方 pipel
 
 ```yaml
 volumes:
-  - ../../moss_models:/opt/MOSS-TTS-Nano/models
+  - ../../models:/app/models
   - ../../outputs:/app/outputs
 ```
 
@@ -155,7 +155,7 @@ curl http://localhost:8000/stats \
 
 ## 长文本自然语音预设（MOSS）
 
-从 2.6.5.1 起，MOSS 默认启用轻量自然切片、静音压缩、短 crossfade 和流式预缓冲。目标是减少长文本中的卡顿、重复读、变调和异常长静音，同时保持 NAS/老显卡用户的稳定性。
+从 2.6.5.3 起，MOSS 默认启用轻量自然切片、静音压缩、短 crossfade 和流式预缓冲。目标是减少长文本中的卡顿、重复读、变调和异常长静音，同时保持 NAS/老显卡用户的稳定性。
 
 ### 推荐默认
 
@@ -170,7 +170,7 @@ MOSS_STREAM_PREBUFFER_SECONDS=0.75
 MOSS_AUDIO_POLISH_ENABLED=true
 MOSS_MAX_SILENCE_MS=480
 MOSS_CROSSFADE_MS=12
-MOSS_RUNTIME_PAUSE_MAX_MS=500
+MOSS_RUNTIME_PAUSE_MAX_MS=350
 ```
 
 ### 中文小说/旁白

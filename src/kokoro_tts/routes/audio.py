@@ -129,7 +129,14 @@ def create_audio_router(state: ServiceState, verify_api_key) -> APIRouter:
         return StreamingResponse(BytesIO(audio_bytes), media_type=media_type, headers={"X-Request-ID": request_id})
 
     @router.get("/api/tts")
-    async def tts_get(text: str, voice: str = "zm_010", speed: float = 1.0, response_format: str = "wav", model: str | None = None, _=Depends(verify_api_key)):
+    async def tts_get(
+        text: str,
+        voice: str = "zm_010",
+        speed: float = 1.0,
+        response_format: str = "wav",
+        model: str | None = None,
+        _=Depends(verify_api_key),
+    ):
         request_id = state.new_request_id()
         text = validate_tts_text(text, cfg)
         model = state.model_manager.normalize_model_id(model)

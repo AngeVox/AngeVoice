@@ -103,10 +103,9 @@ class ServiceState:
             item = self.tts_cache.get(key)
             if item is not None:
                 self.tts_cache.move_to_end(key)
-        if item is None:
-            self.inc_stat("cache_misses")
-            return None
-        self.inc_stat("cache_hits")
+            stat_name = "cache_hits" if item is not None else "cache_misses"
+            with self.stats_lock:
+                self.stats[stat_name] = self.stats.get(stat_name, 0) + 1
         return item
 
     def _cache_item_size(self, value: tuple[bytes, str]) -> int:

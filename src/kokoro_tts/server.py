@@ -12,6 +12,7 @@ from typing import Optional
 
 from . import __version__
 from .config import TTSConfig, load_config
+from .banner import format_startup_banner
 from .engine import TTSEngine
 from .engine_manager import EngineManager
 from .routes import create_admin_router, create_audio_router, create_status_router, create_ws_router
@@ -50,6 +51,8 @@ _WORKER_ENV_EXPORTS = {
     "KOKORO_BATCH_ENABLED": "batch_enabled",
     "KOKORO_ADMIN_ENABLED": "admin_enabled",
     "KOKORO_VOICE_UPLOAD_ENABLED": "voice_upload_enabled",
+    "KOKORO_VOICE_UPLOAD_MAX_BYTES": "voice_upload_max_bytes",
+    "KOKORO_TTS_REQUEST_MAX_BYTES": "tts_request_max_bytes",
     "KOKORO_MP3_ENABLED": "mp3_enabled",
     "ANGEVOICE_ENABLED_MODELS": "enabled_models",
     "ANGEVOICE_DEFAULT_MODEL": "default_model",
@@ -72,6 +75,7 @@ _WORKER_ENV_EXPORTS = {
     "MOSS_MODELSCOPE_REPO": "moss_modelscope_repo",
     "ANGEVOICE_IDLE_TIMEOUT_SECONDS": "model_idle_timeout_seconds",
     "ANGEVOICE_IDLE_CHECK_INTERVAL": "model_idle_check_interval",
+    "ANGEVOICE_IDLE_UNLOAD_CURRENT": "model_idle_unload_current",
     "MOSS_EXECUTION_PROVIDER": "moss_execution_provider",
     "MOSS_CPU_THREADS": "moss_cpu_threads",
     "MOSS_DEFAULT_VOICE": "moss_default_voice",
@@ -234,6 +238,7 @@ def run_server(config: Optional[TTSConfig] = None):
     import uvicorn
 
     cfg = config or load_config()
+    print(format_startup_banner(cfg), flush=True)
     logger.info("Starting AngeVoice service: %s:%s", cfg.host, cfg.port)
     if cfg.workers > 1:
         _export_config_for_workers(cfg)

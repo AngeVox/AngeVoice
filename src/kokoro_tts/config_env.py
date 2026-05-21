@@ -1,4 +1,4 @@
-"""Environment variable parsing for AngeVoice runtime configuration."""
+"""AngeVoice 运行时环境变量解析。"""
 
 from __future__ import annotations
 
@@ -185,7 +185,7 @@ BOOL_ENV: dict[str, str] = {
 
 
 def apply_env(config) -> None:
-    """Apply environment variable overrides to a TTSConfig-like object."""
+    """把环境变量覆盖应用到 TTSConfig 风格对象。"""
     for env_name, attr in STR_ENV.items():
         if os.environ.get(env_name) is not None:
             setattr(config, attr, os.environ[env_name])

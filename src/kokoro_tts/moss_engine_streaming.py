@@ -14,7 +14,14 @@ import threading
 from typing import Callable
 
 from .audio import encode_audio_segment
-from .moss import StreamBudgetThresholds, merge_codec_audio, resolve_stream_decode_frame_budget, runtime_supports_frame_streaming, split_waveform_for_stream, MossProcessTimeoutError
+from .moss import (
+    MossProcessTimeoutError,
+    StreamBudgetThresholds,
+    merge_codec_audio,
+    resolve_stream_decode_frame_budget,
+    runtime_supports_frame_streaming,
+    split_waveform_for_stream,
+)
 
 logger = logging.getLogger(__name__)
 

@@ -201,6 +201,28 @@ EOF_WRAPPER
   fi
 }
 
+
+prepare_model_dirs() {
+  cd "$INSTALL_DIR"
+  mkdir -p \
+    models/models--hexgrad--Kokoro-82M-v1.1-zh/voices \
+    models/MOSS-TTS-Nano-100M-ONNX \
+    models/modelscope-cache \
+    models/.hf \
+    outputs
+
+  # 旧版本把 HF 缓存和 MOSS 模型拆在 hf_cache / moss_models。若检测到旧目录，
+  # 在新目录为空时做一次温和迁移，避免用户升级后重复下载大模型。
+  if [[ -d hf_cache/hub/models--hexgrad--Kokoro-82M-v1.1-zh && ! -e models/models--hexgrad--Kokoro-82M-v1.1-zh/blobs ]]; then
+    log "迁移旧 Hugging Face 缓存：hf_cache/hub/models--hexgrad--Kokoro-82M-v1.1-zh -> models/models--hexgrad--Kokoro-82M-v1.1-zh"
+    cp -a hf_cache/hub/models--hexgrad--Kokoro-82M-v1.1-zh/. models/models--hexgrad--Kokoro-82M-v1.1-zh/ || warn "旧 HF 缓存迁移失败，可忽略并让服务重新下载。"
+  fi
+  if [[ -d moss_models && -z "$(find models/MOSS-TTS-Nano-100M-ONNX -mindepth 1 -maxdepth 1 -print -quit 2>/dev/null)" ]]; then
+    log "迁移旧 MOSS 模型目录：moss_models -> models/MOSS-TTS-Nano-100M-ONNX"
+    cp -a moss_models/. models/MOSS-TTS-Nano-100M-ONNX/ || warn "旧 MOSS 模型迁移失败，可忽略并让服务重新下载。"
+  fi
+}
+
 prepare_config() {
   cd "$INSTALL_DIR"
   if [[ ! -f docker/angevoice.env ]]; then
@@ -393,6 +415,7 @@ main() {
   fi
   ensure_repo
   prepare_config
+  prepare_model_dirs
   run_compose "$profile"
   install_shortcut
   log "安装完成。"

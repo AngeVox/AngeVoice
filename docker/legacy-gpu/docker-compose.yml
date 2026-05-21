@@ -25,20 +25,16 @@ services:
       - ../angevoice.env
 
     volumes:
-      # 模型目录：只读挂载，避免容器误改模型文件。
-      - ../../models:/app/models:ro
-      # Hugging Face 缓存：持久化到宿主机，避免重复下载。
-      - ../../hf_cache:/root/.cache/huggingface
+      # 统一模型目录：Kokoro / Hugging Face 缓存 / MOSS ONNX 全部持久化在这里。
+      # 需要写权限，首次启动会把自动下载的真实模型保存到宿主机 models/。
+      - ../../models:/app/models
       # 前端资源：本地修改后重启容器即可生效。
       - ../../src/kokoro_tts/templates/index.html:/app/src/kokoro_tts/templates/index.html:ro
       - ../../src/kokoro_tts/templates/admin.html:/app/src/kokoro_tts/templates/admin.html:ro
       - ../../src/kokoro_tts/static:/app/src/kokoro_tts/static:ro
-      # MOSS ONNX 模型缓存。
-      - ../../moss_models:/opt/MOSS-TTS-Nano/models
       # 合成输出目录；auto API key 默认也会写到 /app/outputs/.angevoice-api-key。
       - ../../outputs:/app/outputs
-      # 可选：开启音色上传时取消注释，并在 ../angevoice.env 中开启 KOKORO_VOICE_UPLOAD_ENABLED。
-      # - ../../models/voices:/app/models/voices:rw
+      # 可选：Kokoro 音色目录位于 ../../models/models--hexgrad--Kokoro-82M-v1.1-zh/voices
 
     environment:
       # ============================================================

@@ -21,7 +21,7 @@ def mock_engine():
     engine.config.sample_rate = 24000
     engine.config.max_text_length = 10000
     engine.config.get_voices.return_value = ["zm_010", "zf_001"]
-    # synthesize 默认抛 ValueError 用于空文本测试
+    # 合成函数默认抛出 ValueError，用于空文本测试。
     engine.synthesize.side_effect = ValueError("文本不能为空")
     return engine
 
@@ -136,7 +136,7 @@ class TestWebSocketStructure:
         ws_routes = [r for r in app_with_mock.routes if hasattr(r, 'path') and r.path == '/ws/v1/tts']
         assert len(ws_routes) == 1
         route = ws_routes[0]
-        # WebSocket 路由应支持 websocket 方法
+        # WebSocket 路由应支持 websocket 方法。
         assert hasattr(route, 'endpoint')
 
     def test_ws_error_frame_counts_as_error(self, app_with_mock, mock_engine):
@@ -190,7 +190,7 @@ class TestStreamEncoding:
 
         assert result[:4] == b"RIFF"
         assert result[8:12] == b"WAVE"
-        # WAV 大小应该合理 (> 48000 bytes for 1s mono 24kHz 16bit)
+        # WAV 大小应该合理。
         assert len(result) > 48000
 
     def test_pcm_roundtrip(self):

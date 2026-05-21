@@ -128,9 +128,9 @@ MOSS CUDA 依赖目标环境的 ONNX Runtime/CUDA/cuDNN 组合。Tesla P4 在通
 
 - 上游 Python 包：`kokoro`
 - Hugging Face repo：`hexgrad/Kokoro-82M-v1.1-zh`
-- 本地模型文件：`models/kokoro-v1_1-zh.pth`
+- 本地模型文件：`models/models--hexgrad--Kokoro-82M-v1.1-zh/kokoro-v1_1-zh.pth`
 - 本地配置文件：`models/config.json`
-- 音色目录：`models/voices/*.pt`
+- 音色目录：`models/models--hexgrad--Kokoro-82M-v1.1-zh/voices/*.pt`
 
 项目品牌名、发行包名和 CLI 名称不参与模型权重解析。
 

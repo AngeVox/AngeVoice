@@ -221,7 +221,7 @@ curl -X POST "$BASE_URL/api/tts" \
 
 ### 参考音频存放位置
 
-MOSS 参考音频**不是** Kokoro 音色文件，不要放到 `models/voices` 目录。`models/voices` 仅用于存放 Kokoro 的 `.pt` 音色文件。
+MOSS 参考音频**不是** Kokoro 音色文件，不要放到 `models/models--hexgrad--Kokoro-82M-v1.1-zh/voices` 目录。`models/models--hexgrad--Kokoro-82M-v1.1-zh/voices` 仅用于存放 Kokoro 的 `.pt` 音色文件。
 
 | 使用方式 | 音频存放位置 | 适用场景 |
 |---|---|---|

@@ -1,5 +1,20 @@
 #!/bin/bash
-set -e
+set -euo pipefail
 
-echo "Starting AngeVoice service..."
+# 统一模型目录：Compose 默认把宿主机 ./models 挂载到 /app/models。
+export ANGEVOICE_MODELS_ROOT="${ANGEVOICE_MODELS_ROOT:-/app/models}"
+export KOKORO_MODEL_DIR="${KOKORO_MODEL_DIR:-${ANGEVOICE_MODELS_ROOT}/models--hexgrad--Kokoro-82M-v1.1-zh}"
+export MOSS_MODEL_DIR="${MOSS_MODEL_DIR:-${ANGEVOICE_MODELS_ROOT}/MOSS-TTS-Nano-100M-ONNX}"
+export HF_HUB_CACHE="${HF_HUB_CACHE:-${ANGEVOICE_MODELS_ROOT}}"
+export HUGGINGFACE_HUB_CACHE="${HUGGINGFACE_HUB_CACHE:-${HF_HUB_CACHE}}"
+export HF_HOME="${HF_HOME:-${ANGEVOICE_MODELS_ROOT}/.hf}"
+export MODELSCOPE_CACHE="${MODELSCOPE_CACHE:-${ANGEVOICE_MODELS_ROOT}/modelscope-cache}"
+
+mkdir -p \
+  "${KOKORO_MODEL_DIR}/voices" \
+  "${MOSS_MODEL_DIR}" \
+  "${HF_HOME}" \
+  "${MODELSCOPE_CACHE}" \
+  "${ANGEVOICE_OUTPUT_DIR:-/app/outputs}"
+
 exec angevoice serve

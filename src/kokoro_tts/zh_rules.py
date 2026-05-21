@@ -46,8 +46,9 @@ _MAX_WORD_LEN = max(len(word) for word in _LEXICON)
 _LIAO_PATTERNS_KOKORO: tuple = ()
 _LIAO_PATTERNS_MOSS: tuple = ()
 
-# 这些覆盖规则刻意保守，基于短语设计。
-# 右侧使用常见同音字来偏置中文 G2P，无需在公共 API 中引入额外标记语言。
+# 这些覆盖规则有意保持保守，并以短语为单位。右侧使用常见同音字，
+# 在不引入额外公开标记语言的前提下偏置中文 G2P。
+#
 _POLYPHONE_PHRASES_KOKORO = (
     # 了: le / liao
     ("没完没了", "没完没瞭"),
@@ -284,7 +285,7 @@ _POLYPHONE_PHRASES_KOKORO = (
     ("率先", "帅先"),
     ("率领", "帅领"),
 
-    # 专有名词及其他常见例外。
+    # 专有名词和其它常见例外。
     ("柏林", "伯林"),
     ("厦门", "夏门"),
     ("大厦", "大煞"),
@@ -293,11 +294,11 @@ _POLYPHONE_PHRASES_KOKORO = (
     ("圈养", "倦养"),
 )
 
-# MOSS：暂空——其 G2P 自身处理多音字较好。
-# 后续如需补充，可在此添加已确认的修正。
+# MOSS：默认留空，它的 G2P 原生处理多音字。
+# 后续如有确认有效的修正再添加到这里。
 _POLYPHONE_PHRASES_MOSS: tuple = ()
 
-# 正则覆盖规则属于语法级别（只→支, 地→的），适用于所有模型。
+# 正则覆盖属于语法类修正（只→支、地→的），对所有模型生效。
 _REGEX_OVERRIDES = (
     (re.compile(r"([一二两三四五六七八九十百千万0-9]+)只(?=[\u4e00-\u9fff])"), r"\1支"),
     (
@@ -407,13 +408,13 @@ def apply_polyphone_overrides(text: str, model: str = "kokoro") -> str:
 
     is_moss = _is_moss_model(model)
 
-    # 根据模型选择对应的规则集
+    # 选择模型对应的规则集。
     phrases = _POLYPHONE_PHRASES_MOSS if is_moss else _POLYPHONE_PHRASES_KOKORO
     liao_patterns = _LIAO_PATTERNS_MOSS if is_moss else _LIAO_PATTERNS_KOKORO
 
     for source, target in phrases:
         text = text.replace(source, target)
-    # 正则覆盖规则属于语法级别，适用于所有模型
+    # 正则覆盖属于语法类修正，对所有模型生效。
     for pattern, replacement in _REGEX_OVERRIDES:
         text = pattern.sub(replacement, text)
     padded = text + "$"
@@ -443,7 +444,7 @@ def detect_polyphones(text: str) -> list[dict]:
         try:
             readings = _py_pinyin(char, style=_py_Style.TONE3, heteronym=True)
             if readings and len(readings[0]) > 1:
-                # 此字有多个读音（多音字）
+                # 这个字存在多个读音。
                 results.append({
                     "char": char,
                     "position": i,

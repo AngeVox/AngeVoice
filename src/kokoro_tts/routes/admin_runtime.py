@@ -139,7 +139,7 @@ def apply_config_patch(cfg, patch: AdminConfigPatch) -> tuple[list[str], list[st
     for key in adjusted:
         if key not in changed:
             changed.append(key)
-        # guards 调整了 rebuild_moss 字段时，需要重新标记
+        # 校验逻辑调整了 rebuild_moss 字段时，需要重新标记。
         field_def = ADMIN_CONFIG_FIELDS.get(key)
         if field_def and getattr(field_def, "rebuild_moss", False):
             rebuild_moss = True

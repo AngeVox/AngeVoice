@@ -10,7 +10,15 @@ from pathlib import Path
 from threading import Lock
 
 
-def prompt_audio_cache_key(*, voice: str, default_voice: str, prompt_audio_path: str | None, max_seconds: float, sample_rate: int, channels: int) -> str:
+def prompt_audio_cache_key(
+    *,
+    voice: str,
+    default_voice: str,
+    prompt_audio_path: str | None,
+    max_seconds: float,
+    sample_rate: int,
+    channels: int,
+) -> str:
     """生成参考音频缓存键。"""
 
     selected_voice = voice or default_voice
@@ -27,7 +35,14 @@ def prompt_audio_cache_key(*, voice: str, default_voice: str, prompt_audio_path:
     return f"prompt:{digest.hexdigest()}:voice:{selected_voice}:maxsec:{float(max_seconds):.3f}:sr:{int(sample_rate)}:ch:{int(channels)}"
 
 
-def prepare_prompt_audio(prompt_audio_path: str | None, *, max_seconds: float, sample_rate: int, channels: int, logger=None) -> tuple[str | None, str | None]:
+def prepare_prompt_audio(
+    prompt_audio_path: str | None,
+    *,
+    max_seconds: float,
+    sample_rate: int,
+    channels: int,
+    logger=None,
+) -> tuple[str | None, str | None]:
     """按 MOSS 目标采样率和通道数裁剪参考音频。"""
 
     if not prompt_audio_path:
@@ -74,17 +89,43 @@ def prepare_prompt_audio(prompt_audio_path: str | None, *, max_seconds: float, s
     return str(target), str(target)
 
 
-def resolve_prompt_audio_codes_cached(*, runtime, cache: OrderedDict[str, list[list[int]]], cache_lock: Lock, voice: str, default_voice: str, prompt_audio_path: str | None, max_items: int, max_seconds: float, sample_rate: int, channels: int, logger=None) -> list[list[int]]:
+def resolve_prompt_audio_codes_cached(
+    *,
+    runtime,
+    cache: OrderedDict[str, list[list[int]]],
+    cache_lock: Lock,
+    voice: str,
+    default_voice: str,
+    prompt_audio_path: str | None,
+    max_items: int,
+    max_seconds: float,
+    sample_rate: int,
+    channels: int,
+    logger=None,
+) -> list[list[int]]:
     """解析并缓存 MOSS prompt audio codes。"""
 
-    key = prompt_audio_cache_key(voice=voice, default_voice=default_voice, prompt_audio_path=prompt_audio_path, max_seconds=max_seconds, sample_rate=sample_rate, channels=channels)
+    key = prompt_audio_cache_key(
+        voice=voice,
+        default_voice=default_voice,
+        prompt_audio_path=prompt_audio_path,
+        max_seconds=max_seconds,
+        sample_rate=sample_rate,
+        channels=channels,
+    )
     with cache_lock:
         cached = cache.get(key)
         if cached is not None:
             cache.move_to_end(key)
             return cached
 
-    prepared_path, cleanup_path = prepare_prompt_audio(prompt_audio_path, max_seconds=max_seconds, sample_rate=sample_rate, channels=channels, logger=logger)
+    prepared_path, cleanup_path = prepare_prompt_audio(
+        prompt_audio_path,
+        max_seconds=max_seconds,
+        sample_rate=sample_rate,
+        channels=channels,
+        logger=logger,
+    )
     try:
         codes = runtime.resolve_prompt_audio_codes(voice=voice or default_voice, prompt_audio_path=prepared_path)
     finally:

@@ -44,7 +44,7 @@ class LatencyTracker:
 
             with tracker.measure() as t:
                 ...
-            # elapsed is auto-recorded when exiting the block.
+            # 退出代码块时会自动记录耗时。
         """
         return _TimerContext(self)
 

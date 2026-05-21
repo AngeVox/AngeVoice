@@ -44,7 +44,7 @@ def get_cuda_vram_snapshot() -> VramSnapshot:
                 total_mb=int(total_bytes // (1024 * 1024)),
                 source="torch.cuda.mem_get_info",
             )
-    except Exception as exc:  # noqa: BLE001 - best-effort probe
+    except Exception as exc:  # noqa: BLE001
         torch_error = f"{type(exc).__name__}: {exc}"
     else:
         torch_error = "torch cuda unavailable"
@@ -72,7 +72,7 @@ def get_cuda_vram_snapshot() -> VramSnapshot:
                     source="nvidia-smi",
                 )
         return VramSnapshot(False, source="nvidia-smi", error=(proc.stderr or proc.stdout or torch_error).strip())
-    except Exception as exc:  # noqa: BLE001 - best-effort probe
+    except Exception as exc:  # noqa: BLE001
         return VramSnapshot(False, source="unavailable", error=f"{torch_error}; {type(exc).__name__}: {exc}")
 
 

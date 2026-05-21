@@ -7,7 +7,7 @@ from unittest.mock import MagicMock, patch
 import pytest
 
 sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
-EXPECTED_VERSION = "2.6.5.2"
+EXPECTED_VERSION = "2.6.5.3"
 
 
 def _has_module(name: str) -> bool:
@@ -540,6 +540,34 @@ class TestKokoroLocalPathRegression:
         assert engine._resolve_voice_for_pipeline("../zm_010.pt") == str(voice_file)
         assert engine._resolve_voice_for_pipeline("missing_voice") == "missing_voice"
 
+
+    def test_default_model_dir_uses_unified_layout(self, monkeypatch):
+        from kokoro_tts.config import TTSConfig
+
+        monkeypatch.delenv("KOKORO_MODEL_DIR", raising=False)
+        monkeypatch.setenv("ANGEVOICE_MODELS_ROOT", "/tmp/angevoice-models")
+        cfg = TTSConfig()
+        assert str(cfg.model_dir).endswith("/tmp/angevoice-models/models--hexgrad--Kokoro-82M-v1.1-zh")
+
+    def test_tiny_but_valid_torch_voice_is_allowed(self, tmp_path):
+        from kokoro_tts.kokoro_assets import is_valid_kokoro_voice_file
+
+        voice = tmp_path / "small_voice.pt"
+        voice.write_bytes(b"PK\x03\x04" + b"x" * 700)
+        assert is_valid_kokoro_voice_file(voice) is True
+
+    def test_lfs_voice_warning_is_deduplicated(self, tmp_path, caplog):
+        import logging
+        from kokoro_tts.kokoro_assets import is_valid_kokoro_voice_file
+
+        voice = tmp_path / "zf_087.pt"
+        voice.write_text("version https://git-lfs.github.com/spec/v1\noid sha256:deadbeef\n", encoding="utf-8")
+        with caplog.at_level(logging.WARNING):
+            assert is_valid_kokoro_voice_file(voice) is False
+            assert is_valid_kokoro_voice_file(voice) is False
+        messages = [record.message for record in caplog.records if "zf_087.pt" in record.message]
+        assert len(messages) == 1
+
     def test_lfs_pointer_model_and_voice_are_not_used_locally(self, tmp_path):
         from kokoro_tts.config import TTSConfig
         from kokoro_tts.engine import TTSEngine
@@ -573,9 +601,9 @@ class TestMossProductionDefaults:
     def test_moss_auto_text_rules_keep_technical_mixed_text(self):
         from kokoro_tts.moss.text import clean_text
 
-        text = "AngeVoice v2.6.5.1 调用 OpenAI API，地址是 192.168.1.2:8101。"
+        text = "AngeVoice v2.6.5.3 调用 OpenAI API，地址是 192.168.1.2:8101。"
         cleaned = clean_text(text, apply_angevoice_rules="auto", model="moss")
-        assert "v2.6.5.1" in cleaned
+        assert "v2.6.5.3" in cleaned
         assert "OpenAI API" in cleaned
         assert "192.168.1.2:8101" in cleaned
 

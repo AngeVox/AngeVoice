@@ -245,7 +245,11 @@ class MossNanoEngine(MossStreamingMixin):
         self._runtime = None
         self._loaded = True
         self._unhealthy = False
-        self._actual_provider = str(metadata.get("actual_provider") or self.execution_provider) if isinstance(metadata, dict) else self.execution_provider
+        self._actual_provider = (
+            str(metadata.get("actual_provider") or self.execution_provider)
+            if isinstance(metadata, dict)
+            else self.execution_provider
+        )
         self._cached_sample_rate = int(metadata.get("sample_rate") or 48000) if isinstance(metadata, dict) else 48000
         self._cached_channels = int(metadata.get("channels") or 2) if isinstance(metadata, dict) else 2
         voices = metadata.get("voices") if isinstance(metadata, dict) else None
@@ -376,7 +380,12 @@ class MossNanoEngine(MossStreamingMixin):
         if self._process_client is not None:
             self._process_client.close(kill=True)
             self._process_client = None
-        logger.warning("MOSS isolated worker failed (%s, %.0fs); process killed (consecutive=%d)", reason, timeout, self._consecutive_timeouts)
+        logger.warning(
+            "MOSS isolated worker failed (%s, %.0fs); process killed (consecutive=%d)",
+            reason,
+            timeout,
+            self._consecutive_timeouts,
+        )
 
     def _iter_waveforms(self, *, segments: list[str], voice: str = "", prompt_audio_path: str | None = None):
         prompt_audio_codes = self._resolve_prompt_audio_codes_cached(voice=voice, prompt_audio_path=prompt_audio_path)
@@ -420,7 +429,7 @@ class MossNanoEngine(MossStreamingMixin):
                         streaming=bool(self.config.moss_realtime_streaming_decode),
                     )
                     waveform = np.asarray(chunk_result["waveform"], dtype=np.float32)
-            except Exception as exc:  # noqa: BLE001 - retry only for memory allocation failures
+            except Exception as exc:  # noqa: BLE001
                 if not is_memory_allocation_error(exc) or not self._runtime_supports_frame_streaming():
                     raise
                 self._record_full_decode_oom(exc)
@@ -793,7 +802,7 @@ class MossNanoEngine(MossStreamingMixin):
             pending_count = len(pending_decode_frames)
             if pending_count <= 0:
                 return
-            # 保持帧批次足够小，避免完整编解码器的内存峰值。
+            # 保持较小的帧批次，避免完整 codec 路径瞬时占用过高。
             budget = 12 if self._low_vram_mode else 24
             if not force and pending_count < budget:
                 return

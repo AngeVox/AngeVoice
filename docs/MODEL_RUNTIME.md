@@ -97,8 +97,12 @@ request:
 | `ANGEVOICE_SAVE_OUTPUTS` | `false` | Persist HTTP synthesis outputs |
 | `ANGEVOICE_OUTPUT_DIR` | `/app/outputs` | Output directory |
 | `ANGEVOICE_OUTPUT_MAX_FILES` | `1000` | Max retained output files; `0` disables pruning |
+| `ANGEVOICE_MODELS_ROOT` | `/app/models` | Unified model root for Docker profiles |
+| `KOKORO_MODEL_DIR` | `/app/models/models--hexgrad--Kokoro-82M-v1.1-zh` | Kokoro model/config/voices directory |
+| `HF_HUB_CACHE` | `/app/models` | Hugging Face cache root |
+| `MODELSCOPE_CACHE` | `/app/models/modelscope-cache` | ModelScope cache directory |
 | `MOSS_TTS_NANO_PATH` | - | Path to a local clone of `OpenMOSS/MOSS-TTS-Nano` |
-| `MOSS_MODEL_DIR` | - | Optional ONNX asset directory; Docker uses `/opt/MOSS-TTS-Nano/models` |
+| `MOSS_MODEL_DIR` | `/app/models/MOSS-TTS-Nano-100M-ONNX` | MOSS ONNX asset directory |
 | `MOSS_EXECUTION_PROVIDER` | `cpu` | `cpu` or `cuda` |
 | `MOSS_CUDA_ENABLED` | `true` | Allows registering `moss-nano-cuda`; CPU/legacy Compose disable it |
 | `MOSS_CUDA_MEMORY_LIMIT_MB` | `0` | Optional ORT CUDA arena cap; `0` leaves VRAM unrestricted for general GPU compatibility |
@@ -195,8 +199,7 @@ Docker profiles preinstall the matching MOSS runtime but still start with
   `MOSS_EXECUTION_PROVIDER=cuda`.
 - Legacy GPU image (老架构GPU 镜像): CUDA 11.8 compatibility fallback. It preinstalls CUDA 11 compatible MOSS GPU dependencies but exposes only `kokoro,moss-nano-cpu` by default. Use it only when the standard `gpu` image cannot start or is unstable; try `docker-compose.moss-cuda.yml` only for testing MOSS CUDA.
 
-Keep `../../moss_models:/opt/MOSS-TTS-Nano/models` mounted to persist
-downloaded ONNX assets, and keep `../../outputs:/app/outputs` mounted when
+Keep `../../models:/app/models` mounted to persist Kokoro, Hugging Face cache, ModelScope cache, and MOSS ONNX assets; keep `../../outputs:/app/outputs` mounted when
 `ANGEVOICE_SAVE_OUTPUTS=true`.
 
 `moss-nano-cuda` depends on a compatible ONNX Runtime CUDA/cuDNN stack and must

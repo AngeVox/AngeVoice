@@ -16,8 +16,8 @@ Docker 端口按部署画像替换：CPU 默认 `8100`，GPU 默认 `8101`，老
 
 ```bash
 ls -lh models/
-ls -lh models/voices/
-head -5 models/kokoro-v1_1-zh.pth
+ls -lh models/models--hexgrad--Kokoro-82M-v1.1-zh/voices/
+head -5 models/models--hexgrad--Kokoro-82M-v1.1-zh/kokoro-v1_1-zh.pth
 ```
 
 如果看到 `version https://git-lfs.github.com/spec/v1`，说明它只是 LFS 指针，不是真实权重。
@@ -26,8 +26,9 @@ head -5 models/kokoro-v1_1-zh.pth
 
 ```bash
 pip install huggingface_hub
+mkdir -p models/models--hexgrad--Kokoro-82M-v1.1-zh
 huggingface-cli download hexgrad/Kokoro-82M-v1.1-zh \
-  --local-dir models/ \
+  --local-dir models/models--hexgrad--Kokoro-82M-v1.1-zh \
   --include "config.json" "kokoro-v1_1-zh.pth" "voices/*.pt"
 ```
 
@@ -55,7 +56,7 @@ git lfs pull
 
 ### Kokoro 报 `Weights only load failed` / `Unsupported operand 118`
 
-这个错误几乎总是因为本地 `kokoro-v1_1-zh.pth` 或 `models/voices/*.pt` 不是二进制权重，而是 Git LFS 指针文本。例如：
+这个错误几乎总是因为本地 `kokoro-v1_1-zh.pth` 或 `models/models--hexgrad--Kokoro-82M-v1.1-zh/voices/*.pt` 不是二进制权重，而是 Git LFS 指针文本。例如：
 
 ```text
 version https://git-lfs.github.com/spec/v1
@@ -63,22 +64,24 @@ oid sha256:...
 size ...
 ```
 
-2.6.5.1 之后，AngeVoice 会同时检查 Kokoro 主模型和音色文件：
+2.6.5.3 之后，AngeVoice 会更精准地检查 Kokoro 主模型和音色文件：
 
-- 主模型小于 10MB、音色小于 10KB 会被视为无效本地权重；
+- 主模型会检查体积和文件头，避免把不完整权重当成真实模型；
+- 音色文件本身可以比较小，因此优先检查 PyTorch zip/pickle 文件头；
 - 内容以 Git LFS 指针、HTML/JSON 错误页开头会被跳过；
-- 无效本地音色不会作为本地路径传给 Kokoro，避免 `torch.load` 加载文本指针。
+- 无效本地音色不会作为本地路径传给 Kokoro，且同一路径只 warning 一次，避免长文本合成刷屏。
 
 如果仍然报错，通常是 Hugging Face / ModelScope 缓存里也残留了错误文件。可删除缓存后重启：
 
 ```bash
-# Docker 默认缓存目录在项目根目录外的 hf_cache / modelscope_cache，按实际挂载路径删除
-rm -rf hf_cache/hub/models--hexgrad--Kokoro-82M-v1.1-zh
-rm -rf modelscope_cache/hub/AI-ModelScope_Kokoro-82M-v1.1-zh
+# 统一模型目录为 ./models；清理 Kokoro HF/ModelScope 缓存后重启即可重新下载
+rm -rf models/models--hexgrad--Kokoro-82M-v1.1-zh/blobs
+rm -rf models/models--hexgrad--Kokoro-82M-v1.1-zh/snapshots
+rm -rf models/modelscope-cache/hub/AI-ModelScope_Kokoro-82M-v1.1-zh
 
-# 或直接把源码包里的 LFS 指针移走，让服务重新下载
-find models -type f -size -10k -name "*.pt" -delete
-rm -f models/kokoro-v1_1-zh.pth
+# 或只删除源码包里的小型 LFS 指针，让服务重新下载/回退上游缓存
+find models/models--hexgrad--Kokoro-82M-v1.1-zh -type f -size -10k \
+  \( -name "*.pt" -o -name "*.pth" \) -delete
 ```
 
 不要为了解决该错误盲目把 `torch.load(weights_only=False)` 打开。只有完全可信的权重才能关闭 `weights_only`，否则存在任意代码执行风险。
@@ -92,10 +95,10 @@ docker logs -f angevoice-gpu
 curl http://127.0.0.1:8101/health
 ```
 
-确保 Compose 中 Hugging Face cache 已挂载：
+确保 Compose 中统一模型目录已挂载：
 
 ```yaml
-- ../../hf_cache:/root/.cache/huggingface
+- ../../models:/app/models
 ```
 
 ## 3. GPU 显存占用过高或 OOM
@@ -158,9 +161,9 @@ nvidia-cudnn-cu12==9.1.0.70
 
 ## 5. MOSS 参考音频克隆：音频到底放哪？
 
-最容易误解的一点：**MOSS 参考音频不要放进 `models/voices`。**
+最容易误解的一点：**MOSS 参考音频不要放进 `models/models--hexgrad--Kokoro-82M-v1.1-zh/voices`。**
 
-`models/voices` 是 Kokoro 的 `.pt` 音色目录。MOSS 克隆有三种方式：
+`models/models--hexgrad--Kokoro-82M-v1.1-zh/voices` 是 Kokoro 的 `.pt` 音色目录。MOSS 克隆有三种方式：
 
 | 方式 | 参考音频位置 | 适合 |
 |---|---|---|
@@ -445,13 +448,13 @@ Upgrade: websocket
 检查目录：
 
 ```bash
-ls models/voices/*.pt
+ls models/models--hexgrad--Kokoro-82M-v1.1-zh/voices/*.pt
 ```
 
 容器中检查：
 
 ```bash
-docker exec -it angevoice-gpu ls -lh /app/models/voices
+docker exec -it angevoice-gpu ls -lh /app/models/models--hexgrad--Kokoro-82M-v1.1-zh/voices
 ```
 
 如果目录为空，重新下载模型音色。
@@ -471,7 +474,7 @@ KOKORO_API_KEY=auto
 Docker 还需要 voices 目录可写：
 
 ```yaml
-- ../../models/voices:/app/models/voices:rw
+- ../../models/models--hexgrad--Kokoro-82M-v1.1-zh/voices:/app/models/models--hexgrad--Kokoro-82M-v1.1-zh/voices:rw
 ```
 
 注意：这和 MOSS 参考音频克隆不是同一个功能。MOSS 参考音频走 `/api/tts` 的 `prompt_audio`，或 WebSocket 首包的 `prompt_audio.data`。
@@ -566,7 +569,7 @@ def tts_with_retry(url, payload, max_retries=3):
 
 ## WebSocket 一直卡在“建立流式连接”
 
-如果长文本或 MOSS CUDA 合成中途刷新页面、点击停止后再次生成一直卡住，优先确认已经使用 2.6.5.1。当前版本做了三件事：
+如果长文本或 MOSS CUDA 合成中途刷新页面、点击停止后再次生成一直卡住，优先确认已经使用 2.6.5.3 或更新版本。当前版本做了三件事：
 
 1. WebSocket 发送失败会立即标记请求取消，不再把断开的连接当作服务端错误反复发送。
 2. MOSS 隔离 worker 的流式超时按“无任何事件的空闲时间”计算，而不是整段长文本的总时长。

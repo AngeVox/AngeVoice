@@ -38,5 +38,8 @@ def load_or_generate_api_key(config) -> str:
     except Exception:
         logger.exception("Unable to load or generate API key file: %s", key_file)
         generated = generate_api_key()
-        logger.warning("Generated in-memory AngeVoice API key because key file is unavailable; set ANGEVOICE_API_KEY_FILE to a writable path.")
+        logger.warning(
+            "Generated in-memory AngeVoice API key because key file is unavailable; "
+            "set ANGEVOICE_API_KEY_FILE to a writable path."
+        )
         return generated

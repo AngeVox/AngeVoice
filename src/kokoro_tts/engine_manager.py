@@ -10,7 +10,7 @@ import time
 from contextlib import contextmanager
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Iterator
+from typing import Any, Iterator
 
 from fastapi import HTTPException
 
@@ -170,7 +170,7 @@ class EngineManager:
         with self._lock:
             return self._model_snapshot(spec)
 
-    def switch_model(self, model_id: str, *, unload_previous: bool | None = None, load: bool = True) -> dict:
+    def switch_model(self, model_id: str, *, unload_previous: bool | None = None, load: bool = True) -> dict[str, Any]:
         target_id = self.normalize_model_id(model_id)
         self._ensure_enabled(target_id)
         self._touch_model(target_id)
@@ -196,10 +196,18 @@ class EngineManager:
                         logger.exception("切换失败后恢复旧模型失败：%s", previous_id)
                 raise
             self._current_model_id = target_id
-            return {"ok": True, "previous_model": previous_id, "current_model": target_id, "unloaded_previous": unloaded_previous, "previous_busy": previous_busy, "model": self._engine_metadata(engine) or self._model_snapshot(self._spec_for(target_id))}
+            model_snapshot = self._engine_metadata(engine) or self._model_snapshot(self._spec_for(target_id))
+            return {
+                "ok": True,
+                "previous_model": previous_id,
+                "current_model": target_id,
+                "unloaded_previous": unloaded_previous,
+                "previous_busy": previous_busy,
+                "model": model_snapshot,
+            }
 
     @contextmanager
-    def borrow(self, model_id: str | None = None) -> Iterator[object]:
+    def borrow(self, model_id: str | None = None) -> Iterator[TTSEngine | MossNanoEngine]:
         target_id = self.normalize_model_id(model_id)
         self._ensure_enabled(target_id)
         self._touch_model(target_id)
@@ -229,7 +237,8 @@ class EngineManager:
                     try:
                         self.drop_model(target_id, force=True, raise_if_busy=False)
                     except Exception:
-                        logger.debug("执行待重建失败：%s", target_id, exc_info=True)
+                        self._pending_rebuild.add(target_id)
+                        logger.warning("执行待重建失败，保留待重建标记：%s", target_id, exc_info=True)
 
     def get_engine(self, model_id: str | None = None, *, load: bool = True):
         target_id = self.normalize_model_id(model_id)
@@ -242,15 +251,17 @@ class EngineManager:
             try:
                 engine.load()
             except Exception:
-                # Loading failures (especially MOSS CUDA fallback/ORT allocation failures)
-                # must not leave a half-initialized engine or stale busy state behind.
+                # 加载失败不能留下半初始化引擎，也不能留下过期忙碌计数。
                 self._active_counts[target_id] = 0
                 unload = getattr(engine, "unload", None)
                 if callable(unload):
                     try:
                         unload(force=True)
                     except TypeError:
-                        unload()
+                        try:
+                            unload()
+                        except Exception:
+                            logger.debug("加载失败后的模型清理失败：%s", target_id, exc_info=True)
                     except Exception:
                         logger.debug("加载失败后的模型清理失败：%s", target_id, exc_info=True)
                 raise
@@ -275,14 +286,21 @@ class EngineManager:
                 try:
                     unload(force=force)
                 except TypeError:
-                    unload()
+                    try:
+                        unload()
+                    except Exception:
+                        logger.warning("模型卸载失败：%s", target_id, exc_info=True)
+                        return False
+                except Exception:
+                    logger.warning("模型卸载失败：%s", target_id, exc_info=True)
+                    return False
             if force:
                 self._active_counts[target_id] = 0
             return True
 
 
     def drop_model(self, model_id: str, *, force: bool = False, raise_if_busy: bool = True) -> bool:
-        """Unload and remove an engine object so next load rebuilds it from current config."""
+        """卸载并移除引擎对象，让下次加载使用当前配置重新构建。"""
         target_id = self.normalize_model_id(model_id)
         with self._lock:
             active = self._active_count(target_id)
@@ -293,22 +311,33 @@ class EngineManager:
                 logger.info("跳过忙碌模型重建：%s active_count=%d，已标记为待重建", target_id, active)
                 self._pending_rebuild.add(target_id)
                 return False
-            self._pending_rebuild.discard(target_id)
-            engine = self._engines.pop(target_id, None)
+            engine = self._engines.get(target_id)
             if engine is None:
+                self._pending_rebuild.discard(target_id)
                 return False
             unload = getattr(engine, "unload", None)
             if callable(unload):
                 try:
                     unload(force=force)
                 except TypeError:
-                    unload()
+                    try:
+                        unload()
+                    except Exception:
+                        logger.warning("模型重建前卸载失败：%s", target_id, exc_info=True)
+                        self._pending_rebuild.add(target_id)
+                        return False
+                except Exception:
+                    logger.warning("模型重建前卸载失败：%s", target_id, exc_info=True)
+                    self._pending_rebuild.add(target_id)
+                    return False
+            self._pending_rebuild.discard(target_id)
+            self._engines.pop(target_id, None)
             if force:
                 self._active_counts[target_id] = 0
             return True
 
     def drop_matching(self, predicate, *, force: bool = False) -> list[str]:
-        """Drop all cached engine objects that match predicate(model_id)."""
+        """移除所有符合 predicate(model_id) 的缓存引擎对象。"""
         dropped: list[str] = []
         for model_id in list(self._engines):
             if predicate(model_id) and self.drop_model(model_id, force=force, raise_if_busy=False):
@@ -345,7 +374,7 @@ class EngineManager:
                 return spec
         return EngineSpec(model_id, model_id, "unknown", "unknown")
 
-    def _model_snapshot(self, spec: EngineSpec) -> dict:
+    def _model_snapshot(self, spec: EngineSpec) -> dict[str, Any]:
         engine = self._engines.get(spec.id)
         loaded = bool(getattr(engine, "is_loaded", False)) if engine is not None else False
         healthy = bool(getattr(engine, "is_healthy", True)) if engine is not None else True
@@ -353,16 +382,55 @@ class EngineManager:
         active_count = self._active_count(spec.id)
         idle_timeout = float(getattr(self.cfg, "model_idle_timeout_seconds", 0) or 0)
         idle_unloaded = bool(engine is not None and not loaded and idle_timeout > 0 and spec.id in self._last_used)
-        return {"id": spec.id, "name": spec.name, "backend": spec.backend, "provider": spec.provider, "experimental": spec.experimental, "enabled": True, "current": spec.id == self._current_model_id, "loaded": loaded, "healthy": healthy, "available": self._runtime_available(spec), "active_count": active_count, "pending_rebuild": spec.id in self._pending_rebuild, "idle_timeout_seconds": idle_timeout, "idle_unload_current": bool(getattr(self.cfg, "model_idle_unload_current", True)), "idle_unloaded": idle_unloaded, **self._static_capabilities(spec), **runtime}
 
-    def _static_capabilities(self, spec: EngineSpec) -> dict:
+        snapshot: dict[str, Any] = {
+            "id": spec.id,
+            "name": spec.name,
+            "backend": spec.backend,
+            "provider": spec.provider,
+            "experimental": spec.experimental,
+            "enabled": True,
+            "current": spec.id == self._current_model_id,
+            "loaded": loaded,
+            "healthy": healthy,
+            "available": self._runtime_available(spec),
+            "active_count": active_count,
+            "pending_rebuild": spec.id in self._pending_rebuild,
+            "idle_timeout_seconds": idle_timeout,
+            "idle_unload_current": bool(getattr(self.cfg, "model_idle_unload_current", True)),
+            "idle_unloaded": idle_unloaded,
+        }
+
+        # 静态能力字段先合入，运行时 metadata 再合入。运行时字段允许覆盖
+        # loaded/device/voices 等动态值，但基础 id/name/backend 不应被静默改写。
+        snapshot.update(self._static_capabilities(spec))
+        protected_keys = {"id", "name", "backend", "provider", "experimental", "enabled"}
+        runtime_metadata = {key: value for key, value in runtime.items() if key not in protected_keys}
+        snapshot.update(runtime_metadata)
+        return snapshot
+
+    def _static_capabilities(self, spec: EngineSpec) -> dict[str, Any]:
         if spec.backend != "moss-tts-nano-onnx":
-            return {"modes": ["preset_voice"], "voice_clone_supported": False, "speed_supported": True, "text_rules_enabled": True}
+            return {
+                "modes": ["preset_voice"],
+                "voice_clone_supported": False,
+                "speed_supported": True,
+                "text_rules_enabled": True,
+            }
         text_rules_mode = str(getattr(self.cfg, "moss_apply_angevoice_rules", "auto")).strip().lower()
         text_rules_enabled = text_rules_mode != "false"
-        return {"modes": ["preset_voice", "voice_clone"], "voice_clone_supported": True, "voice_clone_enabled": True, "default_voice": self.cfg.moss_default_voice, "speed_supported": False, "text_rules_enabled": text_rules_enabled, "sample_rate": 48000, "channels": 2}
+        return {
+            "modes": ["preset_voice", "voice_clone"],
+            "voice_clone_supported": True,
+            "voice_clone_enabled": True,
+            "default_voice": self.cfg.moss_default_voice,
+            "speed_supported": False,
+            "text_rules_enabled": text_rules_enabled,
+            "sample_rate": 48000,
+            "channels": 2,
+        }
 
-    def _engine_metadata(self, engine) -> dict:
+    def _engine_metadata(self, engine) -> dict[str, Any]:
         metadata = getattr(engine, "metadata", None)
         if not callable(metadata):
             return {}

@@ -17,7 +17,7 @@ logger = logging.getLogger(__name__)
 
 from .admin_config_schema import load_runtime_config
 from .config_env import apply_env
-from .kokoro_assets import is_valid_kokoro_model_file
+from .kokoro_assets import default_kokoro_model_dir, is_valid_kokoro_model_file, kokoro_model_dir_candidates, models_root
 from .config_ids import (
     MODEL_FILENAME,
     MOSS_GENERIC_MODEL_IDS,
@@ -29,17 +29,16 @@ from .config_ids import (
 def _find_models_dir() -> Path:
     """查找可用的 Kokoro 模型目录。
 
-    GitHub 源码包里的 `models/` 可能只有 Git LFS 指针文件。这里会跳过
-    指针文件或不完整权重，避免后续 `torch.load` 把文本指针当成模型加载。
+    新布局统一把模型放在 ``models/`` 下：
+    ``models/models--hexgrad--Kokoro-82M-v1.1-zh`` 用于 Kokoro，
+    ``models/MOSS-TTS-Nano-100M-ONNX`` 用于 MOSS。
+
+    这里会跳过 Git LFS 指针文件或不完整权重，避免后续 ``torch.load``
+    把文本指针当成模型加载。若没有本地真实权重，返回推荐持久化目录，
+    运行时交给 Hugging Face / ModelScope 下载到同一个 ``models`` 根目录。
     """
 
-    candidates = [
-        Path(os.environ.get("KOKORO_MODEL_DIR", "")),
-        Path.cwd() / "models",
-        Path(__file__).resolve().parent.parent.parent / "models",
-        Path("/app/models"),
-    ]
-    for path in candidates:
+    for path in kokoro_model_dir_candidates():
         if not path or not path.exists():
             continue
         model_file = path / MODEL_FILENAME
@@ -50,8 +49,8 @@ def _find_models_dir() -> Path:
                 size_mb = 0.0
             logger.info("找到模型目录: %s (Kokoro 模型 %.1f MB)", path, size_mb)
             return path
-    fallback = Path.cwd() / "models"
-    logger.warning("未找到有效的 Kokoro 本地模型目录，使用兜底路径: %s；运行时将尝试远程下载。", fallback)
+    fallback = default_kokoro_model_dir()
+    logger.warning("未找到有效的 Kokoro 本地模型目录，使用推荐持久化路径: %s；运行时将尝试远程下载。", fallback)
     return fallback
 
 
@@ -73,6 +72,8 @@ class TTSConfig:
     moss_segment_length: int = 120
     default_speed: float = 1.0
     default_voice: str = "zm_010"
+    _voices_cache: list[str] = field(default_factory=list, init=False, repr=False)
+    _voices_cache_signature: tuple[tuple[str, int], ...] = field(default_factory=tuple, init=False, repr=False)
 
     cors_origins: list = field(default_factory=lambda: ["http://localhost:8000"])
     api_key: Optional[str] = None
@@ -212,9 +213,34 @@ class TTSConfig:
         return self.model_dir / "voices"
 
     def get_voices(self) -> list[str]:
-        if self.voices_dir.exists():
-            return sorted([f.stem for f in self.voices_dir.glob("*.pt")])
-        return []
+        """列出 Kokoro 音色名称，兼容新旧模型目录布局。
+
+        音色列表会被前端和状态接口频繁读取，因此这里用目录 mtime 做
+        轻量缓存。用户新增、删除或替换 ``*.pt`` 文件时，目录 mtime 会
+        变化，下一次调用会自动重新扫描。
+        """
+
+        voice_dirs = [self.voices_dir, models_root() / "voices"]
+        signature: list[tuple[str, int]] = []
+        for voice_dir in voice_dirs:
+            try:
+                stat = voice_dir.stat()
+            except OSError:
+                continue
+            if voice_dir.is_dir():
+                signature.append((str(voice_dir), int(stat.st_mtime_ns)))
+
+        current_signature = tuple(signature)
+        if current_signature == self._voices_cache_signature:
+            return list(self._voices_cache)
+
+        voices: set[str] = set()
+        for voice_dir in voice_dirs:
+            if voice_dir.exists():
+                voices.update(f.stem for f in voice_dir.glob("*.pt"))
+        self._voices_cache = sorted(voices)
+        self._voices_cache_signature = current_signature
+        return list(self._voices_cache)
 
     def validate_security(self) -> None:
         """启动前拒绝不安全的后台/鉴权组合。"""
@@ -299,7 +325,7 @@ class TTSConfig:
                 name = torch.cuda.get_device_name(0)
                 props = torch.cuda.get_device_properties(0)
                 mem = getattr(props, "total_memory", getattr(props, "total_mem", 0)) / 1e9
-                logger.info(f"检测到 GPU: {name} ({mem:.1f}GB)")
+                logger.info("检测到 GPU: %s (%.1fGB)", name, mem)
                 return "cuda"
         except ImportError:
             pass
@@ -307,7 +333,13 @@ class TTSConfig:
         return "cpu"
 
 
-def load_config(model_dir: Optional[str] = None, device: Optional[str] = None, host: Optional[str] = None, port: Optional[int] = None, **kwargs) -> TTSConfig:
+def load_config(
+    model_dir: Optional[str] = None,
+    device: Optional[str] = None,
+    host: Optional[str] = None,
+    port: Optional[int] = None,
+    **kwargs,
+) -> TTSConfig:
     """加载运行时配置，并应用环境变量和函数参数覆盖。"""
     config = TTSConfig()
     apply_env(config)

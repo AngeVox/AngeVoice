@@ -2,7 +2,7 @@ from pathlib import Path
 
 from kokoro_tts.admin_config_schema import ADMIN_CONFIG_FIELDS, validate_admin_config_values
 from kokoro_tts.config import TTSConfig
-from kokoro_tts.engine_manager import EngineManager
+from kokoro_tts.engine_manager import EngineManager, EngineSpec
 from kokoro_tts.kokoro_assets import is_valid_kokoro_config_file
 
 
@@ -20,10 +20,11 @@ def test_compact_json_config_not_misclassified(tmp_path: Path):
 
 
 def test_text_rules_false_not_reported_as_enabled():
-    cfg = TTSConfig(moss_apply_angevoice_rules="false", enabled_models=["moss-nano-cpu"], default_model="moss-nano-cpu")
+    cfg = TTSConfig(moss_apply_angevoice_rules="false", enabled_models=["kokoro"], default_model="kokoro")
     manager = EngineManager(cfg)
     try:
-        snap = manager.current_snapshot()
+        spec = EngineSpec("moss-nano-cpu", "MOSS-TTS-Nano CPU", "moss-tts-nano-onnx", "cpu")
+        snap = manager._static_capabilities(spec)
         assert snap["text_rules_enabled"] is False
     finally:
         manager.stop_idle_timer()

@@ -166,4 +166,9 @@ def clean_text(text: str, *, apply_angevoice_rules=True, model: str = "moss", mi
 def segment_text(text: str, *, max_text_length: int, segment_length: int, single_newline_policy: str = "auto") -> list[str]:
     """按中英文自然标点、段落和长度拆分 MOSS 输入。"""
 
-    return segment_text_natural(text, max_text_length=max_text_length, segment_length=segment_length, single_newline_policy=single_newline_policy)
+    return segment_text_natural(
+        text,
+        max_text_length=max_text_length,
+        segment_length=segment_length,
+        single_newline_policy=single_newline_policy,
+    )

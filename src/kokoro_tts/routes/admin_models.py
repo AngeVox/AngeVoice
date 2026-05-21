@@ -36,9 +36,10 @@ class AdminProfileAction(StrictModel):
     profile: str
 
 
-# 后台可编辑字段列表保持单一来源，定义在 admin_config_schema 中。
-# Pydantic 仍会拒绝未知字段；值范围/类型由 validate_admin_config_values() 校验，
-# 因此新增可编辑字段只需修改一处 schema 表。
+# 管理后台可编辑字段统一维护在 admin_config_schema。
+# Pydantic 仍会拒绝未知字段；取值范围和类型由
+# validate_admin_config_values() 校验，因此新增可编辑字段只需要修改
+# 一张 schema 表。
 AdminConfigPatch = create_model(
     "AdminConfigPatch",
     __base__=StrictModel,

@@ -335,7 +335,7 @@ curl "$BASE_URL/v1/audio/voices"</code></pre>
         <article class="doc-card" id="moss-clone">
           <h2>MOSS 克隆：参考音频到底放哪？</h2>
           <p>
-            很多人会把 MOSS 的参考音频误放到 <code>models/voices</code>。
+            很多人会把 MOSS 的参考音频误放到 <code>models/models--hexgrad--Kokoro-82M-v1.1-zh/voices</code>。
             这个目录是 Kokoro 的 <code>.pt</code> 音色目录，不是 MOSS 克隆参考音频目录。
           </p>
 
@@ -587,7 +587,7 @@ environment:
           </div>
 
           <div class="callout warn">
-            这种方式不会把音频保存到 <code>models/voices</code>，也不会生成 Kokoro 的
+            这种方式不会把音频保存到 <code>models/models--hexgrad--Kokoro-82M-v1.1-zh/voices</code>，也不会生成 Kokoro 的
             <code>.pt</code> 音色。它只是 MOSS 每次推理时读取/缓存的一段 prompt audio。
           </div>
         </article>

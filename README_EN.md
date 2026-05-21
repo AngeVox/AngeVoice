@@ -237,7 +237,7 @@ When `KOKORO_API_KEY` is enabled, add:
 
 ### MOSS reference-audio clone
 
-MOSS clone does **not** use `models/voices`. That directory is for Kokoro `.pt` voices.
+MOSS clone does **not** use `models/models--hexgrad--Kokoro-82M-v1.1-zh/voices`. That directory is for Kokoro `.pt` voices.
 
 The recommended path is uploading the reference audio with the request:
 
@@ -277,27 +277,31 @@ If local model files are not found, the service falls back to Hugging Face downl
 
 ```bash
 pip install huggingface_hub
+mkdir -p models/models--hexgrad--Kokoro-82M-v1.1-zh
 huggingface-cli download hexgrad/Kokoro-82M-v1.1-zh \
-  --local-dir models/ \
+  --local-dir models/models--hexgrad--Kokoro-82M-v1.1-zh \
   --include "config.json" "kokoro-v1_1-zh.pth" "voices/*.pt"
 ```
 
-Required layout:
+Recommended unified model layout:
 
 ```text
-models/config.json
-models/kokoro-v1_1-zh.pth
-models/voices/*.pt
+models/
+├── models--hexgrad--Kokoro-82M-v1.1-zh/
+│   ├── config.json
+│   ├── kokoro-v1_1-zh.pth
+│   └── voices/*.pt
+├── MOSS-TTS-Nano-100M-ONNX/
+└── modelscope-cache/
 ```
 
-A normal `git clone` or GitHub source archive may only include Git LFS pointer files. AngeVoice validates both `kokoro-v1_1-zh.pth` and `models/voices/*.pt`, skips LFS pointers, HTML/JSON error pages, and tiny incomplete files, and avoids passing those text placeholders to `torch.load`. This prevents `Weights only load failed` / `Unsupported operand 118` caused by LFS pointer files. Docker Compose profiles persist the Hugging Face / ModelScope cache to avoid repeated downloads after container recreation.
+A normal `git clone` or GitHub source archive may only include Git LFS pointer files. AngeVoice validates both the Kokoro main model and voice files, skips LFS pointers, HTML/JSON error pages, and incomplete files, and avoids passing those text placeholders to `torch.load`. Kokoro voice files can be much smaller than the main model, so validation now checks file signatures first and no longer spams logs for the same 131-byte LFS pointer during long synthesis.
 
 ## Docker persistence
 
 | Host path | Container path | Purpose |
 |---|---|---|
-| `../../hf_cache` | `/root/.cache/huggingface` | Kokoro/Hugging Face cache |
-| `../../moss_models` | `/opt/MOSS-TTS-Nano/models` | MOSS ONNX asset cache |
+| `../../models` | `/app/models` | Unified model directory for Kokoro, Hugging Face cache, ModelScope cache, and MOSS ONNX assets |
 | `../../outputs` | `/app/outputs` | HTTP synthesis outputs when `ANGEVOICE_SAVE_OUTPUTS=true` |
 
 To set a server-side default MOSS reference audio:
@@ -317,6 +321,8 @@ environment:
 | `KOKORO_DEVICE` | `auto` | `auto` / `cpu` / `cuda` |
 | `KOKORO_WORKERS` | `1` | Uvicorn workers; keep 1 for GPU |
 | `KOKORO_MAX_CONCURRENT_REQUESTS` | `1` | Max in-process synthesis concurrency; conservative for NAS/old GPUs, raise to 2-4 only on larger GPUs |
+| `KOKORO_RATE_LIMIT_QPS` | `0` | Per API-key/client-IP rate limit; 0 disables it |
+| `KOKORO_MAX_QUEUE_LENGTH` | `0` | Global request queue limit; 0 disables it |
 | `KOKORO_API_KEY` | - | Enables Bearer auth; `auto` generates and persists a strong random key on first start; placeholder values are rejected |
 | `ANGEVOICE_API_KEY_FILE` | `/app/outputs/.angevoice-api-key` | Persistent key file used by `KOKORO_API_KEY=auto`; admin UI can reveal/rotate it |
 | `ANGEVOICE_RUNTIME_CONFIG_FILE` | `/app/outputs/runtime-config.json` | Runtime settings saved by the admin UI; overrides environment variables and can be exported as an ENV patch |
@@ -329,10 +335,14 @@ environment:
 | `ANGEVOICE_DEFAULT_MODEL` | `kokoro` | Startup model |
 | `ANGEVOICE_MODEL_UNLOAD_ON_SWITCH` | `true` | Unload old engine when switching |
 | `ANGEVOICE_SAVE_OUTPUTS` | `true` | Save HTTP synthesis outputs in Docker profiles; code default is `false` outside Docker |
+| `ANGEVOICE_MODELS_ROOT` | `/app/models` | Unified model root; Docker mounts host `./models` here |
+| `KOKORO_MODEL_DIR` | `/app/models/models--hexgrad--Kokoro-82M-v1.1-zh` | Kokoro main model, config, and voices directory |
+| `HF_HUB_CACHE` | `/app/models` | Hugging Face cache root; creates `models--hexgrad--Kokoro-82M-v1.1-zh` |
+| `MODELSCOPE_CACHE` | `/app/models/modelscope-cache` | ModelScope cache directory |
 | `ANGEVOICE_MODEL_SOURCE` | `auto` | Model download source: `auto` probes Hugging Face/ModelScope reachability first, then falls back to country detection; can be forced to `modelscope` / `huggingface` |
 | `KOKORO_MODELSCOPE_REPO` | `AI-ModelScope/Kokoro-82M-v1.1-zh` | ModelScope Kokoro repository for China-friendly auto downloads |
 | `MOSS_MODELSCOPE_REPO` | `openmoss/MOSS-TTS-Nano-100M-ONNX` | ModelScope MOSS ONNX repository for China-friendly auto downloads |
-| `MOSS_MODEL_DIR` | - | MOSS ONNX model directory; auto source selection can populate it when omitted |
+| `MOSS_MODEL_DIR` | `/app/models/MOSS-TTS-Nano-100M-ONNX` | MOSS ONNX model directory |
 | `MOSS_EXECUTION_PROVIDER` | `cpu` | MOSS ONNX provider: `cpu` / `cuda` |
 | `MOSS_CUDA_ENABLED` | `false` | Allow/register `moss-nano-cuda`; CPU/legacy-gpu keep it off, standard GPU enables it. |
 | `MOSS_PROMPT_UPLOAD_MAX_BYTES` | `20971520` | MOSS clone reference-audio upload limit |
@@ -341,6 +351,12 @@ environment:
 | `MOSS_PROMPT_CACHE_MAX_ITEMS` | `8` | Encoded prompt-audio cache size |
 | `MOSS_APPLY_ANGEVOICE_RULES` | `auto` | Text rules for MOSS: full Chinese normalization for Chinese-major text, conservative cleanup for mixed English/technical text |
 | `MOSS_MIXED_ENGLISH_POLICY` | `translate` | Translate common mixed-English phrases into natural Chinese for MOSS; set `preserve` to keep original English |
+| `MOSS_REALTIME_STREAMING_DECODE` | `true` | Enable official MOSS frame-level realtime decoding; set `false` to prefer full-block quality if artifacts or stutter appear |
+| `MOSS_OUTPUT_TARGET_PEAK` | `0.86` | MOSS target output peak, balancing dynamics and clipping protection |
+| `MOSS_OUTPUT_GAIN` | `0.94` | Gentle MOSS postprocess gain to avoid overly quiet output while preserving dynamics |
+| `MOSS_OUTPUT_DECLICK_ENABLED` | `true` | Remove isolated transient clicks/pops and reduce electrical artifacts |
+| `MOSS_OUTPUT_EDGE_FADE_MS` | `1.5` | Short fade-in/out at MOSS segment edges to reduce splice pops without smearing consonants |
+| `MOSS_MAX_SILENCE_MS` | `480` | Maximum continuous silence kept in polished MOSS output to reduce long perceived stalls |
 | `MOSS_AUTO_FALLBACK_CPU` | `true` | Fall back to CPU when CUDA self-test fails |
 | `MOSS_STREAM_PREBUFFER_SECONDS` | `0.75` | Browser prebuffer for MOSS streaming, reducing underflow on NAS/older GPUs |
 | `MOSS_STREAM_QUEUE_MAX_ITEMS` | `8` | MOSS streaming queue depth to absorb short decode/browser/network jitter |

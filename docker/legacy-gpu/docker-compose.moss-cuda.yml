@@ -1,4 +1,12 @@
+# 可选 MOSS CUDA 覆盖文件。
+# 使用方式：在 docker/legacy-gpu 目录执行：
+#   docker compose -f docker-compose.yml -f docker-compose.moss-cuda.yml up -d
+# 统一模型目录挂载继承自 docker-compose.yml：../../models -> /app/models。
 name: angevoice-legacy-gpu
+
+# 卷挂载（统一模型目录）继承自 docker-compose.yml：
+#   ../../models:/app/models
+# 包含 Kokoro、Hugging Face 缓存、ModelScope 缓存和 MOSS ONNX 模型，无需在此重复配置。
 
 services:
   angevoice-legacy-gpu:

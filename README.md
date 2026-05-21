@@ -291,7 +291,7 @@ curl -X POST "$BASE_URL/v1/audio/speech" \
 
 ### MOSS 参考音频克隆
 
-MOSS 克隆不是把音频放进 `models/voices`。`models/voices` 是 Kokoro `.pt` 音色目录。
+MOSS 克隆不是把音频放进 `models/models--hexgrad--Kokoro-82M-v1.1-zh/voices`。`models/models--hexgrad--Kokoro-82M-v1.1-zh/voices` 是 Kokoro `.pt` 音色目录。
 
 最推荐的方式是请求时上传参考音频：
 
@@ -331,27 +331,31 @@ WebSocket 流式克隆时，参考音频放在首个 JSON 的 `prompt_audio.data
 
 ```bash
 pip install huggingface_hub
+mkdir -p models/models--hexgrad--Kokoro-82M-v1.1-zh
 huggingface-cli download hexgrad/Kokoro-82M-v1.1-zh \
-  --local-dir models/ \
+  --local-dir models/models--hexgrad--Kokoro-82M-v1.1-zh \
   --include "config.json" "kokoro-v1_1-zh.pth" "voices/*.pt"
 ```
 
-至少需要：
+推荐的统一模型目录：
 
 ```text
-models/config.json
-models/kokoro-v1_1-zh.pth
-models/voices/*.pt
+models/
+├── models--hexgrad--Kokoro-82M-v1.1-zh/
+│   ├── config.json
+│   ├── kokoro-v1_1-zh.pth
+│   └── voices/*.pt
+├── MOSS-TTS-Nano-100M-ONNX/
+└── modelscope-cache/
 ```
 
-普通 `git clone` 或 GitHub Source code ZIP 可能只拿到 Git LFS 指针文件，不一定是真实模型文件。如果文件内容以 `version https://git-lfs.github.com/spec/v1` 开头，它只是指针，不是真模型。服务会同时校验 `kokoro-v1_1-zh.pth` 和 `models/voices/*.pt`，自动跳过 LFS 指针、HTML/JSON 错误页或过小的不完整文件，避免触发 `Weights only load failed` / `Unsupported operand 118`。Docker Compose 已持久化 Hugging Face/ModelScope 缓存，避免容器重建后重复下载。
+普通 `git clone` 或 GitHub Source code ZIP 可能只拿到 Git LFS 指针文件，不一定是真实模型文件。如果文件内容以 `version https://git-lfs.github.com/spec/v1` 开头，它只是指针，不是真模型。服务会同时校验 Kokoro 主模型和音色文件，自动跳过 LFS 指针、HTML/JSON 错误页或不完整文件，避免触发 `Weights only load failed` / `Unsupported operand 118`。Kokoro 音色文件本身可以比主模型小很多，因此校验会优先识别文件头，不再因为 131 字节 LFS 指针在长文本合成时反复刷屏。
 
 ## Docker 持久化
 
 | 宿主机目录 | 容器目录 | 用途 |
 |---|---|---|
-| `../../hf_cache` | `/root/.cache/huggingface` | Kokoro/Hugging Face 下载缓存 |
-| `../../moss_models` | `/opt/MOSS-TTS-Nano/models` | MOSS ONNX 模型缓存 |
+| `../../models` | `/app/models` | 统一模型目录；包含 Kokoro、Hugging Face 缓存、ModelScope 缓存和 MOSS ONNX 模型 |
 | `../../outputs` | `/app/outputs` | 开启 `ANGEVOICE_SAVE_OUTPUTS=true` 后保存 HTTP 合成结果 |
 
 如需固定服务端默认 MOSS 参考音频，可额外挂载：
@@ -383,10 +387,14 @@ environment:
 | `ANGEVOICE_DEFAULT_MODEL` | `kokoro` | 启动时加载的默认模型 |
 | `ANGEVOICE_MODEL_UNLOAD_ON_SWITCH` | `true` | 切换模型时卸载旧模型 |
 | `ANGEVOICE_SAVE_OUTPUTS` | `true` | 是否保存 HTTP 合成结果，Docker 默认写入 `/app/outputs` |
+| `ANGEVOICE_MODELS_ROOT` | `/app/models` | 统一模型根目录，Docker 挂载宿主机 `./models` 到这里 |
+| `KOKORO_MODEL_DIR` | `/app/models/models--hexgrad--Kokoro-82M-v1.1-zh` | Kokoro 主模型、config 和 voices 目录 |
+| `HF_HUB_CACHE` | `/app/models` | Hugging Face 自动下载缓存根目录，会生成 `models--hexgrad--Kokoro-82M-v1.1-zh` |
+| `MODELSCOPE_CACHE` | `/app/models/modelscope-cache` | ModelScope 自动下载缓存目录 |
 | `ANGEVOICE_MODEL_SOURCE` | `auto` | 模型下载源：`auto` 先探测 Hugging Face/ModelScope 可达性，再用国家判断；也可手动设为 `modelscope` / `huggingface` |
 | `KOKORO_MODELSCOPE_REPO` | `AI-ModelScope/Kokoro-82M-v1.1-zh` | 国内自动下载 Kokoro 的 ModelScope 仓库 |
 | `MOSS_MODELSCOPE_REPO` | `openmoss/MOSS-TTS-Nano-100M-ONNX` | 国内自动下载 MOSS ONNX 的 ModelScope 仓库 |
-| `MOSS_MODEL_DIR` | - | MOSS ONNX 模型目录；未设置时可由自动源站策略下载/填充 |
+| `MOSS_MODEL_DIR` | `/app/models/MOSS-TTS-Nano-100M-ONNX` | MOSS ONNX 模型目录 |
 | `MOSS_EXECUTION_PROVIDER` | `cpu` | MOSS ONNX provider：`cpu` / `cuda` |
 | `MOSS_CUDA_ENABLED` | `false` | 是否允许注册/切换 `moss-nano-cuda`；CPU/legacy-gpu 默认关闭，通用 GPU 画像开启 |
 | `MOSS_PROMPT_UPLOAD_MAX_BYTES` | `20971520` | MOSS 克隆参考音频上传大小上限 |

@@ -6,6 +6,44 @@ Format based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and [Se
 
 ---
 
+## [2.6.5.3] - 2026-05-21
+
+### 📦 模型目录统一
+- Docker 默认把宿主机 `models/` 挂载到容器 `/app/models`，Kokoro、Hugging Face 缓存、ModelScope 缓存和 MOSS ONNX 模型统一持久化到一个目录。
+- Kokoro 推荐目录改为 `models/models--hexgrad--Kokoro-82M-v1.1-zh`；MOSS 推荐目录改为 `models/MOSS-TTS-Nano-100M-ONNX`。
+- 三套 Docker Compose 移除独立 `hf_cache` 与 `moss_models` 挂载，安装脚本会在新目录为空时温和迁移旧缓存。
+
+### 🛠️ Kokoro 音色校验修复
+- Kokoro 音色文件校验从粗暴的“低于 10KB 就判无效”改为优先识别 PyTorch zip/pickle 文件头，避免真实小型 `.pt` 被误判。
+- Git LFS 指针、HTML/JSON 错误页和极小文本占位符仍会被跳过；同一路径只 warning 一次，避免长文本多段合成时日志刷屏。
+- 兼容旧布局 `models/voices`，但新布局优先读取 `models/models--hexgrad--Kokoro-82M-v1.1-zh/voices`。
+
+### 🧭 启动体验
+- 新增 AngeVoice 启动横幅，显示版本、监听地址、启用模型、Kokoro/MOSS 模型目录和统一模型根目录。
+
+### 🔧 配置一致性与边界修复
+- 将 `.env.prod`、`.env.staging`、根 `.env.example` 与 `docker/angevoice.env` 的 MOSS 生产调优参数重新对齐，避免复制不同 env 文件得到不同音频效果。
+- 多 worker 启动环境导出补齐 `ANGEVOICE_IDLE_UNLOAD_CURRENT`，避免多 worker 模式下 idle 是否释放当前模型的配置丢失。
+- MOSS 模型目录不再只用“目录非空”判定有效，新增 ONNX/LFS/占位文件识别，避免只有指针文件时误判为已下载。
+- 百分比文本规范化改为自然数字读法，例如 `100%` 读作“百分之一百”。
+- `docker/entrypoint.sh` 改为 `set -euo pipefail`，并补充 legacy-gpu MOSS CUDA compose 覆盖文件使用说明。
+- 英文 README 的配置速查表补齐 MOSS 音频后处理、实时流式、限流和队列变量。
+- 文档中 `MOSS_PROMPT_AUDIO_MAX_SECONDS=8` 与 `MOSS_RUNTIME_PAUSE_MAX_MS=350` 等实际默认值已重新对齐。
+- 多 worker 启动环境导出继续补齐 `KOKORO_TTS_REQUEST_MAX_BYTES` 与 `KOKORO_VOICE_UPLOAD_MAX_BYTES`，确保请求体/上传大小限制在 worker 中生效。
+- `.env.prod`、`.env.staging`、根 `.env.example` 补齐 `MOSS_DEFAULT_VOICE`、WeText、MOSS 文本标准化、CUDA 自检和质量闸门变量说明。
+- 修复 `get_engine()` 加载失败清理路径中的旧签名 `unload()` fallback，避免清理异常覆盖原始加载错误。
+- 加强 worker 环境变量回归测试，不再只检查单个 idle 变量。
+
+### 🧹 代码质量与回归测试
+- 统一 `engine.py` / `config.py` logging 写法，移除 f-string logging，避免关闭 INFO/DEBUG 时仍提前求值。
+- 拆开 `EngineManager` 的模型快照和切换返回值，保护 `id/name/backend/provider` 等基础字段不被运行时 metadata 静默覆盖。
+- 金额文本规范化支持十亿以上金额，避免 `¥1234567890.50` 这类输入被静默跳过或触发高位读法异常。
+- `TTSConfig.get_voices()` 增加目录 mtime 缓存，减少状态接口和前端轮询时重复扫描音色目录。
+- 缓存命中/未命中统计和读取路径收敛到同一临界区，降低高并发统计偏差。
+- 新增 `tests/test_quality_regressions.py` 覆盖本轮审查反馈的金额、模型快照、音色缓存和缓存统计回归。
+
+---
+
 ## [2.6.5.2] - 2026-05-20
 
 ### 🔊 MOSS 中英文混排修复

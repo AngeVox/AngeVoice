@@ -8,11 +8,69 @@ import urllib.error
 import urllib.request
 from pathlib import Path
 
-from .kokoro_assets import has_valid_kokoro_local_assets
+from .kokoro_assets import default_kokoro_model_dir, default_moss_model_dir, has_valid_kokoro_local_assets
 
 logger = logging.getLogger(__name__)
 
 _CHINA_COUNTRY_CODES = {"CN"}
+
+
+
+_MOSS_VALID_MODEL_SUFFIXES = {".onnx", ".ort", ".bin", ".safetensors"}
+_MOSS_VALID_METADATA_SUFFIXES = {".json", ".yaml", ".yml", ".txt"}
+
+
+def _is_probably_lfs_pointer(path: Path) -> bool:
+    try:
+        head = path.read_bytes()[:256]
+    except OSError:
+        return False
+    return head.startswith(b"version https://git-lfs.github.com/spec/v1")
+
+
+def has_valid_moss_model_assets(path: Path, *, log: logging.Logger | None = None) -> bool:
+    """判断 MOSS 模型目录是否至少包含一个可信的真实模型文件。
+
+    MOSS 模型目录允许包含 README、配置和缓存文件，但不能只有 Git LFS 指针、
+    空文件或很小的占位文件。这里优先寻找较大的 ONNX/ORT/bin/safetensors
+    文件；如果目录里只有文本类元数据，则认为还未下载完整模型。
+    """
+
+    path = Path(path).expanduser()
+    if not path.exists() or not path.is_dir():
+        return False
+
+    saw_file = False
+    saw_lfs_pointer = False
+    for file_path in path.rglob("*"):
+        if not file_path.is_file():
+            continue
+        if any(part.startswith(".") for part in file_path.relative_to(path).parts):
+            continue
+        saw_file = True
+        suffix = file_path.suffix.lower()
+        try:
+            size = file_path.stat().st_size
+        except OSError:
+            continue
+        if size <= 0:
+            continue
+        if _is_probably_lfs_pointer(file_path):
+            saw_lfs_pointer = True
+            continue
+        if suffix in _MOSS_VALID_MODEL_SUFFIXES and size >= 1024 * 1024:
+            return True
+        if suffix in _MOSS_VALID_METADATA_SUFFIXES:
+            continue
+        if size >= 5 * 1024 * 1024:
+            return True
+
+    if log and saw_file:
+        if saw_lfs_pointer:
+            log.warning("MOSS 模型目录 %s 似乎只有 Git LFS 指针或不完整文件，将继续尝试下载/补全。", path)
+        else:
+            log.warning("MOSS 模型目录 %s 未发现有效模型文件，将继续尝试下载/补全。", path)
+    return False
 
 
 def _detect_country(config) -> str:
@@ -29,7 +87,7 @@ def _detect_country(config) -> str:
         return ""
     timeout = float(getattr(config, "model_source_detect_timeout_seconds", 1.5) or 1.5)
     try:
-        with urllib.request.urlopen(url, timeout=timeout) as resp:  # noqa: S310 - deployment helper, URL is configurable
+        with urllib.request.urlopen(url, timeout=timeout) as resp:  # noqa: S310
             country = resp.read(16).decode("utf-8", errors="ignore").strip().upper()
     except Exception:
         logger.debug("Model source country detection failed", exc_info=True)
@@ -44,7 +102,7 @@ def _probe_url(url: str, timeout: float) -> bool:
         return False
     request = urllib.request.Request(url, method="HEAD", headers={"User-Agent": "AngeVoice/model-source-probe"})
     try:
-        with urllib.request.urlopen(request, timeout=timeout) as resp:  # noqa: S310 - fixed/configurable public model host probe
+        with urllib.request.urlopen(request, timeout=timeout) as resp:  # noqa: S310
             return 200 <= int(getattr(resp, "status", 200)) < 500
     except urllib.error.HTTPError as exc:
         # 401/403/404 仍说明主机可达；5xx 视为不可靠。
@@ -97,7 +155,8 @@ def resolve_model_source(config) -> str:
         elif ms_ok:
             source = "modelscope"
         else:
-            # 兜底：Hugging Face 仍为上游默认源，但仅在可达性和地区检查均失败后使用。
+            # 最后兜底：Hugging Face 仍是上游默认源，但只在可达性
+            # 和地区判断都失败后使用。
             source = "huggingface"
     config.model_source_effective = source
     logger.info(
@@ -131,36 +190,53 @@ def ensure_kokoro_model_dir(config, *, logger: logging.Logger) -> Path | None:
     """确保 Kokoro 本地模型目录可用。
 
     只在 ModelScope 模式下主动预取。若本地目录只有 Git LFS 指针或损坏文件，
-    不会误判为可用；Hugging Face 模式则交给上游 `kokoro` 包按 repo_id 下载。
+    不会误判为可用；Hugging Face 模式则交给上游 ``kokoro`` 包按 repo_id 下载。
+    ModelScope 下载目标也统一放进 ``models/models--hexgrad--Kokoro-82M-v1.1-zh``。
     """
 
-    if has_valid_kokoro_local_assets(Path(config.model_dir), log=logger):
-        return Path(config.model_dir)
+    current_dir = Path(config.model_dir)
+    if has_valid_kokoro_local_assets(current_dir, log=logger):
+        return current_dir
+    target_dir = default_kokoro_model_dir()
+    if has_valid_kokoro_local_assets(target_dir, log=logger):
+        config.model_dir = target_dir
+        return target_dir
     if resolve_model_source(config) != "modelscope":
+        config.model_dir = target_dir
         return None
     repo = str(getattr(config, "kokoro_modelscope_repo", "") or "").strip()
     if not repo:
+        config.model_dir = target_dir
         return None
-    path = _modelscope_snapshot_download(repo, Path(config.model_dir), logger=logger)
-    if has_valid_kokoro_local_assets(Path(config.model_dir), log=logger):
-        return Path(config.model_dir)
+    path = _modelscope_snapshot_download(repo, target_dir, logger=logger)
+    if has_valid_kokoro_local_assets(target_dir, log=logger):
+        config.model_dir = target_dir
+        return target_dir
     if path and has_valid_kokoro_local_assets(Path(path), log=logger):
+        config.model_dir = Path(path)
         return Path(path)
     logger.warning("ModelScope 下载后仍未找到有效 Kokoro 权重，将回退到上游 repo_id 下载路径。")
+    config.model_dir = target_dir
     return None
 
 
 def ensure_moss_model_dir(config, *, logger: logging.Logger) -> Path | None:
-    if getattr(config, "moss_model_dir", None):
-        return Path(config.moss_model_dir).expanduser()
+    target = Path(getattr(config, "moss_model_dir", None) or default_moss_model_dir()).expanduser()
+    if has_valid_moss_model_assets(target, log=logger):
+        config.moss_model_dir = target
+        return target
     if resolve_model_source(config) != "modelscope":
-        return None
+        config.moss_model_dir = target
+        return target
     repo = str(getattr(config, "moss_modelscope_repo", "") or "").strip()
     if not repo:
-        return None
-    base = Path(os.environ.get("MODELSCOPE_CACHE", Path.home() / ".cache" / "modelscope"))
-    target = base / "hub" / repo.replace("/", "_")
+        config.moss_model_dir = target
+        return target
     path = _modelscope_snapshot_download(repo, target, logger=logger)
-    if path:
-        config.moss_model_dir = path
-    return path
+    candidate = Path(path).expanduser() if path else target
+    if has_valid_moss_model_assets(candidate, log=logger):
+        config.moss_model_dir = candidate
+    else:
+        logger.warning("ModelScope 下载后仍未找到有效 MOSS 模型文件，将保留统一模型目录等待 runtime 补全。")
+        config.moss_model_dir = target
+    return config.moss_model_dir
