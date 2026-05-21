@@ -21,7 +21,7 @@ class LatencyTracker:
         self._count = 0
         self._lock = threading.Lock()
 
-    # -- recording --------------------------------------------------------
+    # -- 录制 --------------------------------------------------------
 
     def record(self, duration_seconds: float) -> None:
         """Record a completed request duration (in seconds)."""
@@ -48,7 +48,7 @@ class LatencyTracker:
         """
         return _TimerContext(self)
 
-    # -- queries ----------------------------------------------------------
+    # -- 查询 ----------------------------------------------------------
 
     def count(self) -> int:
         with self._lock:

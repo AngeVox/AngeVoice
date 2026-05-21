@@ -299,7 +299,7 @@ def create_status_router(state: ServiceState, verify_api_key, templates=None) ->
             "requests_total": requests_total,
             "requests_ok": requests_ok,
             "requests_error": requests_error,
-            # Structured requests block
+            # 结构化请求区块
             "requests": {
                 "total": requests_total,
                 "ok": requests_ok,

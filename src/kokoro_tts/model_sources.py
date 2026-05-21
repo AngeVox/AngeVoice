@@ -47,7 +47,7 @@ def _probe_url(url: str, timeout: float) -> bool:
         with urllib.request.urlopen(request, timeout=timeout) as resp:  # noqa: S310 - fixed/configurable public model host probe
             return 200 <= int(getattr(resp, "status", 200)) < 500
     except urllib.error.HTTPError as exc:
-        # 401/403/404 still prove the host is reachable; 5xx is treated as unreliable.
+        # 401/403/404 仍说明主机可达；5xx 视为不可靠。
         return 400 <= int(exc.code) < 500
     except Exception:
         logger.debug("Model source probe failed: %s", url, exc_info=True)
@@ -97,8 +97,7 @@ def resolve_model_source(config) -> str:
         elif ms_ok:
             source = "modelscope"
         else:
-            # Last resort: Hugging Face remains the upstream default, but only
-            # after both reachability and country checks failed.
+            # 兜底：Hugging Face 仍为上游默认源，但仅在可达性和地区检查均失败后使用。
             source = "huggingface"
     config.model_source_effective = source
     logger.info(

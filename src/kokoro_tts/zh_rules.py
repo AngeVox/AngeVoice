@@ -35,10 +35,10 @@ _LEXICON = {
 }
 _MAX_WORD_LEN = max(len(word) for word in _LEXICON)
 
-# ---- Per-model polyphone rules ----
-# Kokoro G2P: character-replacement biasing works well.
-# MOSS G2P: has its own robust polyphone handling; most replacements break it.
-# Only add confirmed MOSS fixes here.
+# ---- 每模型多音字规则 ----
+# Kokoro G2P：字符替换式偏置效果较好。
+# MOSS G2P：自身多音字处理较稳，大多数替换反而会破坏效果。
+# 这里只添加已确认有效的 MOSS 修正。
 
 # “春花秋月何时了”一类古诗句不再做字符替换提示。
 # 之前将“了”替换为“瞭/蓼”会在部分 MOSS/Kokoro 路径里读成奇怪音，
@@ -46,9 +46,8 @@ _MAX_WORD_LEN = max(len(word) for word in _LEXICON)
 _LIAO_PATTERNS_KOKORO: tuple = ()
 _LIAO_PATTERNS_MOSS: tuple = ()
 
-# These overrides are deliberately conservative and phrase based.  The right
-# side uses common homophone characters to bias Chinese G2P without adding a
-# separate markup language to the public API.
+# 这些覆盖规则刻意保守，基于短语设计。
+# 右侧使用常见同音字来偏置中文 G2P，无需在公共 API 中引入额外标记语言。
 _POLYPHONE_PHRASES_KOKORO = (
     # 了: le / liao
     ("没完没了", "没完没瞭"),
@@ -285,7 +284,7 @@ _POLYPHONE_PHRASES_KOKORO = (
     ("率先", "帅先"),
     ("率领", "帅领"),
 
-    # Proper nouns and other common exceptions.
+    # 专有名词及其他常见例外。
     ("柏林", "伯林"),
     ("厦门", "夏门"),
     ("大厦", "大煞"),
@@ -294,11 +293,11 @@ _POLYPHONE_PHRASES_KOKORO = (
     ("圈养", "倦养"),
 )
 
-# MOSS: empty — its G2P handles polyphones natively.
-# Add confirmed fixes here if needed later.
+# MOSS：暂空——其 G2P 自身处理多音字较好。
+# 后续如需补充，可在此添加已确认的修正。
 _POLYPHONE_PHRASES_MOSS: tuple = ()
 
-# Regex overrides are grammatical (只→支, 地→的), apply to ALL models.
+# 正则覆盖规则属于语法级别（只→支, 地→的），适用于所有模型。
 _REGEX_OVERRIDES = (
     (re.compile(r"([一二两三四五六七八九十百千万0-9]+)只(?=[\u4e00-\u9fff])"), r"\1支"),
     (
@@ -408,13 +407,13 @@ def apply_polyphone_overrides(text: str, model: str = "kokoro") -> str:
 
     is_moss = _is_moss_model(model)
 
-    # Select model-specific rule sets
+    # 根据模型选择对应的规则集
     phrases = _POLYPHONE_PHRASES_MOSS if is_moss else _POLYPHONE_PHRASES_KOKORO
     liao_patterns = _LIAO_PATTERNS_MOSS if is_moss else _LIAO_PATTERNS_KOKORO
 
     for source, target in phrases:
         text = text.replace(source, target)
-    # Regex overrides are grammatical, apply to all models
+    # 正则覆盖规则属于语法级别，适用于所有模型
     for pattern, replacement in _REGEX_OVERRIDES:
         text = pattern.sub(replacement, text)
     padded = text + "$"
@@ -444,7 +443,7 @@ def detect_polyphones(text: str) -> list[dict]:
         try:
             readings = _py_pinyin(char, style=_py_Style.TONE3, heteronym=True)
             if readings and len(readings[0]) > 1:
-                # This character has multiple readings (polyphone)
+                # 此字有多个读音（多音字）
                 results.append({
                     "char": char,
                     "position": i,
