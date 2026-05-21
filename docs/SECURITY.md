@@ -43,8 +43,10 @@ AngeVoice 会在启动时拒绝明显不安全的组合：
 设置 `KOKORO_API_KEY` 后，HTTP 接口需要：
 
 ```http
-Authorization: Bearer YOUR_TOKEN
+Authorization: Bearer ***
 ```
+
+> Bearer token 解析要求 `Bearer` 后必须有空白分隔符（空格、Tab 等），防止 `Bearerxxx-token` 误通过。支持大小写混合（`bearer`、`Bearer`、`BeAreR`）和前导/尾部空白。
 
 WebSocket 支持两种方式：
 

@@ -63,8 +63,9 @@ WebSocket 客户端可通过 `Authorization` 头或首条 JSON 消息传递 toke
 | `POST` | `/v1/models/switch` | 加载并切换当前模型 | 需要 |
 | `POST` | `/v1/models/{model_id}/load` | 预热加载模型 | 需要 |
 | `POST` | `/v1/models/{model_id}/unload` | 卸载已加载模型 | 需要 |
-| `GET` | `/v1/audio/voices` | 音色列表，支持 `?model=` 参数 | 否 |
+| `GET` | `/v1/audio/voices` | 音色列表，支持 `?model=` 和 `?detail=true` 参数 | 否 |
 | `GET` | `/v1/audio/formats` | 支持的输出格式列表 | 否 |
+| `GET` | `/v1/tts/capabilities` | TTS 能力查询：模型列表、可用格式、音色详情、前端提示 | 否 |
 | `POST` | `/v1/audio/speech` | OpenAI 兼容语音合成 | 设置 API key 后需要 |
 | `GET` | `/api/tts` | 旧版 query-string 语音合成 | 设置 API key 后需要 |
 | `POST` | `/api/tts` | 旧版 JSON/表单语音合成；multipart 支持 MOSS 克隆上传 | 设置 API key 后需要 |
@@ -111,6 +112,14 @@ curl "$BASE_URL/v1/audio/formats"
 ```bash
 curl "$BASE_URL/v1/audio/voices"
 curl "$BASE_URL/v1/audio/voices?model=moss-nano-cpu"
+curl "$BASE_URL/v1/audio/voices?detail=false"  # 精简响应，不含 voice_details
+```
+
+查询 TTS 能力（模型列表、可用格式、音色详情、前端提示）：
+
+```bash
+curl "$BASE_URL/v1/tts/capabilities"
+curl "$BASE_URL/v1/tts/capabilities?include_voices=false"  # 不含音色详情
 ```
 
 模型加载、切换与卸载：
@@ -151,6 +160,10 @@ Content-Type: application/json
 | `voice` | string | 模型默认 | Kokoro 音色 ID 或 MOSS 预设音色 |
 | `speed` | number | `1.0` | 范围 `0.5` 到 `2.0`；MOSS 暂不支持语速调节，使用 MOSS 时必须为 `1.0`，否则返回 400 |
 | `response_format` | string | `wav` | 可选 `wav`、`pcm`、`mp3`（需开启） |
+| `response_encoding` | string | `binary` | `binary` 返回音频字节流；`base64` 返回 JSON（含 `audio` 裸 base64、`audio_base64` data URL、`sample_rate`、`channels` 等） |
+| `emotion` | string | null | 保留字段，预留未来情感控制；当前引擎忽略 |
+| `emotion_strength` | number | null | 保留字段，归一化情感强度 `0.0`~`1.0`；当前引擎忽略 |
+| `style_prompt` | string | null | 保留字段，预留风格指令；当前引擎忽略 |
 
 Kokoro 示例：
 
@@ -177,6 +190,7 @@ curl -X POST "$BASE_URL/v1/audio/speech" \
 - 响应体为音频字节流
 - `Content-Type` 为 `audio/wav`、`audio/pcm` 或 MP3 时为 `audio/mpeg`
 - 响应头包含 `X-Request-ID`
+- 当 `response_encoding=base64` 时，响应为 JSON，包含 `audio`（裸 base64）、`audio_base64`（data URL）、`sample_rate`、`channels` 等字段
 
 > `/v1/audio/speech` 仅支持 JSON 格式。如需 MOSS 参考音频克隆上传，请使用 `/api/tts` 的 multipart 方式。
 

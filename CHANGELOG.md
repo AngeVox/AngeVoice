@@ -8,6 +8,20 @@ Format based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and [Se
 
 ## [2.6.5.3] - 2026-05-21
 
+### 🎤 TTS 后端完整包
+- 集成用户提交的 TTS 后端补丁（130 文件），新增 `/v1/tts/capabilities` 端点、`response_encoding=base64` JSON 响应、`/v1/audio/voices?detail=true` 音色详情、`emotion`/`emotion_strength`/`style_prompt` 保留字段。
+- 新增 `docs/ANGE_READER_BACKEND_ADAPTER.md` 阅读器接入指南。
+- `README.md` / `README_EN.md` 补写新接口文档和 base64 响应示例。
+- 英文 docstring 统一翻译为中文（`status.py`、`audio.py`、`ws.py`）。
+- 移除 `audio_base64` / `data_url` 重复字段（`data_url` 已弃用）。
+- `TTSRequest.input` 增加 `min_length=1`，空文本在 Pydantic 层即拦截（422）。
+- `_model_catalog_snapshot` 复用 engine 变量，避免重复 `get_engine` 调用。
+- `audio.py` 函数间补 PEP8 双空行。
+
+### 🔒 安全加固
+- Bearer token 解析要求空白分隔符，防止 `Bearerxxx` 误通过；新增 `tests/test_security_auth.py` 安全测试。
+- `pyproject.toml` 移除 `asyncio_mode = "auto"` 避免 pytest 警告。
+
 ### 📦 模型目录统一
 - Docker 默认把宿主机 `models/` 挂载到容器 `/app/models`，Kokoro、Hugging Face 缓存、ModelScope 缓存和 MOSS ONNX 模型统一持久化到一个目录。
 - Kokoro 推荐目录改为 `models/models--hexgrad--Kokoro-82M-v1.1-zh`；MOSS 推荐目录改为 `models/MOSS-TTS-Nano-100M-ONNX`。

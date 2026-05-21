@@ -1,6 +1,18 @@
 # AngeVoice 2.6.5.3 Release Notes
 
-本版本重点修复模型目录混乱和 Kokoro 音色 LFS 指针刷屏问题，并优化 Docker/NAS 下的模型持久化体验。
+本版本重点集成 TTS 后端完整包、修复模型目录混乱和 Kokoro 音色 LFS 指针刷屏问题，并优化 Docker/NAS 下的模型持久化体验。
+
+## TTS 后端新功能
+
+- 新增 `/v1/tts/capabilities` 端点：查询模型能力、可用格式、音色详情和前端提示。
+- `/v1/audio/speech` 支持 `response_encoding=base64`，返回 JSON（含 `audio` 裸 base64、`audio_base64` data URL）。
+- `/v1/audio/voices` 支持 `?detail=true` 返回音色性别、显示名等详情。
+- `TTSRequest` 新增 `emotion`、`emotion_strength`、`style_prompt` 保留字段，预留未来情感/风格控制。
+- 新增 `docs/ANGE_READER_BACKEND_ADAPTER.md` 阅读器接入指南。
+
+## 安全加固
+
+- Bearer token 解析要求空白分隔符，防止 `Bearerxxx` 误通过。
 
 ## 重点变化
 
