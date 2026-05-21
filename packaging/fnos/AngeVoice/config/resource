@@ -24,7 +24,7 @@
     "docker-project": {
         "projects": [
             {
-                "name": "angevoice-fnos",
+                "name": "angevoice",
                 "path": "docker"
             }
         ]

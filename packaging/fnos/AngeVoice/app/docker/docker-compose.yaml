@@ -3,13 +3,10 @@ name: angevoice-fnos
 services:
   angevoice:
     image: ghcr.io/ang77712829/angevoice-cpu:2.6.5.3.3
-    container_name: angevoice-fnos
+    container_name: angevoice
 
     ports:
       - "${TRIM_SERVICE_PORT:-8101}:8000"
-
-    env_file:
-      - ${TRIM_PKGETC}/angevoice.env
 
     environment:
       KOKORO_HOST: 0.0.0.0
@@ -34,6 +31,24 @@ services:
       ANGEVOICE_DEFAULT_MODEL: kokoro
       MOSS_EXECUTION_PROVIDER: cpu
       MOSS_CUDA_ENABLED: "false"
+
+      PYTHONUNBUFFERED: "1"
+      KOKORO_API_KEY: auto
+      KOKORO_ADMIN_ENABLED: "true"
+      ANGEVOICE_MODEL_SOURCE: modelscope
+      KOKORO_PREFETCH_VOICES: "true"
+
+      KOKORO_WORKERS: "1"
+      KOKORO_MAX_CONCURRENT_REQUESTS: "1"
+      KOKORO_REQUEST_TIMEOUT_SECONDS: "300"
+
+      ANGEVOICE_IDLE_TIMEOUT_SECONDS: "600"
+      ANGEVOICE_IDLE_CHECK_INTERVAL: "30"
+      ANGEVOICE_IDLE_UNLOAD_CURRENT: "true"
+
+      KOKORO_PUBLIC_STATUS_ENDPOINTS: "true"
+      KOKORO_RATE_LIMIT_QPS: "0"
+      KOKORO_RATE_LIMIT_BURST: "5"
 
     volumes:
       - ${TRIM_PKGVAR}/models:/app/models
