@@ -47,7 +47,7 @@ def create_runtime(*, config, provider: str, provider_patch_lock: Lock, logger):
     if tokenizer_dir:
         # 兼容官方 runtime 通过环境变量或 model_dir 同级目录寻找 codec 资产的实现。
         os.environ["MOSS_AUDIO_TOKENIZER_MODEL_DIR"] = str(tokenizer_dir)
-        os.environ.setdefault("MOSS_AUDIO_TOKENIZER_DIR", str(tokenizer_dir))
+        os.environ["MOSS_AUDIO_TOKENIZER_DIR"] = str(tokenizer_dir)
 
     runtime_kwargs = {
         "model_dir": str(model_dir) if model_dir else None,

@@ -137,7 +137,7 @@ class TTSConfig:
     moss_modelscope_repo: str = "openmoss/MOSS-TTS-Nano-100M-ONNX"
     moss_hf_repo: str = ""
     moss_audio_tokenizer_modelscope_repo: str = "openmoss/MOSS-Audio-Tokenizer-Nano-ONNX"
-    moss_audio_tokenizer_hf_repo: str = ""
+    moss_audio_tokenizer_hf_repo: str = "openmoss/MOSS-Audio-Tokenizer-Nano-ONNX"
 
     moss_model_dir: Optional[Path] = None
     moss_audio_tokenizer_model_dir: Optional[Path] = None

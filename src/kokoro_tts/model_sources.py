@@ -432,6 +432,13 @@ def ensure_kokoro_model_dir(config, *, logger: logging.Logger) -> Path | None:
     path = _download_kokoro_assets(config, download_target, logger=logger)
     for candidate in [Path(path).expanduser()] if path else []:
         if has_valid_kokoro_local_assets(candidate, log=logger):
+            if prefetch_voices and _kokoro_voice_count(candidate) < _KOKORO_MIN_PREFETCHED_VOICES:
+                logger.warning(
+                    "Kokoro 模型已下载但音色预取不完整 (%d/%d)，"
+                    "运行时仍可能按需下载缺失音色。",
+                    _kokoro_voice_count(candidate),
+                    _KOKORO_MIN_PREFETCHED_VOICES,
+                )
             config.model_dir = candidate
             return candidate
     if has_valid_kokoro_local_assets(download_target, log=logger):
