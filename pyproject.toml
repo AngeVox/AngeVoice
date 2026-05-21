@@ -80,6 +80,3 @@ where = ["src"]
 
 [tool.setuptools.package-data]
 kokoro_tts = ["templates/*.html", "static/*"]
-
-[tool.pytest.ini_options]
-asyncio_mode = "auto"

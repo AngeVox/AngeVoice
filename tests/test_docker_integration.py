@@ -73,6 +73,87 @@ class TestHTTPEndpoints:
             assert (await client.get("/v1/models", headers=headers)).status_code == 200
             assert (await client.get("/v1/audio/voices", headers=headers)).status_code == 200
 
+
+    @pytest.mark.asyncio
+    async def test_capabilities_and_voice_details(self, app_with_mock):
+        transport = ASGITransport(app=app_with_mock)
+        async with AsyncClient(transport=transport, base_url="http://test") as client:
+            voices_resp = await client.get("/v1/audio/voices")
+            assert voices_resp.status_code == 200
+            voices_data = voices_resp.json()
+            assert "voice_details" in voices_data
+            assert voices_data["capabilities"]["supports_speed"] is True
+
+            caps_resp = await client.get("/v1/tts/capabilities")
+            assert caps_resp.status_code == 200
+            caps_data = caps_resp.json()
+            assert caps_data["service"] == "AngeVoice"
+            assert "models" in caps_data
+
+    @pytest.mark.asyncio
+    async def test_openai_tts_base64_response(self, app_with_mock, mock_engine):
+        mock_engine.synthesize.side_effect = None
+        mock_engine.synthesize.return_value = b"RIFF\x00\x00\x00\x00WAVE" + b"\x00" * 100
+
+        transport = ASGITransport(app=app_with_mock)
+        async with AsyncClient(transport=transport, base_url="http://test") as client:
+            resp = await client.post("/v1/audio/speech", json={
+                "text": "你好世界",
+                "voice": "zm_010",
+                "speed": 1.0,
+                "response_encoding": "base64",
+            })
+            assert resp.status_code == 200
+            data = resp.json()
+            assert data["encoding"] == "base64"
+            assert data["audio_base64"].startswith("data:audio/wav;base64,")
+            # 确认 data_url 已移除（M4 修复）
+            assert "data_url" not in data
+
+
+    @pytest.mark.asyncio
+    async def test_invalid_response_encoding_returns_400(self, app_with_mock, mock_engine):
+        """无效的 response_encoding 应返回 400"""
+        mock_engine.synthesize.side_effect = None
+        mock_engine.synthesize.return_value = b"RIFF\x00\x00\x00\x00WAVE" + b"\x00" * 100
+
+        transport = ASGITransport(app=app_with_mock)
+        async with AsyncClient(transport=transport, base_url="http://test") as client:
+            resp = await client.post("/v1/audio/speech", json={
+                "text": "测试",
+                "voice": "zm_010",
+                "response_encoding": "xml",
+            })
+            assert resp.status_code == 400
+
+    @pytest.mark.asyncio
+    async def test_voices_detail_false(self, app_with_mock):
+        """detail=false 时不应返回 voice_details"""
+        transport = ASGITransport(app=app_with_mock)
+        async with AsyncClient(transport=transport, base_url="http://test") as client:
+            resp = await client.get("/v1/audio/voices?detail=false")
+            assert resp.status_code == 200
+            data = resp.json()
+            assert "voice_details" not in data
+
+    @pytest.mark.asyncio
+    async def test_base64_response_has_request_id_header(self, app_with_mock, mock_engine):
+        """base64 JSON 响应应包含 X-Request-ID header"""
+        mock_engine.synthesize.side_effect = None
+        mock_engine.synthesize.return_value = b"RIFF\x00\x00\x00\x00WAVE" + b"\x00" * 100
+
+        transport = ASGITransport(app=app_with_mock)
+        async with AsyncClient(transport=transport, base_url="http://test") as client:
+            resp = await client.post("/v1/audio/speech", json={
+                "text": "测试",
+                "voice": "zm_010",
+                "response_encoding": "base64",
+            })
+            assert resp.status_code == 200
+            assert "X-Request-ID" in resp.headers
+            data = resp.json()
+            assert data["request_id"] == resp.headers["X-Request-ID"]
+
     @pytest.mark.asyncio
     async def test_openai_tts_success(self, app_with_mock, mock_engine):
         mock_engine.synthesize.side_effect = None
@@ -90,14 +171,14 @@ class TestHTTPEndpoints:
 
     @pytest.mark.asyncio
     async def test_openai_tts_empty_text(self, app_with_mock):
-        """空文本应返回 400"""
+        """空文本应返回 4xx（Pydantic min_length 校验返回 422）"""
         transport = ASGITransport(app=app_with_mock)
         async with AsyncClient(transport=transport, base_url="http://test") as client:
             resp = await client.post("/v1/audio/speech", json={
                 "text": "",
                 "voice": "zm_010",
             })
-            assert resp.status_code == 400
+            assert resp.status_code in (400, 422)
 
     @pytest.mark.asyncio
     async def test_api_tts_post(self, app_with_mock, mock_engine):

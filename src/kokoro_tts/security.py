@@ -8,9 +8,14 @@ from .config import TTSConfig
 
 
 def _extract_bearer_token(auth: str) -> str:
-    """Extract bearer token from Authorization header value (case-insensitive prefix)."""
-    if auth.lower().startswith("bearer "):
-        return auth[7:]
+    """从 Authorization 头提取 Bearer token，支持大小写混合、前导/尾部空白。"""
+    value = str(auth or "").strip()
+    prefix = "bearer"
+    if value.lower().startswith(prefix):
+        rest = value[len(prefix):]
+        # 必须有空白分隔符，防止 Bearerxxx 误通过
+        if rest and rest[0].isspace():
+            return rest[1:].strip()
     return ""
 
 

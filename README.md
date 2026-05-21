@@ -146,6 +146,7 @@ AngeVoice 不是重新训练的新模型，而是面向低配设备、NAS 和长
 | OpenAI 兼容 API | `POST /v1/audio/speech`，兼容 `model/input/voice/speed/response_format` |
 | MOSS-TTS-Nano | 通过 OpenMOSS 官方 ONNX runtime 接入，支持预设音色、参考音频克隆、CPU 基线和 CUDA 实验模式；默认关闭进程级隔离，并默认使用质量优先的 MOSS 分包流式体验，必要时可手动开启硬隔离 |
 | 多模型运行时 | `/v1/models` 查看、加载、卸载和切换模型；可切换时卸载旧模型并隔离缓存 |
+| TTS 能力查询 | `GET /v1/tts/capabilities` 返回当前模型能力、可用编码格式、音色详情 |
 | WebSocket 流式 | `WS /ws/v1/tts` 小包推送；支持 `cancel` / `stop`；MOSS 克隆可在首包传参考音频 base64 |
 | 中文文本规则 | 自动断句标点、jieba 分词优先、兜底词典、常见多音字上下文修正 |
 | 批量合成 | `POST /v1/audio/batch` 返回 ZIP 和 `manifest.json` |
@@ -263,7 +264,8 @@ Docker 健康检查把 `ok` 和 `idle` 都视为 healthy。
 |---|---|
 | 健康检查 / 统计 / 请求状态 | `GET /health`、`GET /stats`、`GET /requests` |
 | 模型列表 / 当前模型 / 切换 | `GET /v1/models`、`GET /v1/models/current`、`POST /v1/models/switch` |
-| 音色 / 格式 | `GET /v1/audio/voices`、`GET /v1/audio/formats` |
+| 音色 / 格式 | `GET /v1/audio/voices`（支持 `?detail=true` 返回性别/显示名）、`GET /v1/audio/formats` |
+| TTS 能力查询 | `GET /v1/tts/capabilities` |
 | OpenAI 兼容合成 | `POST /v1/audio/speech` |
 | 旧版兼容合成 / MOSS 克隆上传 | `GET /api/tts`、`POST /api/tts` |
 | WebSocket 流式 / MOSS 克隆流式 | `WS /ws/v1/tts` |
@@ -282,6 +284,17 @@ curl -X POST "$BASE_URL/v1/audio/speech" \
   -d '{"model":"kokoro","input":"你好世界","voice":"zm_010","response_format":"wav"}' \
   --output output.wav
 ```
+
+### Base64 JSON 返回（适合 WebView/PWA）
+
+```bash
+curl -X POST "$BASE_URL/v1/audio/speech" \
+  -H "Content-Type: application/json" \
+  -d '{"model":"kokoro","input":"你好世界","voice":"zm_010","response_format":"wav","response_encoding":"base64"}' \
+  | jq '.audio_base64' -r | sed 's|data:audio/wav;base64,||' | base64 -d > output.wav
+```
+
+> `response_encoding=base64` 返回 JSON，包含 `audio`（裸 base64）、`audio_base64`（data URL）、`sample_rate`、`channels` 等字段。
 
 启用 `KOKORO_API_KEY` 后增加：
 
