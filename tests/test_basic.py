@@ -7,7 +7,7 @@ from unittest.mock import MagicMock, patch
 import pytest
 
 sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
-EXPECTED_VERSION = "2.6.5.3.3"
+EXPECTED_VERSION = "2.6.534"
 
 
 def _has_module(name: str) -> bool:
