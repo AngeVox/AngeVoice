@@ -35,7 +35,8 @@ services:
       PYTHONUNBUFFERED: "1"
       KOKORO_API_KEY: auto
       KOKORO_ADMIN_ENABLED: "true"
-      ANGEVOICE_MODEL_SOURCE: modelscope
+      ANGEVOICE_ADMIN_PASSWORD: ${wizard_admin_password:-changeme}
+      ANGEVOICE_MODEL_SOURCE: ${wizard_model_source:-modelscope}
       KOKORO_PREFETCH_VOICES: "true"
 
       KOKORO_WORKERS: "1"
