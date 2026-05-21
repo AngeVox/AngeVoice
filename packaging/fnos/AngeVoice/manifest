@@ -1,5 +1,5 @@
 appname=AngeVoice
-version=2.6.5.3.3-fnos1
+version=2.6.533-fnos1
 display_name=AngeVoice
 desc=本地中文 TTS 语音合成服务，支持 Kokoro v1.1 Chinese 与 MOSS-TTS-Nano 双引擎，提供 OpenAI 兼容 API、WebSocket 流式合成和 Studio Web UI。模型不内置，首次启动自动下载。
 platform=all
@@ -13,7 +13,7 @@ distributor_url=https://github.com/ang77712829/AngeVoice
 os_min_version=1.1.8
 
 desktop_uidir=ui
-desktop_applaunchname=App.AI.AngeVoice.studio
+desktop_applaunchname=AngeVoice.studio
 
 service_port=8101
 checkport=true
