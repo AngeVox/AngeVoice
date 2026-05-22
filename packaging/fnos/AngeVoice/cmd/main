@@ -1,39 +1,74 @@
 #!/bin/bash
-# main — 容器状态检查脚本
-# 功能：供 fnOS 框架调用，检查 AngeVoice 容器是否正常运行
+# main — AngeVoice 应用生命周期管理脚本
+# 功能：由 fnOS 调用，管理 Docker 容器的启动、停止和状态检查
+# 注意：已移除 config/resource 中的 docker-project，由本脚本自行管理 docker compose
 set -e
 
-FILE_PATH="${TRIM_APPDEST}/docker/docker-compose.yaml"
+COMPOSE_DIR="${TRIM_APPDEST}/docker"
+COMPOSE_FILE="${COMPOSE_DIR}/docker-compose.yaml"
+CONTAINER_NAME="angevoice"
 
-is_docker_running() {
-    DOCKER_NAME=""
-
-    if [ -f "${FILE_PATH}" ]; then
-        DOCKER_NAME=$(grep "container_name" "${FILE_PATH}" | awk -F ':' '{print $2}' | xargs)
-        echo "容器名称：${DOCKER_NAME}"
-    fi
-
-    if [ -n "${DOCKER_NAME}" ]; then
-        docker inspect "${DOCKER_NAME}" | grep -q '"Status": "running",' || exit 1
-        return
-    fi
+log() {
+  echo "[AngeVoice] $*"
+  if [ -n "${TRIM_TEMP_LOGFILE:-}" ]; then
+    echo "[AngeVoice] $*" >> "${TRIM_TEMP_LOGFILE}" 2>/dev/null || true
+  fi
 }
 
-case $1 in
-start)
-    exit 0
-    ;;
-stop)
-    exit 0
-    ;;
-status)
-    if is_docker_running; then
-        exit 0
-    else
-        exit 3
-    fi
-    ;;
-*)
+is_docker_running() {
+  if [ -f "${COMPOSE_FILE}" ]; then
+    local name
+    name=$(grep "container_name" "${COMPOSE_FILE}" | awk -F ':' '{print $2}' | xargs 2>/dev/null)
+    [ -n "${name}" ] && CONTAINER_NAME="${name}"
+  fi
+  docker inspect "${CONTAINER_NAME}" 2>/dev/null | grep -q '"Status": "running",'
+}
+
+start_compose() {
+  if [ ! -f "${COMPOSE_FILE}" ]; then
+    log "错误：找不到 ${COMPOSE_FILE}"
     exit 1
-    ;;
+  fi
+
+  # 切换到 compose 目录（env_file 和 preset 引用使用相对路径）
+  cd "${COMPOSE_DIR}" || exit 1
+
+  # 如果容器已存在但配置已变更，先 down 再 up
+  if docker inspect "${CONTAINER_NAME}" >/dev/null 2>&1; then
+    log "容器已存在，重新创建以应用最新配置..."
+    docker compose down 2>/dev/null || docker-compose down 2>/dev/null || true
+    sleep 2
+  fi
+
+  log "启动容器：docker compose up -d"
+  docker compose up -d 2>/dev/null || docker-compose up -d 2>/dev/null
+  log "容器启动命令已执行"
+}
+
+stop_compose() {
+  cd "${COMPOSE_DIR}" 2>/dev/null || exit 0
+  log "停止容器：docker compose down"
+  docker compose down 2>/dev/null || docker-compose down 2>/dev/null || true
+  log "容器已停止"
+}
+
+case "${1}" in
+start)
+  start_compose
+  exit 0
+  ;;
+stop)
+  stop_compose
+  exit 0
+  ;;
+status)
+  if is_docker_running; then
+    exit 0
+  else
+    exit 3
+  fi
+  ;;
+*)
+  exit 1
+  ;;
 esac
