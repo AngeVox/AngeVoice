@@ -1,0 +1,3 @@
+#!/bin/bash
+# 更新前无需改写配置；模型、profiles、输出、凭据与运行配置位于 TRIM_PKGVAR，由 fnOS 持久保留。
+exit 0

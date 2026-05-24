@@ -1,0 +1,11 @@
+#!/bin/bash
+# AngeVoice fnOS 设置回调：更新单服务运行模式变量；用户重启应用后由 fnOS 重新创建容器。
+set -eu
+. "$(dirname "$0")/_mode_env.sh"
+MODE="${wizard_run_mode:-cpu}"
+PORT="${wizard_http_port:-8101}"
+case "$PORT" in *[!0-9]*|'') exit 1 ;; esac
+[ "$PORT" -ge 1024 ] && [ "$PORT" -le 65535 ] || exit 1
+angevoice_write_mode_env "$MODE"
+echo "[AngeVoice] 设置已保存：mode=${MODE}, port=${PORT}。请停止并重新启动应用以应用新的镜像/运行配置。"
+exit 0

@@ -1,0 +1,24 @@
+# 可选 MOSS CUDA 实验覆盖文件，仅用于 legacy-gpu/Tesla P4 试验取证。
+# 使用方式：docker compose -f docker-compose.yml -f docker-compose.moss-cuda.yml up -d
+# 注意：ZipVoice 在 legacy 镜像中仍保持 ONNX INT8 CPU；本覆盖不启用 ZipVoice CUDA。
+name: angevoice-legacy-gpu
+
+services:
+  angevoice-legacy-gpu:
+    environment:
+      ANGEVOICE_ENABLED_MODELS: kokoro,moss,zipvoice
+      MOSS_EXECUTION_PROVIDER: cuda
+      MOSS_CUDA_ENABLED: "true"
+      MOSS_AUTO_FALLBACK_CPU: "true"
+      MOSS_PROCESS_ISOLATION_ENABLED: "true"
+      MOSS_PROCESS_ISOLATION_PROVIDERS: cpu,cuda
+      MOSS_REALTIME_STREAMING_DECODE: "true"
+      MOSS_SEGMENT_LENGTH: "96"
+      MOSS_MAX_NEW_FRAMES: "300"
+      MOSS_VOICE_CLONE_MAX_TEXT_TOKENS: "48"
+      MOSS_PROMPT_CACHE_MAX_ITEMS: "4"
+      MOSS_STREAM_CHUNK_SECONDS: "0.40"
+      MOSS_STREAM_QUEUE_MAX_ITEMS: "8"
+      MOSS_STREAM_PREBUFFER_SECONDS: "0.75"
+      MOSS_OUTPUT_TARGET_PEAK: "0.86"
+      MOSS_OUTPUT_GAIN: "0.94"

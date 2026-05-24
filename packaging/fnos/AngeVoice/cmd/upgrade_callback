@@ -1,0 +1,9 @@
+#!/bin/bash
+# AngeVoice fnOS 升级回调：保留数据并根据升级向导选项更新单服务运行模式变量。
+set -eu
+. "$(dirname "$0")/_mode_env.sh"
+MODE="${wizard_run_mode:-cpu}"
+mkdir -p "${TRIM_PKGVAR}/models" "${TRIM_PKGVAR}/outputs" "${TRIM_PKGVAR}/prompts" "${TRIM_PKGVAR}/credentials" "${TRIM_PKGVAR}/config" "${TRIM_PKGVAR}/logs"
+angevoice_write_mode_env "$MODE"
+echo "[AngeVoice] 升级完成：mode=${MODE}；模型、profiles、输出、凭据与运行配置目录均已保留。"
+exit 0

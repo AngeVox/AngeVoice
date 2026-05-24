@@ -1,0 +1,24 @@
+#!/bin/bash
+# AngeVoice fnOS 安装回调：建立持久化目录并用向导变量生成单服务运行模式参数。
+# Docker 生命周期由 fnOS docker-project 接管；本回调不手动启动/重建容器。
+set -eu
+. "$(dirname "$0")/_mode_env.sh"
+log() { echo "[AngeVoice] $*"; }
+fail() { [ -n "${TRIM_TEMP_LOGFILE:-}" ] && echo "$1" > "$TRIM_TEMP_LOGFILE"; echo "[AngeVoice] $1" >&2; exit 1; }
+PORT="${wizard_http_port:-8101}"
+MODE="${wizard_run_mode:-cpu}"
+MODEL_SOURCE="${wizard_model_source:-modelscope}"
+case "$PORT" in *[!0-9]*|'') fail "服务端口必须为数字。" ;; esac
+[ "$PORT" -ge 1024 ] && [ "$PORT" -le 65535 ] || fail "服务端口必须在 1024 到 65535 之间。"
+case "$MODE" in cpu|gpu|legacy-gpu) ;; *) fail "运行模式无效：${MODE}" ;; esac
+case "$MODEL_SOURCE" in auto|modelscope|huggingface) ;; *) fail "模型下载源无效：${MODEL_SOURCE}" ;; esac
+[ -n "${wizard_admin_username:-admin}" ] || fail "管理员用户名不能为空。"
+[ -n "${wizard_admin_password:-admin123}" ] || fail "管理员密码不能为空。"
+if command -v ss >/dev/null 2>&1 && ss -H -ltn 2>/dev/null | awk '{print $4}' | grep -Eq "[:.]${PORT}$"; then
+  fail "端口 ${PORT} 已被占用，请返回上一步选择其他端口。"
+fi
+mkdir -p "${TRIM_PKGVAR}/models" "${TRIM_PKGVAR}/outputs" "${TRIM_PKGVAR}/prompts" "${TRIM_PKGVAR}/credentials" "${TRIM_PKGVAR}/config" "${TRIM_PKGVAR}/logs"
+angevoice_write_mode_env "$MODE"
+log "配置完成：mode=${MODE}, port=${PORT}, model_source=${MODEL_SOURCE}"
+log "首次可使用 admin / admin123 登录；公网暴露前请在后台立即改密。"
+exit 0

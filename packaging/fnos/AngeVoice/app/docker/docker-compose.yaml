@@ -1,0 +1,57 @@
+# AngeVoice fnOS 单一服务 Docker 编排
+# fnOS 通过安装/设置向导写入同目录 .env 的运行模式变量。
+# Compose 始终保持单服务结构，由变量选择 CPU、GPU 或 Legacy GPU 镜像。
+name: angevoice-fnos
+
+services:
+  angevoice:
+    image: "${ANGEVOICE_FNOS_IMAGE:-ghcr.io/ang77712829/angevoice-cpu:latest}"
+    container_name: angevoice
+    runtime: "${ANGEVOICE_FNOS_RUNTIME:-runc}"
+    ports:
+      - "${wizard_http_port:-8101}:8000"
+    env_file:
+      - ./angevoice.env
+      - ./.env
+    environment:
+      KOKORO_ADMIN_ENABLED: "true"
+      ANGEVOICE_ADMIN_USERNAME: "${wizard_admin_username:-admin}"
+      ANGEVOICE_ADMIN_PASSWORD: "${wizard_admin_password:-admin123}"
+      ANGEVOICE_MODEL_SOURCE: "${wizard_model_source:-modelscope}"
+      ANGEVOICE_DEPLOYMENT_PROFILE: "${ANGEVOICE_FNOS_PROFILE:-cpu}"
+      KOKORO_DEVICE: "${ANGEVOICE_FNOS_KOKORO_DEVICE:-cpu}"
+      ANGEVOICE_ENABLED_MODELS: "kokoro,moss,zipvoice"
+      ANGEVOICE_DEFAULT_MODEL: "kokoro"
+      MOSS_EXECUTION_PROVIDER: "${ANGEVOICE_FNOS_MOSS_PROVIDER:-cpu}"
+      MOSS_CUDA_ENABLED: "${ANGEVOICE_FNOS_MOSS_CUDA_ENABLED:-false}"
+      MOSS_AUTO_FALLBACK_CPU: "true"
+      ZIPVOICE_EXECUTION_PROVIDER: "${ANGEVOICE_FNOS_ZIPVOICE_PROVIDER:-cpu}"
+      ZIPVOICE_CUDA_ENABLED: "${ANGEVOICE_FNOS_ZIPVOICE_CUDA_ENABLED:-false}"
+      ZIPVOICE_AUTO_FALLBACK_CPU: "true"
+      ZIPVOICE_CUDA_MAX_DURATION: "36"
+      ZIPVOICE_CUDA_DEVICE_INDEX: "0"
+      ZIPVOICE_CPU_THREADS: "4"
+      ZIPVOICE_NUM_STEPS: "8"
+      ZIPVOICE_MODEL_ROOT: /app/models/zipvoice
+      ZIPVOICE_PROFILES_DIR: /app/prompts/zipvoice
+      ZIPVOICE_REPO_PATH: /opt/ZipVoice
+      ANGEVOICE_CREDENTIALS_DIR: /app/credentials
+      ANGEVOICE_ADMIN_CREDENTIALS_FILE: /app/credentials/admin-credentials.json
+      ANGEVOICE_API_KEY_FILE: /app/credentials/.angevoice-api-key
+      ANGEVOICE_RUNTIME_CONFIG_FILE: /app/config/runtime-config.json
+      NVIDIA_VISIBLE_DEVICES: "${ANGEVOICE_FNOS_NVIDIA_VISIBLE_DEVICES:-void}"
+      NVIDIA_DRIVER_CAPABILITIES: compute,utility
+    volumes:
+      - "${TRIM_PKGVAR}/models:/app/models"
+      - "${TRIM_PKGVAR}/outputs:/app/outputs"
+      - "${TRIM_PKGVAR}/prompts:/app/prompts"
+      - "${TRIM_PKGVAR}/credentials:/app/credentials"
+      - "${TRIM_PKGVAR}/config:/app/config"
+      - "${TRIM_PKGVAR}/logs:/app/logs"
+    healthcheck:
+      test: ["CMD", "python3", "-c", "import urllib.request,json; d=json.loads(urllib.request.urlopen('http://localhost:8000/health').read()); assert d.get('status') in {'ok','idle','loading'}"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 300s
+    restart: unless-stopped

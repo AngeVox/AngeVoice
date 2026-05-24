@@ -1,0 +1,92 @@
+name: Docker CPU Smoke
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  cpu-smoke:
+    name: CPU compose smoke
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Check compose file
+        run: |
+          cd docker/cpu
+          docker compose config --quiet
+
+      - name: Build CPU image
+        run: |
+          cd docker/cpu
+          docker compose build
+
+      - name: Start CPU container
+        run: |
+          cd docker/cpu
+          docker compose up -d
+
+      - name: Wait for health endpoint
+        run: |
+          for i in $(seq 1 60); do
+            if curl -fsS http://127.0.0.1:8100/health >/tmp/angevoice-health.json; then
+              cat /tmp/angevoice-health.json
+              exit 0
+            fi
+            docker logs angevoice-cpu --tail=80 || true
+            sleep 5
+          done
+          docker logs angevoice-cpu --tail=200 || true
+          exit 1
+
+      - name: Run smoke test
+        env:
+          BASE_URL: http://127.0.0.1:8100
+          OUT_DIR: /tmp/angevoice-smoke
+          VOICE: zm_010
+        run: |
+          bash scripts/smoke_test.sh
+
+      - name: Dump logs on failure
+        if: failure()
+        run: |
+          docker ps -a || true
+          docker logs angevoice-cpu --tail=300 || true
+
+      - name: Stop CPU container
+        if: always()
+        run: |
+          cd docker/cpu
+          docker compose down -v
+
+  cpu-arm64-build:
+    name: CPU ARM64 build
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v4
+
+      - name: Build CPU ARM64 image
+        uses: docker/build-push-action@v7
+        with:
+          context: .
+          file: docker/cpu/Dockerfile
+          platforms: linux/arm64
+          push: false
+          cache-from: type=gha,scope=cpu-arm64-smoke
+          cache-to: type=gha,mode=max,scope=cpu-arm64-smoke

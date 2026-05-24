@@ -1,0 +1,33 @@
+# AngeVoice — pinned dependency constraints (minimum versions)
+# Regenerate when pyproject.toml changes.
+# Usage:  pip install -r constraints.txt
+
+# ── core ──────────────────────────────────────────────
+kokoro==0.8.2
+misaki[zh]==0.8.2
+jieba==0.42.1
+pypinyin==0.50.0
+torch==2.0.0
+numpy==1.24.0
+soundfile==0.12.0
+fastapi==0.100.0
+uvicorn==0.23.0
+python-multipart==0.0.6
+jinja2==3.1.0
+websockets==12.0
+
+# ── optional[moss] ───────────────────────────────────
+torchaudio==2.0.0
+sentencepiece==0.1.99
+huggingface_hub==0.23
+onnxruntime==1.20.0
+
+# ── optional[moss-gpu] ───────────────────────────────
+onnxruntime-gpu==1.20.2
+nvidia-cudnn-cu12==9.1.0.70
+
+# ── optional[dev] ─────────────────────────────────────
+pytest==7.0
+pytest-asyncio==0.23.0
+pytest-cov==4.0
+httpx==0.24.0

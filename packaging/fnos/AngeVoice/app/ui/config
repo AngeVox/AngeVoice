@@ -1,0 +1,16 @@
+{
+  ".url": {
+    "AngeVoice.Application": {
+      "title": "AngeVoice",
+      "icon": "images/icon_{0}.png",
+      "type": "url",
+      "protocol": "http",
+      "port": "${wizard_http_port}",
+      "url": "/",
+      "allUsers": true,
+      "control": {
+        "accessPerm": "editable"
+      }
+    }
+  }
+}

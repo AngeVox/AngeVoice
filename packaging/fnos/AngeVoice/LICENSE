@@ -1,0 +1,9 @@
+AngeVoice 开源许可
+
+本软件基于 MIT 许可证发布。Copyright (c) 2026 ang77712829
+
+特此授权免费使用、复制、修改、分发本软件，不受任何限制。
+
+模型版本声明：本软件调用的所有 TTS 模型（含 Kokoro、MOSS-TTS-Nano 等）的权利归属于各自的上游开发者。本软件仅作为调用接口，不对模型本身主张任何额外权利。
+
+GPU 版本声明：GPU 加速版需要宿主机已安装 NVIDIA 驱动及 NVIDIA Container Toolkit。标准 GPU 画像已在 Tesla P4 完成功能验证，需要宿主机提供兼容 NVIDIA 驱动与 NVIDIA Container Toolkit；如标准 GPU 无法运行，可选择 Legacy GPU 兼容模式。

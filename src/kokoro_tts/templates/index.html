@@ -1,0 +1,129 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>AngeVoice Studio</title>
+  <link rel="icon" href="data:," />
+  <script>
+    const savedTheme = localStorage.getItem('angevoice.theme.v1');
+    document.documentElement.dataset.theme = savedTheme || (matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light');
+  </script>
+  <link rel="stylesheet" href="/static/app.css?h=dc8364f6afbe" />
+</head>
+<body>
+  <div class="boot-screen" id="boot-screen" aria-hidden="true">
+    <div class="boot-card">
+      <div class="boot-logo" aria-label="AngeVoice">
+        <span class="name-ange">Ange</span><span class="name-voice">Voice</span>
+      </div>
+      <div class="boot-wave"><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i></div>
+      <div class="boot-line"></div>
+    </div>
+  </div>
+  <script id="angevoice-bootstrap" type="application/json">{{ bootstrap | tojson }}</script>
+  <div class="toast-stack" id="toast-stack" aria-live="polite" aria-atomic="true"></div>
+  <main class="app-shell">
+    <header class="topbar">
+      <div class="brand-mark brand-wordmark" aria-hidden="true"><span class="name-ange">Ange</span><span class="name-voice">Voice</span></div>
+      <div class="brand-copy"><p class="eyebrow">AngeVoice Studio</p><h1>中文 TTS 控制台</h1></div>
+      <div class="topbar-actions">
+        <a href="/admin" class="ghost-button small" style="display:inline-flex;align-items:center;text-decoration:none;">管理后台</a>
+        <a href="/api-docs" class="ghost-button small" style="display:inline-flex;align-items:center;text-decoration:none;">API 文档</a>
+        <span class="status-pill" id="health-pill"><span></span><b>连接中</b></span>
+        <button type="button" class="icon-button" id="theme-btn" title="切换主题" aria-label="切换主题">☾</button>
+        <button type="button" class="icon-button" id="settings-btn" title="服务设置" aria-label="服务设置">⚙</button>
+      </div>
+    </header>
+
+    <section class="stats-drawer" id="stats-drawer">
+      <div class="stats-header"><div><p class="eyebrow">Telemetry</p><h2>服务统计</h2></div><button type="button" class="ghost-button small" id="metrics-toggle">收起</button></div>
+      <div class="metrics-grid" id="metrics-grid">
+        <article class="metric-card spotlight"><span>请求</span><strong id="metric-requests">0</strong></article>
+        <article class="metric-card spotlight"><span>缓存</span><strong id="metric-cache">0</strong></article>
+        <article class="metric-card spotlight"><span>音色</span><strong id="metric-voices">0</strong></article>
+        <article class="metric-card spotlight"><span>并发</span><strong id="metric-active">0</strong></article>
+      </div>
+    </section>
+
+    <section class="workspace">
+      <form class="composer panel spotlight" id="tts-form">
+        <div class="section-head"><div><p class="eyebrow">Compose</p><h2>文本与参数</h2></div><span class="counter"><b id="char-count">0</b>/<span id="max-count">10000</span></span></div>
+        <textarea id="text" maxlength="10000" spellcheck="false">你好，欢迎使用 AngeVoice。</textarea>
+        <div class="controls-grid">
+          <label class="field"><span>模型 <b id="model-status">当前</b></span><select id="model-select"></select></label>
+          <label class="field"><span>音色</span><select id="voice"></select></label>
+          <label class="field"><span>语速 <b id="speed-value">1.0</b></span><input type="range" id="speed" min="0.5" max="2.0" step="0.1" value="1.0" /></label>
+          <label class="toggle-row"><input type="checkbox" id="stream-toggle" checked /><span>流式播放</span></label>
+        </div>
+        <section class="engine-parameters" id="engine-parameters" hidden>
+          <div class="engine-parameters-title"><p class="eyebrow">Engine Parameters</p><span>由模型 schema 动态提供</span></div>
+          <div class="engine-parameter-fields" id="engine-parameter-fields"></div>
+        </section>
+        <div class="clone-panel" id="clone-panel" hidden>
+          <label class="field file-field"><span>参考音频 <b id="clone-status">参考音频克隆</b></span><input type="file" id="prompt-audio" accept="audio/*,.wav,.mp3,.flac,.ogg,.m4a,.aac" /></label>
+          <div class="reference-actions">
+            <button type="button" class="secondary-button small" id="record-reference-btn">网页录音</button>
+            <button type="button" class="danger-button small" id="stop-record-reference-btn" disabled>停止录音</button>
+            <span class="recording-status" id="recording-status">也可直接使用麦克风录制 WAV 参考音频</span>
+            <button type="button" class="ghost-button small" id="clear-prompt-audio" disabled>清除</button>
+          </div>
+          <section class="zipvoice-card collapsed" id="zipvoice-card" hidden>
+            <div class="zipvoice-title">
+              <div><p class="eyebrow">Voice Profile</p><h3>参考音色管理（可选）</h3></div>
+              <div class="zipvoice-title-actions"><span class="zipvoice-badge">官方建议少于 3 秒</span><button type="button" class="ghost-button small" id="zipvoice-toggle" aria-expanded="false" aria-controls="zipvoice-details">展开</button></div>
+            </div>
+            <p class="zipvoice-summary">需要上传参考录音、选择或管理已保存音色时再展开。</p>
+            <div class="zipvoice-details" id="zipvoice-details" hidden>
+              <p class="zipvoice-tip">ZipVoice 官方建议单人参考音频少于 3 秒。较长录音仍可使用，但可能降低合成速度或质量；AngeVoice 最长允许 15 秒，不会自动截断。</p>
+              <p class="zipvoice-tip">请使用安静、自然的 WAV 参考录音，并填写完全对应的朗读文本；开头不要保留静音或杂音。</p>
+              <p class="zipvoice-tip">流式模式为分句流式：第一句生成后即可开始播放，不等同于字级实时输出。</p>
+              <audio id="zipvoice-reference-preview" class="zipvoice-reference-preview" controls hidden></audio>
+              <label class="field full"><span>参考文本 <button type="button" class="inline-link" id="zipvoice-recommend-btn">推荐录音文本</button></span><textarea id="prompt-text" class="prompt-text" placeholder="请填写参考录音中实际朗读的文字"></textarea><small class="hint">参考文本仅用于描述参考录音和克隆音色，不会作为要生成的正文发送。正文请填写在上方“合成文本”区域。</small></label>
+              <div class="recommended-prompts" id="zipvoice-recommended-prompts" hidden></div>
+              <div class="zipvoice-profile-grid">
+                <label class="field"><span>已保存音色</span><select id="zipvoice-profile-select"><option value="">临时克隆（使用上传参考）</option></select></label>
+                <label class="field"><span>新音色 ID</span><input id="zipvoice-profile-id" placeholder="voice_001" /></label>
+                <label class="field"><span>显示名称</span><input id="zipvoice-profile-name" placeholder="我的音色" /></label>
+                <button type="button" class="secondary-button zipvoice-save" id="zipvoice-save-profile">保存音色</button>
+                <button type="button" class="ghost-button zipvoice-update" id="zipvoice-update-profile" disabled>更新名称</button>
+                <button type="button" class="danger-button zipvoice-delete" id="zipvoice-delete-profile" disabled>删除音色</button>
+              </div>
+            </div>
+          </section>
+        </div>
+        <div class="button-row">
+          <button type="submit" class="primary-button glare" id="generate-btn">生成语音</button>
+          <button type="button" class="secondary-button" id="preview-btn">试听</button>
+          <button type="button" class="danger-button" id="stop-btn" disabled>停止</button>
+          <button type="button" class="ghost-button" id="clear-btn">清空</button>
+        </div>
+        <div class="progress-track" id="progress-track" aria-live="polite"></div>
+      </form>
+      <aside class="side-panel">
+        <section class="panel voice-panel spotlight">
+          <div class="section-head compact"><div><p class="eyebrow">Voices</p><h2>音色库</h2></div><button type="button" class="ghost-button small" id="favorite-btn">收藏</button></div>
+          <input class="search-input" id="voice-search" type="search" placeholder="搜索音色" />
+          <div class="voice-tabs" id="voice-tabs"></div>
+          <div class="voice-list" id="voice-list"></div>
+        </section>
+        <section class="panel player-panel spotlight">
+          <div class="section-head compact"><div><p class="eyebrow">Playback</p><h2>播放</h2></div><button type="button" class="ghost-button small" id="download-btn" disabled>下载</button></div>
+          <audio id="audio-player" controls></audio>
+          <div class="request-log" id="request-log"></div>
+        </section>
+      </aside>
+    </section>
+  </main>
+
+  <dialog class="settings-dialog" id="settings-dialog">
+    <form method="dialog" class="settings-card">
+      <div class="section-head"><div><p class="eyebrow">Access</p><h2>API Key</h2></div><button type="submit" class="icon-button" aria-label="关闭">×</button></div>
+      <label class="field"><span>API Key（Bearer Token）</span><input type="password" id="api-token" autocomplete="off" placeholder="KOKORO_API_KEY" /></label>
+      <p class="hint">生产模板可使用 <code>KOKORO_API_KEY=auto</code> 自动生成；如果已开启管理后台，可在 <a href="/admin">管理后台</a> 查看或轮换；未开启时请查看启动日志或 <code>ANGEVOICE_API_KEY_FILE</code>。</p>
+      <div class="button-row"><button type="button" class="primary-button" id="save-token-btn">保存</button><button type="button" class="ghost-button" id="clear-token-btn">移除</button></div>
+    </form>
+  </dialog>
+  <script src="/static/app.js?h=9a5ef1b41eb2" defer></script>
+</body>
+</html>

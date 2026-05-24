@@ -1,0 +1,3 @@
+#!/bin/bash
+# config_init - 配置向导初始化（打开设置时执行）
+exit 0

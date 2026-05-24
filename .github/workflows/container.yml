@@ -1,0 +1,175 @@
+name: Container Images and fnOS Package
+
+on:
+  push:
+    branches: ['dev/**', 'release/**']
+    tags: ['v*']
+  workflow_dispatch:
+    inputs:
+      publish:
+        description: 'Push manually built images to GHCR'
+        required: false
+        default: 'false'
+        type: choice
+        options: ['false', 'true']
+      channel:
+        description: 'Tag used for a manual publish'
+        required: false
+        default: 'edge'
+        type: choice
+        options: ['edge', 'latest']
+
+permissions:
+  contents: write
+  packages: write
+
+jobs:
+  build-images:
+    name: Build ${{ matrix.profile }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - profile: cpu
+            dockerfile: docker/cpu/Dockerfile
+            image: angevoice-cpu
+            platforms: linux/amd64,linux/arm64
+          - profile: gpu
+            dockerfile: docker/gpu/Dockerfile
+            image: angevoice-gpu
+            platforms: linux/amd64
+          - profile: legacy-gpu
+            dockerfile: docker/legacy-gpu/Dockerfile
+            image: angevoice-legacy-gpu
+            platforms: linux/amd64
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v4
+
+      - name: Resolve publication mode
+        id: publish
+        shell: bash
+        run: |
+          if [[ "${GITHUB_REF}" == refs/tags/v* ]]; then
+            echo "enabled=true" >> "$GITHUB_OUTPUT"
+            echo "release=true" >> "$GITHUB_OUTPUT"
+            echo "manual=false" >> "$GITHUB_OUTPUT"
+            echo "channel=latest" >> "$GITHUB_OUTPUT"
+          elif [[ "${GITHUB_EVENT_NAME}" == "workflow_dispatch" && "${{ github.event.inputs.publish }}" == "true" ]]; then
+            echo "enabled=true" >> "$GITHUB_OUTPUT"
+            echo "release=false" >> "$GITHUB_OUTPUT"
+            echo "manual=true" >> "$GITHUB_OUTPUT"
+            echo "channel=${{ github.event.inputs.channel }}" >> "$GITHUB_OUTPUT"
+          else
+            echo "enabled=false" >> "$GITHUB_OUTPUT"
+            echo "release=false" >> "$GITHUB_OUTPUT"
+            echo "manual=false" >> "$GITHUB_OUTPUT"
+            echo "channel=edge" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Read package version
+        id: version
+        shell: bash
+        run: |
+          VERSION=$(python - <<'PY'
+          import tomllib
+          from pathlib import Path
+          print(tomllib.loads(Path('pyproject.toml').read_text(encoding='utf-8'))['project']['version'])
+          PY
+          )
+          echo "version=${VERSION}" >> "$GITHUB_OUTPUT"
+          echo "v_version=v${VERSION}" >> "$GITHUB_OUTPUT"
+
+      - name: Login to GHCR
+        if: steps.publish.outputs.enabled == 'true'
+        uses: docker/login-action@v4
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Docker metadata
+        id: meta
+        uses: docker/metadata-action@v6
+        with:
+          images: ghcr.io/${{ github.repository_owner }}/${{ matrix.image }}
+          tags: |
+            type=raw,value=latest,enable=${{ steps.publish.outputs.release == 'true' }}
+            type=raw,value=${{ steps.version.outputs.v_version }},enable=${{ steps.publish.outputs.release == 'true' }}
+            type=raw,value=${{ steps.publish.outputs.channel }},enable=${{ steps.publish.outputs.manual == 'true' }}
+            type=sha,prefix=sha-
+
+      - name: Build image
+        uses: docker/build-push-action@v7
+        with:
+          context: .
+          file: ${{ matrix.dockerfile }}
+          platforms: ${{ matrix.platforms }}
+          push: ${{ steps.publish.outputs.enabled == 'true' }}
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha,scope=${{ matrix.profile }}
+          cache-to: type=gha,mode=max,scope=${{ matrix.profile }}
+
+      - name: Explain branch build mode
+        if: steps.publish.outputs.enabled != 'true'
+        run: echo "Branch push built the images without publishing them."
+
+  release-assets:
+    name: Build fnOS package and source archive
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: build-images
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Read package version
+        id: version
+        shell: bash
+        run: |
+          VERSION=$(python - <<'PY'
+          import tomllib
+          from pathlib import Path
+          print(tomllib.loads(Path('pyproject.toml').read_text(encoding='utf-8'))['project']['version'])
+          PY
+          )
+          echo "version=${VERSION}" >> "$GITHUB_OUTPUT"
+
+      - name: Build fnOS FPK package and source archive
+        shell: bash
+        run: |
+          VERSION="${{ steps.version.outputs.version }}"
+          mkdir -p dist
+          bash scripts/build_fnos_release.sh "dist/AngeVoice_v${VERSION}.fpk"
+          python3 scripts/build_source_release_zip.py "dist/AngeVoice_Source_v${VERSION}.zip"
+          sha256sum "dist/AngeVoice_Source_v${VERSION}.zip" > "dist/AngeVoice_Source_v${VERSION}.zip.sha256"
+
+      - name: Upload release assets
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        shell: bash
+        run: |
+          VERSION="${{ steps.version.outputs.version }}"
+          gh release create "${GITHUB_REF_NAME}" \
+            "dist/AngeVoice_v${VERSION}.fpk" \
+            "dist/AngeVoice_v${VERSION}.fpk.sha256" \
+            "dist/AngeVoice_v${VERSION}.fpk.contents.txt" \
+            "dist/AngeVoice_Source_v${VERSION}.zip" \
+            "dist/AngeVoice_Source_v${VERSION}.zip.sha256" \
+            --generate-notes --title "AngeVoice ${GITHUB_REF_NAME}" \
+          || gh release upload "${GITHUB_REF_NAME}" \
+            "dist/AngeVoice_v${VERSION}.fpk" \
+            "dist/AngeVoice_v${VERSION}.fpk.sha256" \
+            "dist/AngeVoice_v${VERSION}.fpk.contents.txt" \
+            "dist/AngeVoice_Source_v${VERSION}.zip" \
+            "dist/AngeVoice_Source_v${VERSION}.zip.sha256" \
+            --clobber

@@ -1,0 +1,47 @@
+# Docker 部署画像与持久化
+
+## 支持画像
+
+| profile | 适用场景 | 关键策略 |
+| --- | --- | --- |
+| `cpu` | 无 GPU NAS、ARM64 CPU NAS | 三模型均使用 CPU 可用路径；ZipVoice 为 ONNX INT8 |
+| `gpu` | NVIDIA x86_64，包含 Tesla P4 | Kokoro/MOSS/ZipVoice 请求 CUDA；ZipVoice 不可用时自动回退 CPU |
+| `legacy-gpu` | 标准 GPU 镜像无法正常运行的旧驱动/兼容环境 | 使用更保守的 provider 配置 |
+
+用户在界面中选择 `Kokoro v1.1 Chinese`、`MOSS-TTS-Nano` 或 `ZipVoice`；实际 Provider 与回退原因在状态/诊断中展示。
+
+## 启动方式
+
+```bash
+# CPU
+cd docker/cpu && docker compose up -d
+
+# NVIDIA GPU
+cd docker/gpu && docker compose up -d
+
+# Legacy GPU 兼容模式
+cd docker/legacy-gpu && docker compose up -d
+```
+
+默认 Compose 引用 `latest` 镜像标签，便于持续更新。需要固定部署内容时，可在本地 Compose 或 fnOS 环境变量中将镜像替换为指定标签或 digest。
+
+## 持久化目录
+
+所有画像使用同一套持久化目录：
+
+```text
+models/       模型资产与下载缓存
+prompts/      Voice Profiles 与参考音频
+outputs/      输出音频
+credentials/  管理员哈希凭据与 API Key
+config/       后台运行配置
+logs/         日志与诊断资料
+```
+
+在 CPU、GPU 和 Legacy GPU 模式之间切换时，请继续挂载同一组数据目录。
+
+## NVIDIA 说明
+
+标准 `gpu` 是 NVIDIA 主路径；在宿主机驱动或 CUDA/cuDNN 组合无法兼容标准镜像时，再使用 `legacy-gpu`。ZipVoice 的实际运行方式可在模型状态中查看，CUDA 不可用时可按配置自动回退 CPU ONNX INT8。
+
+fnOS 用户请参阅 [fnOS / FPK 部署](FNOS_FPK.md)。

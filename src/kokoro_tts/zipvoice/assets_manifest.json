@@ -1,0 +1,76 @@
+{
+  "schema_version": 1,
+  "engine": "zipvoice",
+  "runtime": "ZipVoice-Distill ONNX INT8 CPU",
+  "assets": [
+    {
+      "id": "zipvoice_distill_text_encoder_int8",
+      "repo": "k2-fsa/ZipVoice",
+      "revision": "3baef9f2f52009cac656f4f8445b6e8f618a8235",
+      "license": "Apache-2.0",
+      "filename": "zipvoice_distill/text_encoder_int8.onnx",
+      "install_root": "model_root",
+      "destination": "zipvoice_distill/text_encoder_int8.onnx",
+      "sha256": "f2de9a761a85e5ddd125dee6e05bad1c7ee92c11b83b4d775dab216a6aa41379",
+      "size_bytes": 5570211,
+      "verification_policy": "strict_sha256"
+    },
+    {
+      "id": "zipvoice_distill_fm_decoder_int8",
+      "repo": "k2-fsa/ZipVoice",
+      "revision": "3baef9f2f52009cac656f4f8445b6e8f618a8235",
+      "license": "Apache-2.0",
+      "filename": "zipvoice_distill/fm_decoder_int8.onnx",
+      "install_root": "model_root",
+      "destination": "zipvoice_distill/fm_decoder_int8.onnx",
+      "sha256": "3cc2e08a96610d7ea1b227398e97cdbbe0414499741d3aec0b8113db2a2ab251",
+      "size_bytes": 124657100,
+      "verification_policy": "strict_sha256"
+    },
+    {
+      "id": "zipvoice_distill_model_json",
+      "repo": "k2-fsa/ZipVoice",
+      "revision": "3baef9f2f52009cac656f4f8445b6e8f618a8235",
+      "license": "Apache-2.0",
+      "filename": "zipvoice_distill/model.json",
+      "install_root": "model_root",
+      "destination": "zipvoice_distill/model.json",
+      "sha256": null,
+      "verification_policy": "record_first_verified_download"
+    },
+    {
+      "id": "zipvoice_distill_tokens",
+      "repo": "k2-fsa/ZipVoice",
+      "revision": "3baef9f2f52009cac656f4f8445b6e8f618a8235",
+      "license": "Apache-2.0",
+      "filename": "zipvoice_distill/tokens.txt",
+      "install_root": "model_root",
+      "destination": "zipvoice_distill/tokens.txt",
+      "sha256": null,
+      "verification_policy": "record_first_verified_download"
+    },
+    {
+      "id": "vocos_config",
+      "repo": "charactr/vocos-mel-24khz",
+      "revision": "a91e656a21df4e98ed0640ece71211deadd67933",
+      "license": "MIT",
+      "filename": "config.yaml",
+      "install_root": "vocos_dir",
+      "destination": "config.yaml",
+      "sha256": null,
+      "verification_policy": "record_first_verified_download"
+    },
+    {
+      "id": "vocos_weights",
+      "repo": "charactr/vocos-mel-24khz",
+      "revision": "a91e656a21df4e98ed0640ece71211deadd67933",
+      "license": "MIT",
+      "filename": "pytorch_model.bin",
+      "install_root": "vocos_dir",
+      "destination": "pytorch_model.bin",
+      "sha256": "97ec976ad1fd67a33ab2682d29c0ac7df85234fae875aefcc5fb215681a91b2a",
+      "size_bytes": 54365991,
+      "verification_policy": "strict_sha256"
+    }
+  ]
+}

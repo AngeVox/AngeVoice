@@ -1,0 +1,17 @@
+# AngeVoice Kokoro 非流式配置示例
+# 最稳、最容易跑通。适合第一次接入小智时测试连通性。
+
+selected_module:
+  TTS: AngeVoiceKokoro
+
+TTS:
+  AngeVoiceKokoro:
+    type: angevoice
+    api_url: http://host.docker.internal:8101
+    api_key: ""
+    model: kokoro
+    voice: zm_010
+    response_format: wav
+    speed: 1.0
+    output_dir: tmp/
+    tts_timeout: 120

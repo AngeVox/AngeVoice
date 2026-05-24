@@ -1,0 +1,87 @@
+name: angevoice-gpu
+
+services:
+  angevoice-gpu:
+    image: ghcr.io/ang77712829/angevoice-gpu:latest
+    container_name: angevoice-gpu
+    build:
+      context: ../..
+      dockerfile: docker/gpu/Dockerfile
+      args:
+        PYTORCH_VERSION: "2.5.1"
+        INSTALL_MOSS: "true"
+        INSTALL_ZIPVOICE: "true"
+        # MOSS 使用 CUDA provider；ZipVoice 请求 CUDA provider，并在失败时回退冻结 CPU ONNX INT8 runtime。
+        MOSS_RUNTIME_PACKAGE: "onnxruntime-gpu==1.20.2"
+        MOSS_CUDNN_PACKAGE: "nvidia-cudnn-cu12==9.1.0.70"
+
+    ports:
+      - "8101:8000"
+
+    env_file:
+      - ../angevoice.env
+      - path: ../angevoice.local.env
+        required: false
+
+    volumes:
+      - ../../models:/app/models
+      - ../../src/kokoro_tts/templates/index.html:/app/src/kokoro_tts/templates/index.html:ro
+      - ../../src/kokoro_tts/templates/admin.html:/app/src/kokoro_tts/templates/admin.html:ro
+      - ../../src/kokoro_tts/static:/app/src/kokoro_tts/static:ro
+      # 六类 RC 持久化目录必须与 CPU 画像一致，避免换画像后丢凭据/Profile/配置。
+      - ../../prompts:/app/prompts
+      - ../../outputs:/app/outputs
+      - ../../credentials:/app/credentials
+      - ../../config:/app/config
+      - ../../logs:/app/logs
+
+    environment:
+      ANGEVOICE_DEPLOYMENT_PROFILE: gpu
+      KOKORO_DEVICE: cuda
+      # GPU 镜像对 ZipVoice 默认请求 CUDA provider；实际 provider 与 fallback 状态由诊断接口展示。
+      ANGEVOICE_ENABLED_MODELS: kokoro,moss,zipvoice
+      ANGEVOICE_DEFAULT_MODEL: kokoro
+      MOSS_EXECUTION_PROVIDER: cuda
+      MOSS_CUDA_ENABLED: "true"
+      MOSS_AUTO_FALLBACK_CPU: "true"
+      MOSS_PROMPT_AUDIO_MAX_SECONDS: "8"
+      MOSS_SEGMENT_LENGTH: "120"
+      MOSS_MAX_NEW_FRAMES: "320"
+      MOSS_VOICE_CLONE_MAX_TEXT_TOKENS: "56"
+      MOSS_REALTIME_STREAMING_DECODE: "true"
+      MOSS_STREAM_CHUNK_SECONDS: "0.40"
+      MOSS_STREAM_QUEUE_MAX_ITEMS: "8"
+      MOSS_STREAM_PREBUFFER_SECONDS: "0.75"
+      MOSS_OUTPUT_TARGET_PEAK: "0.86"
+      MOSS_OUTPUT_GAIN: "0.94"
+      MOSS_MAX_SILENCE_MS: "480"
+      MOSS_CROSSFADE_MS: "12"
+      MOSS_RUNTIME_PAUSE_MAX_MS: "350"
+      ZIPVOICE_MODEL_ROOT: /app/models/zipvoice
+      ZIPVOICE_PROFILES_DIR: /app/prompts/zipvoice
+      ZIPVOICE_REPO_PATH: /opt/ZipVoice
+      ZIPVOICE_EXECUTION_PROVIDER: cuda
+      ZIPVOICE_CUDA_ENABLED: "true"
+      ZIPVOICE_AUTO_FALLBACK_CPU: "true"
+      # Tesla P4 8GB 初始保守预算；出现 OOM 时应保留 fallback 证据并进一步调低。
+      ZIPVOICE_CUDA_MAX_DURATION: "36"
+      ZIPVOICE_CUDA_DEVICE_INDEX: "0"
+      ZIPVOICE_CPU_THREADS: "4"
+      ZIPVOICE_NUM_STEPS: "8"
+      ANGEVOICE_CREDENTIALS_DIR: /app/credentials
+      ANGEVOICE_ADMIN_CREDENTIALS_FILE: /app/credentials/admin-credentials.json
+      ANGEVOICE_API_KEY_FILE: /app/credentials/.angevoice-api-key
+      ANGEVOICE_RUNTIME_CONFIG_FILE: /app/config/runtime-config.json
+      NVIDIA_VISIBLE_DEVICES: all
+      NVIDIA_DRIVER_CAPABILITIES: compute,utility
+
+    gpus: all
+
+    healthcheck:
+      test: ["CMD", "python3", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health')"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 300s
+
+    restart: always

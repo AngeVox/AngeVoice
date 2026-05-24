@@ -1,0 +1,77 @@
+# AngeVoice 小智智控台预设
+# 本文件不改小智前端源码，只提供可复制到智控台“语音合成 → 新增/创建副本”的配置。
+# 如果你使用智控台，data/.config.yaml 可能会被数据库配置覆盖，请优先在智控台页面新增模型。
+
+presets:
+  - id: AngeVoiceKokoro
+    name: AngeVoice Kokoro 非流式
+    type: angevoice
+    description: 最稳的基础模式，通过 /v1/audio/speech 返回完整音频。
+    config:
+      api_url: http://host.docker.internal:8101
+      api_key: ""
+      model: kokoro
+      voice: zm_010
+      response_format: wav
+      speed: 1.0
+      output_dir: tmp/
+      tts_timeout: 120
+
+  - id: AngeVoiceKokoroStream
+    name: AngeVoice Kokoro 流式
+    type: angevoice_stream
+    description: 推荐日常对话使用，WebSocket 流式输出，首包更快。
+    config:
+      api_url: ws://host.docker.internal:8101/ws/v1/tts
+      http_url: http://host.docker.internal:8101
+      api_key: ""
+      model: kokoro
+      voice: zm_010
+      format: pcm_s16le
+      speed: 1.0
+      output_dir: tmp/
+      tts_timeout: 180
+
+  - id: AngeVoiceMossStream
+    name: AngeVoice MOSS 流式
+    type: angevoice_stream
+    description: MOSS-TTS-Nano 预设音色流式输出，不使用参考音频克隆。
+    config:
+      api_url: ws://host.docker.internal:8101/ws/v1/tts
+      http_url: http://host.docker.internal:8101
+      api_key: ""
+      model: moss-nano-cpu
+      voice: Junhao
+      format: pcm_s16le
+      output_dir: tmp/
+      tts_timeout: 240
+
+  - id: AngeVoiceMossCloneStream
+    name: AngeVoice MOSS 克隆流式
+    type: angevoice_stream
+    description: 使用 data/angevoice_prompts/reference.wav 作为参考音频进行 MOSS 克隆。
+    config:
+      api_url: ws://host.docker.internal:8101/ws/v1/tts
+      http_url: http://host.docker.internal:8101
+      api_key: ""
+      model: moss-nano-cpu
+      voice: Junhao
+      format: pcm_s16le
+      prompt_audio_path: /opt/xiaozhi-esp32-server/data/angevoice_prompts/reference.wav
+      prompt_audio_filename: reference.wav
+      output_dir: tmp/
+      tts_timeout: 300
+
+  - id: AngeVoiceMossClone
+    name: AngeVoice MOSS 克隆非流式
+    type: angevoice_clone
+    description: 使用 /api/tts multipart 上传参考音频，返回完整音频文件。
+    config:
+      api_url: http://host.docker.internal:8101
+      api_key: ""
+      model: moss-nano-cpu
+      voice: Junhao
+      response_format: wav
+      prompt_audio_path: /opt/xiaozhi-esp32-server/data/angevoice_prompts/reference.wav
+      output_dir: tmp/
+      tts_timeout: 300

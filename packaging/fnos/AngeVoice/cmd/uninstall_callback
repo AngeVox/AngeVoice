@@ -1,0 +1,22 @@
+#!/bin/bash
+# uninstall_callback — 卸载回调脚本
+# 功能：根据用户选择保留或删除模型数据
+set -e
+
+log() { echo "[AngeVoice] $*"; }
+
+if [ "${wizard_keep_data}" = "false" ] || [ "${wizard_keep_data}" = "0" ]; then
+  log "用户选择删除数据，清理 ${TRIM_PKGVAR}"
+  rm -rf "${TRIM_PKGVAR}/models"
+  rm -rf "${TRIM_PKGVAR}/outputs"
+  rm -rf "${TRIM_PKGVAR}/prompts"
+  rm -rf "${TRIM_PKGVAR}/credentials"
+  rm -rf "${TRIM_PKGVAR}/config"
+  rm -rf "${TRIM_PKGVAR}/logs"
+  log "数据已清理"
+else
+  log "用户选择保留数据，跳过清理"
+fi
+
+log "卸载回调完成"
+exit 0

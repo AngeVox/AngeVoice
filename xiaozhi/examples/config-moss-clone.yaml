@@ -1,0 +1,35 @@
+# AngeVoice MOSS 参考音频克隆配置示例
+# 更换克隆音色的方法：替换宿主机 xiaozhi-server/data/angevoice_prompts/reference.wav
+# 容器内固定路径：/opt/xiaozhi-esp32-server/data/angevoice_prompts/reference.wav
+
+selected_module:
+  TTS: AngeVoiceMossCloneStream
+
+TTS:
+  AngeVoiceMossCloneStream:
+    type: angevoice_stream
+    api_url: ws://host.docker.internal:8101/ws/v1/tts
+    http_url: http://host.docker.internal:8101
+    api_key: ""
+    model: moss-nano-cpu
+    voice: Junhao
+    format: pcm_s16le
+    prompt_audio_path: /opt/xiaozhi-esp32-server/data/angevoice_prompts/reference.wav
+    prompt_audio_filename: reference.wav
+    output_dir: tmp/
+    tts_timeout: 300
+
+# 如果想先走非流式克隆，可改成下面这组：
+# selected_module:
+#   TTS: AngeVoiceMossClone
+# TTS:
+#   AngeVoiceMossClone:
+#     type: angevoice_clone
+#     api_url: http://host.docker.internal:8101
+#     api_key: ""
+#     model: moss-nano-cpu
+#     voice: Junhao
+#     response_format: wav
+#     prompt_audio_path: /opt/xiaozhi-esp32-server/data/angevoice_prompts/reference.wav
+#     output_dir: tmp/
+#     tts_timeout: 300

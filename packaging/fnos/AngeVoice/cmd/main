@@ -1,0 +1,11 @@
+#!/bin/bash
+# Docker 应用启停由 fnOS docker-project 管理；单一容器仅提供状态检查。
+set -u
+case "${1:-}" in
+  start|stop) exit 0 ;;
+  status)
+    if docker inspect angevoice >/dev/null 2>&1 && [ "$(docker inspect -f '{{.State.Status}}' angevoice 2>/dev/null)" = "running" ]; then exit 0; fi
+    exit 3
+    ;;
+  *) exit 1 ;;
+esac

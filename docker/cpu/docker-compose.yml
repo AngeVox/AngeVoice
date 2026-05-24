@@ -1,0 +1,77 @@
+name: angevoice-cpu
+
+services:
+  angevoice-cpu:
+    image: ghcr.io/ang77712829/angevoice-cpu:latest
+    container_name: angevoice-cpu
+    build:
+      context: ../..
+      dockerfile: docker/cpu/Dockerfile
+      args:
+        # 固定 PyTorch 版本，NAS/家用服务器复现更稳定。
+        PYTORCH_VERSION: "2.5.1"
+        # CPU 镜像预装 MOSS CPU runtime，CUDA 模型默认隐藏。
+        INSTALL_MOSS: "true"
+        INSTALL_ZIPVOICE: "true"
+
+    ports:
+      # 宿主机端口:容器端口。访问 http://宿主机IP:8100
+      - "8100:8000"
+
+    env_file:
+      # 默认包含首次进入凭据 admin/admin123；公网暴露前必须在后台修改。
+      - ../angevoice.env
+      # 可选本地覆盖：可在公网部署前预设自定义管理员凭据/下载源；不得提交仓库。
+      - path: ../angevoice.local.env
+        required: false
+
+    volumes:
+      # 统一模型目录：Kokoro / Hugging Face 缓存 / MOSS ONNX 全部持久化在这里。
+      # 需要写权限，首次启动会把自动下载的真实模型保存到宿主机 models/。
+      - ../../models:/app/models
+      # 前端资源：本地修改后重启容器即可生效。
+      - ../../src/kokoro_tts/templates/index.html:/app/src/kokoro_tts/templates/index.html:ro
+      - ../../src/kokoro_tts/templates/admin.html:/app/src/kokoro_tts/templates/admin.html:ro
+      - ../../src/kokoro_tts/static:/app/src/kokoro_tts/static:ro
+      # ZipVoice 已保存音色：参考 WAV 与 profile.json 的持久化目录。
+      - ../../prompts:/app/prompts
+      # 合成输出目录。
+      - ../../outputs:/app/outputs
+      # 管理员哈希凭据与自动生成 API Key；升级/重建容器必须保留。
+      - ../../credentials:/app/credentials
+      # 后台 runtime-config；与输出分离，升级保留。
+      - ../../config:/app/config
+      # 运行日志与诊断资料。
+      - ../../logs:/app/logs
+      # 可选：Kokoro 音色目录位于 ../../models/models--hexgrad--Kokoro-82M-v1.1-zh/voices
+
+    environment:
+      # CPU 画像显式锁定 CPU，防止无 GPU NAS 误启 CUDA。
+      ANGEVOICE_DEPLOYMENT_PROFILE: cpu
+      KOKORO_DEVICE: cpu
+      ANGEVOICE_ENABLED_MODELS: kokoro,moss,zipvoice
+      MOSS_EXECUTION_PROVIDER: cpu
+      MOSS_CUDA_ENABLED: "false"
+      MOSS_PROMPT_AUDIO_MAX_SECONDS: "8"
+      MOSS_STREAM_CHUNK_SECONDS: "0.40"
+      ZIPVOICE_MODEL_ROOT: /app/models/zipvoice
+      ZIPVOICE_PROFILES_DIR: /app/prompts/zipvoice
+      ZIPVOICE_REPO_PATH: /opt/ZipVoice
+      ZIPVOICE_EXECUTION_PROVIDER: cpu
+      ZIPVOICE_CUDA_ENABLED: "false"
+      ZIPVOICE_AUTO_FALLBACK_CPU: "true"
+      ZIPVOICE_CPU_THREADS: "4"
+      ZIPVOICE_NUM_STEPS: "8"
+      ANGEVOICE_CREDENTIALS_DIR: /app/credentials
+      ANGEVOICE_ADMIN_CREDENTIALS_FILE: /app/credentials/admin-credentials.json
+      ANGEVOICE_API_KEY_FILE: /app/credentials/.angevoice-api-key
+      ANGEVOICE_RUNTIME_CONFIG_FILE: /app/config/runtime-config.json
+
+    healthcheck:
+      test: ["CMD", "python3", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health')"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 300s
+
+    restart: always

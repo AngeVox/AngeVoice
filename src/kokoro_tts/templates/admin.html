@@ -1,0 +1,180 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>AngeVoice Admin</title>
+  <script>
+    const savedTheme = localStorage.getItem('angevoice.theme.v1');
+    document.documentElement.dataset.theme = savedTheme || (matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light');
+  </script>
+  <link rel="stylesheet" href="/static/app.css?h=dc8364f6afbe" />
+  <link rel="stylesheet" href="/static/admin.css?h=b64b7d47b521" />
+</head>
+<body>
+  <main class="app-shell admin-shell">
+    <header class="topbar admin-topbar">
+      <a class="brand-mark brand-wordmark admin-brand" href="/" aria-label="AngeVoice Studio">
+        <span class="name-ange">Ange</span><span class="name-voice">Voice</span>
+      </a>
+      <div class="brand-copy">
+        <p class="eyebrow">Admin</p>
+        <h1>管理控制台</h1>
+      </div>
+      <div class="topbar-actions">
+        <a class="ghost-button small" href="/">Studio</a>
+        <a class="ghost-button small" href="/api-docs">API</a>
+        <button class="ghost-button small" id="refresh-btn" type="button">刷新</button>
+      </div>
+    </header>
+
+    <section class="admin-nav">
+      <button class="admin-nav-btn active" data-admin-tab="overview" type="button">概览</button>
+      <button class="admin-nav-btn" data-admin-tab="models" type="button">模型</button>
+      <button class="admin-nav-btn" data-admin-tab="config" type="button">配置</button>
+      <button class="admin-nav-btn" data-admin-tab="security" type="button">安全</button>
+      <button class="admin-nav-btn" data-admin-tab="api" type="button">API/诊断</button>
+    </section>
+    <section class="admin-subnav" id="admin-subnav"></section>
+    <section class="admin-layout">
+      <article class="panel admin-panel overview-panel" data-admin-panel="overview">
+        <div class="section-head compact">
+          <div>
+            <p class="eyebrow">Dashboard</p>
+            <h2>概览</h2>
+          </div>
+          <span class="status-pill" id="admin-health-pill"><span></span><b>检查中</b></span>
+        </div>
+        <div class="metrics-grid admin-metrics" id="admin-metrics"></div>
+        <section class="update-card" id="update-card" aria-live="polite">
+          <div>
+            <p class="eyebrow">Updates</p>
+            <h3>版本更新</h3>
+            <p class="update-message" id="update-message">当前版本检查中...</p>
+          </div>
+          <div class="button-row">
+            <a class="ghost-button small hidden-panel" id="update-release-link" target="_blank" rel="noreferrer noopener">查看发布说明</a>
+            <button class="secondary-button small" id="check-update-btn" type="button">检查更新</button>
+          </div>
+        </section>
+      </article>
+
+      <article class="panel admin-panel models-panel" data-admin-panel="models">
+        <div class="section-head compact">
+          <div>
+            <p class="eyebrow">Models</p>
+            <h2>模型</h2>
+          </div>
+          <div class="button-row">
+            <button class="secondary-button small-action" id="clear-cache-btn" type="button">清缓存</button>
+            <button class="danger-button small-action" id="unload-btn" type="button">释放</button>
+            <button class="danger-button small-action" id="force-unload-btn" type="button">强制</button>
+          </div>
+        </div>
+        <div class="model-list" id="models-body"></div>
+      </article>
+
+      <article class="panel admin-panel tuning-panel" data-admin-panel="config" data-admin-subpanel="config.runtime">
+        <div class="section-head">
+          <div>
+            <p class="eyebrow">Tuning</p>
+            <h2>模型与运行参数</h2>
+          </div>
+          <div class="button-row">
+            <button class="secondary-button" id="reset-runtime-config-btn" type="button">清除持久化</button>
+            <button class="primary-button" id="save-config-btn" type="button">保存配置</button>
+          </div>
+        </div>
+        <div class="runtime-config-note" id="runtime-config-note">配置来源检查中...</div>
+        <nav class="config-tabs" id="config-tabs" aria-label="配置分组"></nav>
+        <form class="config-form" id="config-form"></form>
+        <details class="admin-details" id="advanced-config-details">
+          <summary>当前分组高级参数</summary>
+          <div class="config-form advanced-form" id="advanced-config-form"></div>
+        </details>
+      </article>
+      <article class="panel admin-panel tuning-panel" data-admin-panel="config" data-admin-subpanel="config.quality">
+        <div class="section-head compact">
+          <div>
+            <p class="eyebrow">Profiles</p>
+            <h2>质量/延迟预设</h2>
+          </div>
+        </div>
+        <div class="profile-grid" id="profile-grid"></div>
+      </article>
+
+      <article class="panel admin-panel security-panel" data-admin-panel="security" data-admin-subpanel="security.auth">
+        <div class="section-head compact">
+          <div>
+            <p class="eyebrow">Security</p>
+            <h2>安全</h2>
+          </div>
+        </div>
+        <div class="security-stack">
+          <div class="security-warning hidden-panel" id="default-admin-warning" role="alert"></div>
+          <div class="secret-box" id="api-key-status">加载中...</div>
+          <div class="button-row">
+            <button class="secondary-button" id="reveal-key-btn" type="button">显示 Key</button>
+            <button class="danger-button" id="rotate-key-btn" type="button">轮换 Key</button>
+          </div>
+          <div class="mini-list" id="security-summary"></div>
+          <div class="credential-card">
+            <h3>管理员账号与密码</h3>
+            <p>首次可使用默认账号 <code>admin</code> / <code>admin123</code> 登录。公网暴露前请在此修改；修改后磁盘只保存 PBKDF2 哈希，不保存明文密码。</p>
+            <div class="credential-grid">
+              <label class="config-field"><span>新用户名</span><input id="admin-username-input" type="text" autocomplete="username" placeholder="管理员或 admin" minlength="2" maxlength="64"></label>
+              <label class="config-field"><span>新密码</span><input id="admin-password-input" type="password" autocomplete="new-password" placeholder="至少 10 位且包含两类字符" minlength="10" maxlength="256"></label>
+            </div>
+            <div class="credential-actions">
+              <button class="primary-button" id="save-admin-credentials-btn" type="button">保存管理员凭据</button>
+              <button class="danger-button hidden-panel" id="confirm-admin-credentials-btn" type="button">确认保存并重新登录</button>
+              <button class="ghost-button hidden-panel" id="cancel-admin-credentials-btn" type="button">取消</button>
+            </div>
+            <p class="credential-feedback" id="admin-credentials-feedback" aria-live="polite"></p>
+          </div>
+        </div>
+      </article>
+      <article class="panel admin-panel security-panel" data-admin-panel="security" data-admin-subpanel="security.deploy">
+        <div class="section-head compact">
+          <div>
+            <p class="eyebrow">Deployment Presets</p>
+            <h2>部署预设</h2>
+          </div>
+        </div>
+        <div class="profile-grid deploy-grid" id="deploy-profile-grid"></div>
+      </article>
+
+      <article class="panel admin-panel diagnostics-panel" data-admin-panel="api" data-admin-subpanel="api.diagnostics">
+        <div class="section-head compact">
+          <div>
+            <p class="eyebrow">Diagnostics</p>
+            <h2>诊断</h2>
+          </div>
+          <div class="button-row">
+            <button class="ghost-button small" id="download-diagnostics-btn" type="button">下载诊断包</button>
+            <button class="ghost-button small" id="export-env-btn" type="button">导出 ENV</button>
+          </div>
+        </div>
+        <div class="quality-grid" id="quality-grid"></div>
+        <div class="request-list" id="request-list"></div>
+        <details class="admin-details">
+          <summary>ENV Patch</summary>
+          <textarea id="env-patch" class="admin-textarea" spellcheck="false" readonly></textarea>
+        </details>
+      </article>
+      <article class="panel admin-panel diagnostics-panel" data-admin-panel="api" data-admin-subpanel="api.raw">
+        <div class="section-head compact">
+          <div>
+            <p class="eyebrow">Raw State</p>
+            <h2>原始状态 JSON</h2>
+          </div>
+        </div>
+        <pre id="admin-json" class="admin-json"></pre>
+      </article>
+    </section>
+
+    <div class="admin-toast" id="admin-toast" role="status" aria-live="polite"></div>
+  </main>
+  <script src="/static/admin.js?h=e07f1e9c7b33" defer></script>
+</body>
+</html>

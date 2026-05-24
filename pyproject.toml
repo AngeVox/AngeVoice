@@ -1,0 +1,95 @@
+[build-system]
+requires = ["setuptools>=68.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "angevoice"
+version = "2.6.6"
+description = "AngeVoice: lightweight Chinese TTS service built on Kokoro v1.1"
+readme = "README.md"
+license = {text = "MIT"}
+requires-python = ">=3.10"
+authors = [
+    {name = "安歌", email = "ang77712829@users.noreply.github.com"},
+]
+keywords = ["tts", "chinese", "kokoro", "speech-synthesis", "ai", "openai-compatible", "angevoice"]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Multimedia :: Sound/Audio :: Speech",
+]
+dependencies = [
+    "kokoro>=0.8.2",
+    "misaki[zh]>=0.8.2",
+    "jieba>=0.42.1",
+    "pypinyin>=0.50.0",
+    "torch>=2.0.0",
+    "numpy>=1.24.0",
+    "soundfile>=0.12.0",
+    "fastapi>=0.100.0",
+    "uvicorn>=0.23.0",
+    "python-multipart>=0.0.6",
+    "jinja2>=3.1.0",
+    "websockets>=12.0",
+]
+
+[project.optional-dependencies]
+gpu = [
+    "torch>=2.0.0",
+]
+moss = [
+    "torchaudio>=2.0.0",
+    "sentencepiece>=0.1.99",
+    "huggingface_hub>=0.23",
+    "modelscope>=1.20.0",
+    "onnxruntime>=1.20.0",
+]
+zipvoice = [
+    "torchaudio>=2.0.0",
+    "onnxruntime>=1.20.0",
+    "huggingface_hub>=0.23",
+    "lhotse>=1.24.0",
+    "vocos>=0.1.0",
+    "pydub>=0.25.1",
+    "cn2an>=0.5.22",
+    "inflect>=7.0.0",
+    "piper_phonemize>=1.1.0",
+    "safetensors>=0.4.0",
+    "setuptools<81",
+]
+moss-gpu = [
+    "torchaudio>=2.0.0",
+    "sentencepiece>=0.1.99",
+    "huggingface_hub>=0.23",
+    "modelscope>=1.20.0",
+    "onnxruntime-gpu==1.20.2",
+    "nvidia-cudnn-cu12==9.1.0.70",
+]
+dev = [
+    "pytest>=7.0",
+    "pytest-asyncio>=0.23.0",
+    "pytest-cov>=4.0",
+    "httpx>=0.24.0",
+]
+
+[project.scripts]
+angevoice = "kokoro_tts.cli:main"
+kokoro-tts = "kokoro_tts.cli:main"
+
+[project.urls]
+Homepage = "https://github.com/ang77712829/AngeVoice"
+Repository = "https://github.com/ang77712829/AngeVoice"
+Documentation = "https://github.com/ang77712829/AngeVoice#readme"
+Issues = "https://github.com/ang77712829/AngeVoice/issues"
+Changelog = "https://github.com/ang77712829/AngeVoice/releases"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.setuptools.package-data]
+kokoro_tts = ["templates/*.html", "static/*", "zipvoice/*.json"]

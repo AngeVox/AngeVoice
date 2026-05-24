@@ -1,0 +1,60 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    name: Python tests (${{ matrix.python-version }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.10", "3.11", "3.12"]
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: ${{ matrix.python-version }}
+          cache: pip
+
+      - name: Install system dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libsndfile1 ffmpeg
+
+      - name: Install lightweight test dependencies
+        run: |
+          python -m pip install --upgrade pip
+          # CI 单元测试避免加载真实 Kokoro/MOSS 模型。
+          python -m pip install -e . --no-deps
+          python -m pip install pytest pytest-asyncio pytest-cov httpx fastapi uvicorn python-multipart jinja2 websockets numpy soundfile
+          python -m pip install torch --index-url https://download.pytorch.org/whl/cpu
+
+      - name: Run tests
+        run: |
+          pytest -q --cov=kokoro_tts --cov-report=term-missing
+
+      - name: Import and CLI smoke check
+        run: |
+          VERSION=$(python - <<'PY'
+          import importlib.metadata
+          import kokoro_tts
+          package_version = importlib.metadata.version("angevoice")
+          assert package_version == kokoro_tts.__version__
+          print(kokoro_tts.__version__)
+          PY
+          )
+          echo "AngeVoice version: ${VERSION}"
+          angevoice --version | grep "${VERSION}"
+          kokoro-tts --version | grep "${VERSION}"

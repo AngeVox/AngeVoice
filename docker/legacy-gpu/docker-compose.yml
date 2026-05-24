@@ -1,0 +1,89 @@
+name: angevoice-legacy-gpu
+
+services:
+  angevoice-legacy-gpu:
+    image: ghcr.io/ang77712829/angevoice-legacy-gpu:latest
+    container_name: angevoice-legacy-gpu
+
+    build:
+      context: ../..
+      dockerfile: docker/legacy-gpu/Dockerfile
+      args:
+        PYTORCH_VERSION: "2.5.1"
+        INSTALL_MOSS: "true"
+        INSTALL_ZIPVOICE: "true"
+        MOSS_RUNTIME_PACKAGE: "onnxruntime-gpu==1.20.1"
+        MOSS_RUNTIME_INDEX_URL: "https://aiinfra.pkgs.visualstudio.com/PublicPackages/_packaging/onnxruntime-cuda-11/pypi/simple/"
+
+    ports:
+      - "8102:8000"
+
+    env_file:
+      - ../angevoice.env
+      - path: ../angevoice.local.env
+        required: false
+
+    volumes:
+      - ../../models:/app/models
+      - ../../src/kokoro_tts/templates/index.html:/app/src/kokoro_tts/templates/index.html:ro
+      - ../../src/kokoro_tts/templates/admin.html:/app/src/kokoro_tts/templates/admin.html:ro
+      - ../../src/kokoro_tts/static:/app/src/kokoro_tts/static:ro
+      # 与 CPU/GPU 画像共享同一持久化契约。
+      - ../../prompts:/app/prompts
+      - ../../outputs:/app/outputs
+      - ../../credentials:/app/credentials
+      - ../../config:/app/config
+      - ../../logs:/app/logs
+
+    environment:
+      # legacy-gpu 兼容模式：仅当标准 gpu profile 无法构建、启动或稳定运行时使用；ZipVoice 使用 CPU provider。
+      ANGEVOICE_DEPLOYMENT_PROFILE: legacy-gpu
+      KOKORO_DEVICE: cuda
+      KOKORO_REQUEST_TIMEOUT_SECONDS: "600"
+      KOKORO_SEGMENT_LENGTH: "100"
+      ANGEVOICE_ENABLED_MODELS: kokoro,moss,zipvoice
+      ANGEVOICE_DEFAULT_MODEL: kokoro
+      MOSS_EXECUTION_PROVIDER: cpu
+      MOSS_CUDA_ENABLED: "false"
+      MOSS_PROCESS_ISOLATION_ENABLED: "true"
+      MOSS_PROCESS_ISOLATION_PROVIDERS: cpu,cuda
+      MOSS_REALTIME_STREAMING_DECODE: "true"
+      MOSS_SEGMENT_LENGTH: "120"
+      MOSS_MAX_NEW_FRAMES: "320"
+      MOSS_VOICE_CLONE_MAX_TEXT_TOKENS: "56"
+      MOSS_STREAM_CHUNK_SECONDS: "0.40"
+      MOSS_STREAM_QUEUE_MAX_ITEMS: "8"
+      MOSS_STREAM_PREBUFFER_SECONDS: "0.75"
+      MOSS_OUTPUT_TARGET_PEAK: "0.86"
+      MOSS_OUTPUT_GAIN: "0.94"
+      MOSS_MAX_SILENCE_MS: "480"
+      MOSS_CROSSFADE_MS: "12"
+      MOSS_RUNTIME_PAUSE_MAX_MS: "350"
+      ZIPVOICE_MODEL_ROOT: /app/models/zipvoice
+      ZIPVOICE_PROFILES_DIR: /app/prompts/zipvoice
+      ZIPVOICE_REPO_PATH: /opt/ZipVoice
+      ZIPVOICE_EXECUTION_PROVIDER: cpu
+      ZIPVOICE_CUDA_ENABLED: "false"
+      ZIPVOICE_AUTO_FALLBACK_CPU: "true"
+      ZIPVOICE_CPU_THREADS: "4"
+      ZIPVOICE_NUM_STEPS: "8"
+      ANGEVOICE_CREDENTIALS_DIR: /app/credentials
+      ANGEVOICE_ADMIN_CREDENTIALS_FILE: /app/credentials/admin-credentials.json
+      ANGEVOICE_API_KEY_FILE: /app/credentials/.angevoice-api-key
+      ANGEVOICE_RUNTIME_CONFIG_FILE: /app/config/runtime-config.json
+      KOKORO_STREAM_BINARY_ENABLED: "true"
+      KOKORO_CACHE_MAX_ITEMS: "64"
+      KOKORO_BATCH_MAX_ITEMS: "10"
+      NVIDIA_VISIBLE_DEVICES: all
+      NVIDIA_DRIVER_CAPABILITIES: compute,utility
+
+    gpus: all
+
+    healthcheck:
+      test: ["CMD", "python3", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health')"]
+      interval: 30s
+      timeout: 10s
+      retries: 6
+      start_period: 300s
+
+    restart: always
