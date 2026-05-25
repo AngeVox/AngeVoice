@@ -9,7 +9,7 @@ from fastapi import HTTPException
 
 from ..config import TTSConfig
 from ..config_ids import MOSS_CPU_MODEL_IDS, MOSS_CUDA_MODEL_IDS, MOSS_GENERIC_MODEL_IDS
-from .adapters import KokoroAdapter, MossAdapter, ZipVoiceEngine
+from .adapters import KokoroAdapter, MossAdapter
 from .base import EngineCapabilities, EngineSpec, ModelResolution
 from .parameters import EngineParameterSchema
 from .provider_policy import ProviderPolicy
@@ -90,6 +90,11 @@ class EngineRegistry:
                 raise HTTPException(status_code=404, detail="MOSS CUDA provider is disabled")
             return MossAdapter(cfg, requested_provider=provider)
         if model_id == "zipvoice":
+            # Runtime imports are deliberately lazy: registry metadata must stay
+            # lightweight, and direct imports of zipvoice.engine must not recurse
+            # through engines -> registry -> adapters -> zipvoice.engine.
+            from ..zipvoice.engine import ZipVoiceEngine
+
             provider = provider_hint or self.provider_policy.requested_provider("zipvoice", cfg, cfg.enabled_models)
             return ZipVoiceEngine(cfg, profile_store=voice_profile_store, requested_provider=provider)
         raise HTTPException(status_code=404, detail=f"Unknown model: {model_id}")

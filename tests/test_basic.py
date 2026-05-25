@@ -7,7 +7,7 @@ from unittest.mock import MagicMock, patch
 import pytest
 
 sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
-EXPECTED_VERSION = "2.6.6"
+EXPECTED_VERSION = "2.6.601"
 
 
 def _has_module(name: str) -> bool:
@@ -41,8 +41,11 @@ class TestConfig:
         assert config.host == "0.0.0.0"
         assert config.port == 8000
         assert config.device == "auto"
-        assert config.rate_limit_qps == 0.0
-        assert config.max_queue_length == 0
+        assert config.rate_limit_qps == 10.0
+        assert config.rate_limit_burst == 20
+        assert config.max_queue_length == 50
+        assert config.websocket_max_connections == 16
+        assert config.websocket_max_message_bytes == 32 * 1024 * 1024
         assert config.model_idle_timeout_seconds == 600
         assert config.model_idle_unload_current is True
         assert config.moss_process_isolation_enabled is False
@@ -70,6 +73,8 @@ class TestConfig:
         monkeypatch.setenv("KOKORO_DEVICE", "cpu")
         monkeypatch.setenv("KOKORO_RATE_LIMIT_QPS", "2.5")
         monkeypatch.setenv("KOKORO_MAX_QUEUE_LENGTH", "3")
+        monkeypatch.setenv("KOKORO_WS_MAX_CONNECTIONS", "4")
+        monkeypatch.setenv("KOKORO_WS_MAX_MESSAGE_BYTES", "4096")
         monkeypatch.setenv("ANGEVOICE_IDLE_TIMEOUT_SECONDS", "30")
         monkeypatch.setenv("MOSS_PROCESS_ISOLATION_ENABLED", "false")
         monkeypatch.setenv("MOSS_SEGMENT_LENGTH", "160")
@@ -81,6 +86,8 @@ class TestConfig:
         assert config.device == "cpu"
         assert config.rate_limit_qps == 2.5
         assert config.max_queue_length == 3
+        assert config.websocket_max_connections == 4
+        assert config.websocket_max_message_bytes == 4096
         assert config.model_idle_timeout_seconds == 30
         assert config.moss_process_isolation_enabled is False
         assert config.moss_segment_length == 160
@@ -346,6 +353,7 @@ class TestServerAndCLI:
         assert args[0] == "kokoro_tts.server:create_app"
         assert kwargs["factory"] is True
         assert kwargs["workers"] == 2
+        assert kwargs["ws_max_size"] == 32 * 1024 * 1024
 
 
 class TestMossSplitModules:

@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Build the AngeVoice fnOS/FPK package from the single docker-compose.yaml template.
+# Build the AngeVoice fnOS/FPK package from one Compose file with verified profile routing.
 # The package version comes from pyproject.toml; runtime image defaults use :latest.
 set -euo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -25,22 +25,35 @@ for name in ('install', 'config', 'upgrade', 'uninstall'):
     data = json.loads((p / 'wizard' / name).read_text(encoding='utf-8'))
     text = json.dumps(data, ensure_ascii=False)
     if name in {'install', 'config', 'upgrade'}:
-        assert 'COMPOSE_PROFILES' in text and 'wizard_run_mode' not in text
+        assert 'COMPOSE_PROFILES' in text
+        assert 'wizard_run_mode' not in text
+        assert 'wizard_container_runtime' not in text
 json.loads((p / 'config/resource').read_text(encoding='utf-8'))
 json.loads((p / 'config/privilege').read_text(encoding='utf-8'))
 compose = (p / 'app/docker/docker-compose.yaml').read_text(encoding='utf-8')
-for profile in ('cpu', 'gpu', 'legacy-gpu'):
+for profile, service, image in (
+    ('cpu', 'angevoice-cpu', 'ghcr.io/ang77712829/angevoice-cpu:latest'),
+    ('gpu', 'angevoice-gpu', 'ghcr.io/ang77712829/angevoice-gpu:latest'),
+    ('legacy-gpu', 'angevoice-legacy-gpu', 'ghcr.io/ang77712829/angevoice-legacy-gpu:latest'),
+):
+    assert f'  {service}:' in compose
     assert f'profiles: ["{profile}"]' in compose
-    assert f'angevoice-{profile}:latest' in compose
+    assert image in compose
+assert compose.count('profiles:') == 3
+assert ':2.6.' not in compose
 for item in ('${TRIM_PKGVAR}/credentials:/app/credentials', '${TRIM_PKGVAR}/config:/app/config', '${TRIM_PKGVAR}/prompts:/app/prompts'):
     assert compose.count(item) == 3, item
+for item in ('KOKORO_PROCESS_ISOLATION_ENABLED: "true"', 'MOSS_PROCESS_ISOLATION_ENABLED: "true"', 'ZIPVOICE_PROCESS_ISOLATION_ENABLED: "true"', 'ANGEVOICE_STARTUP_PRELOAD_ENABLED: "false"'):
+    assert compose.count(item) == 3, item
+assert 'ANGEVOICE_DEPLOYMENT_PROFILE: "gpu"' in compose
+assert 'MOSS_EXECUTION_PROVIDER: "cuda"' in compose
+assert 'ZIPVOICE_EXECUTION_PROVIDER: "cuda"' in compose
+assert 'NVIDIA_VISIBLE_DEVICES: "all"' in compose
 assert 'wizard_http_port' in compose and 'wizard_admin_password' in compose
-assert not (p / 'cmd/_mode_env.sh').exists()
-assert not (p / 'app/docker/.env').exists()
 for name in ('install_callback', 'config_callback', 'upgrade_callback'):
     callback = (p / 'cmd' / name).read_text(encoding='utf-8')
     assert 'COMPOSE_PROFILES' in callback
-    assert '_mode_env' not in callback and 'ANGEVOICE_FNOS_IMAGE' not in callback
+    assert 'wizard_run_mode' not in callback
 PYVALIDATE
 STAGE="$(mktemp -d)"
 trap 'rm -rf "$STAGE"' EXIT
@@ -63,4 +76,4 @@ tar --sort=name --mtime='@0' --owner=0 --group=0 --numeric-owner -czf "$OUT" -C 
 tar -tzf "$OUT" > "$OUT.contents.txt"
 sha256sum "$OUT" > "$OUT.sha256"
 echo "Built AngeVoice v${VERSION} fnOS/FPK package: $OUT"
-echo "Packaging contract: one docker-compose.yaml + direct COMPOSE_PROFILES routing before docker-project starts the service."
+echo "Packaging contract: one Compose file + COMPOSE_PROFILES routed cpu/gpu/legacy-gpu services with :latest images."

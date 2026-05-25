@@ -18,7 +18,11 @@ from ..zipvoice.assets import ZipVoiceAssetManager
 
 def _recommendations() -> list[str]:
     path = Path(__file__).resolve().parents[1] / "static" / "zipvoice_recommended_prompts.json"
-    return json.loads(path.read_text(encoding="utf-8"))
+    try:
+        payload = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return []
+    return [str(item) for item in payload if str(item).strip()] if isinstance(payload, list) else []
 
 
 class VoiceProfileMetadataPatch(BaseModel):
@@ -191,7 +195,10 @@ def create_zipvoice_router(state: ServiceState, verify_api_key) -> APIRouter:
     @router.delete("/v1/zipvoice/profiles/{voice_id}")
     async def delete_profile(voice_id: str, _=Depends(verify_api_key)):
         model = "zipvoice"
-        deleted = state.voice_profiles.delete(model, voice_id)
+        try:
+            deleted = state.voice_profiles.delete(model, voice_id)
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
         if deleted:
             state.cache_clear()
         return {"ok": True, "engine": model, "voice_id": voice_id, "deleted": deleted}

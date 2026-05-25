@@ -1,46 +1,53 @@
 # fnOS / FPK 部署
 
-AngeVoice 的 fnOS 包使用一个固定的 `app/docker/docker-compose.yaml`。安装、设置或升级向导直接提供 `COMPOSE_PROFILES=cpu | gpu | legacy-gpu`；fnOS `docker-project` 在创建容器前依据该值选择对应服务和镜像，不依赖回调在容器创建后再改写镜像。
+AngeVoice 的 fnOS 包采用经过真实安装验证的 **单一 Compose 文件 + 三个互斥 profile service** 机制：`app/docker/docker-compose.yaml` 同时声明 `angevoice-cpu`、`angevoice-gpu` 与 `angevoice-legacy-gpu`，安装向导通过 `COMPOSE_PROFILES=cpu | gpu | legacy-gpu` 在 docker-project 启动前选择且仅选择一个运行路径。
 
-## 运行模式
+这仍然只有一份 Docker 编排配置文件，不依赖 callback 在容器创建后改写镜像，也不会引入未经验证的单 service 动态镜像/运行时路由。三类镜像全部固定使用 `:latest` 标签，发布补丁版本时无需在部署链路反复替换版本号。
 
-| 运行模式 | 默认镜像 | 适用设备 | ZipVoice 路线 |
-| --- | --- | --- | --- |
-| `cpu` | `ghcr.io/ang77712829/angevoice-cpu:latest` | x86_64 / ARM64 无 GPU NAS | CPU ONNX INT8 |
-| `gpu` | `ghcr.io/ang77712829/angevoice-gpu:latest` | NVIDIA x86_64，包含 Tesla P4 | CUDA，不可用时回退 CPU |
-| `legacy-gpu` | `ghcr.io/ang77712829/angevoice-legacy-gpu:latest` | 标准 GPU 镜像无法运行的兼容环境 | 保守 provider 配置 |
+## 安装运行模式
 
-FPK 内只包含一个 Compose 文件；其中三个 profile 服务共用相同的端口、管理后台、模型目录、Voice Profile、输出、凭据与运行配置持久化契约。用户只需在安装向导选择一种运行模式。
+| 向导选项 | Profile / service | 镜像 | Provider 策略 |
+|---|---|---|---|
+| CPU | `cpu` / `angevoice-cpu` | `angevoice-cpu:latest` | Kokoro、MOSS-TTS-Nano、ZipVoice 均走 CPU |
+| 标准 GPU | `gpu` / `angevoice-gpu` | `angevoice-gpu:latest` | NVIDIA 主路径；Kokoro、MOSS、ZipVoice 请求 CUDA，ZipVoice/MOSS 可按策略回退 CPU |
+| Legacy GPU | `legacy-gpu` / `angevoice-legacy-gpu` | `angevoice-legacy-gpu:latest` | 仅标准 GPU 无法可靠运行时回退；Kokoro CUDA，MOSS/ZipVoice 默认 CPU 稳定路径 |
 
-## 安装向导选项
+Tesla P4 的首选路径是 **标准 GPU**；`legacy-gpu` 不是默认推荐路线，仅作为兼容保底。
 
-安装或配置页面可设置：
+## 进程隔离与启动策略
 
-- 运行模式：CPU / 标准 GPU / Legacy GPU；
-- 服务端口；
-- 管理员用户名与首次进入密码；
-- 模型下载源。
+三种 profile 默认均启用：
 
-首次进入默认可使用 `admin / admin123`。公网暴露服务前，请在管理后台修改管理员凭据；修改后的密码仅以哈希形式保存。
-
-## 持久化数据
-
-安装、重启、模式切换或升级时，应保留以下目录：
-
-```text
-models/       模型资产
-prompts/      Voice Profiles 与参考音频
-outputs/      输出音频
-credentials/  管理员哈希凭据与 API Key
-config/       运行配置
-logs/         日志与诊断资料
+```env
+KOKORO_PROCESS_ISOLATION_ENABLED=true
+MOSS_PROCESS_ISOLATION_ENABLED=true
+MOSS_PROCESS_ISOLATION_PROVIDERS=cpu,cuda
+ZIPVOICE_PROCESS_ISOLATION_ENABLED=true
+ANGEVOICE_STARTUP_PRELOAD_ENABLED=false
+ANGEVOICE_STARTUP_PRELOAD_MODEL=kokoro
 ```
 
-三个运行模式挂载相同的数据目录，因此保存的音色、API Key 与后台设置可以继续使用。
+- Studio 启动默认选择 Kokoro，但不立即加载推理模型。
+- 首次生成时会提示唤醒/加载模型；生成完成后按空闲策略退出 Worker。
+- Worker 退出后，系统可以回收该模型的主机内存与显存。
+- 高级用户可以在管理后台关闭某个模型的进程隔离，页面会提示线程内运行时 RAM 不保证完整回收。
+- 用户开启启动预载时，预热仍发生在 Worker 中，不会把模型权重载入 API 主进程。
 
-## 使用说明
+## 持久化目录
 
-- 有 NVIDIA GPU 时优先选择标准 GPU 模式；只有标准镜像无法启动或运行不兼容时再使用 Legacy GPU。
-- CPU 镜像提供 amd64 与 arm64 架构；GPU 与 Legacy GPU 面向 NVIDIA x86_64 环境。
-- 模型文件不包含在 FPK 中，首次使用模型时会下载到持久化目录。
-- 实际 Provider、自动回退原因、资源占用与最近合成性能可在状态和诊断页面查看。
+| 目录 | 用途 |
+|---|---|
+| `${TRIM_PKGVAR}/models` | 模型资产 |
+| `${TRIM_PKGVAR}/prompts` | 参考音频与 Voice Profile |
+| `${TRIM_PKGVAR}/outputs` | 合成输出 |
+| `${TRIM_PKGVAR}/credentials` | 管理员哈希凭据与 API Key |
+| `${TRIM_PKGVAR}/config` | 后台运行配置 |
+| `${TRIM_PKGVAR}/logs` | 运行日志与诊断资料 |
+
+升级或重新创建容器时，必须保留上述目录。模型不包含在 FPK 内；首次使用某个模型时可能需要下载资产并等待 Worker 加载。
+
+## 维护约束
+
+- fnOS 使用 `config/resource` 的 `docker-project` 管理容器生命周期。
+- callback 只校验向导输入并准备持久化目录，不在 docker-project 已解析后重写 Compose 或镜像。
+- CI 必须校验：只有一份 `docker-compose.yaml`；存在三个互斥 profiles；三种镜像均使用 `:latest`；GPU profile 启用 CUDA/GPU 配置；所有 profile 的持久化和 Worker 默认策略一致。

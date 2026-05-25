@@ -314,6 +314,17 @@ _field(
     0.05,
 )
 _field(
+    "kokoro_process_isolation_enabled",
+    "KOKORO_PROCESS_ISOLATION_ENABLED",
+    "Kokoro 进程隔离",
+    "kokoro",
+    "bool",
+    False,
+    rebuild_moss=True,
+    advanced=True,
+    help="正式 Docker/fnOS 部署默认开启。开启后模型在独立 Worker 中运行，释放时可完整回收 RAM/VRAM；关闭后仅作线程内尽力释放。",
+)
+_field(
     "moss_stream_chunk_seconds",
     "MOSS_STREAM_CHUNK_SECONDS",
     "MOSS 分包秒",
@@ -399,6 +410,40 @@ _field(
     "service",
     "bool",
     True,
+)
+_field(
+    "startup_preload_enabled",
+    "ANGEVOICE_STARTUP_PRELOAD_ENABLED",
+    "启动时预载模型",
+    "service",
+    "bool",
+    False,
+    restart=True,
+    help="默认关闭以保持 NAS 空闲低占用；开启后由独立 Worker 预热所选模型，首次生成更快。",
+)
+_field(
+    "startup_preload_model",
+    "ANGEVOICE_STARTUP_PRELOAD_MODEL",
+    "预载模型",
+    "service",
+    "choice",
+    "kokoro",
+    choices=(("kokoro", "Kokoro"), ("moss", "MOSS-TTS-Nano"), ("zipvoice", "ZipVoice")),
+    restart=True,
+    help="只在启用启动预载时生效；预载仍遵循该模型的进程隔离设置。",
+)
+_field(
+    "engine_process_kill_grace_seconds",
+    "ANGEVOICE_ENGINE_PROCESS_KILL_GRACE_SECONDS",
+    "Worker 退出等待秒数",
+    "service",
+    "float",
+    2.0,
+    0.1,
+    30.0,
+    0.1,
+    advanced=True,
+    help="Kokoro/ZipVoice 隔离 Worker 优雅退出宽限，超时后将终止进程以释放资源。",
 )
 _field(
     "cache_max_items",
@@ -568,7 +613,7 @@ _field(
     "限流 QPS",
     "security",
     "float",
-    0.0,
+    10.0,
     0,
     1000,
     0.1,
@@ -580,7 +625,7 @@ _field(
     "限流突发",
     "security",
     "int",
-    5,
+    20,
     0,
     10000,
     1,
@@ -592,10 +637,36 @@ _field(
     "队列上限",
     "security",
     "int",
-    0,
+    50,
     0,
     10000,
     1,
+    restart=True,
+)
+_field(
+    "websocket_max_connections",
+    "KOKORO_WS_MAX_CONNECTIONS",
+    "WebSocket 连接上限",
+    "security",
+    "int",
+    16,
+    0,
+    10000,
+    1,
+    help="同时保持的 WebSocket 会话数量上限；0 表示禁用限制。",
+    restart=True,
+)
+_field(
+    "websocket_max_message_bytes",
+    "KOKORO_WS_MAX_MESSAGE_BYTES",
+    "WebSocket 单消息字节上限",
+    "security",
+    "int",
+    33554432,
+    1024,
+    134217728,
+    1024,
+    help="限制首包/控制消息大小；32 MiB 可容纳 20 MiB 参考音频的 base64 JSON。",
     restart=True,
 )
 _field(
@@ -728,6 +799,17 @@ _field(
 
 # ZipVoice 参数单独成组；均按后续请求读取，不改变产品级模型名称。
 _field(
+    "zipvoice_process_isolation_enabled",
+    "ZIPVOICE_PROCESS_ISOLATION_ENABLED",
+    "ZipVoice 进程隔离",
+    "zipvoice",
+    "bool",
+    False,
+    rebuild_moss=True,
+    advanced=True,
+    help="正式 Docker/fnOS 部署默认开启。NAS/GPU 长驻部署请保持开启；关闭后使用 ZipVoice 产生的主机内存可能无法完整归还。",
+)
+_field(
     "zipvoice_num_steps",
     "ZIPVOICE_NUM_STEPS",
     "采样步数",
@@ -817,9 +899,11 @@ ADMIN_CONFIG_PROFILES: dict[str, dict[str, Any]] = {
         "values": {
             "public_status_endpoints": True,
             "trust_proxy_headers": False,
-            "rate_limit_qps": 0.0,
-            "rate_limit_burst": 5,
-            "max_queue_length": 0,
+            "rate_limit_qps": 10.0,
+            "rate_limit_burst": 20,
+            "max_queue_length": 50,
+            "websocket_max_connections": 16,
+            "websocket_max_message_bytes": 33554432,
         },
     },
     "deploy_public_hardened": {
@@ -831,6 +915,8 @@ ADMIN_CONFIG_PROFILES: dict[str, dict[str, Any]] = {
             "rate_limit_qps": 3.0,
             "rate_limit_burst": 6,
             "max_queue_length": 64,
+            "websocket_max_connections": 16,
+            "websocket_max_message_bytes": 33554432,
         },
     },
     "nas_stable": {
@@ -1071,14 +1157,27 @@ def load_runtime_config(cfg) -> list[str]:
             logger.info("已迁移 Admin runtime config: %s -> %s", legacy_path, path)
     if not raw_values:
         return []
-    try:
-        cleaned = validate_admin_config_values(raw_values, allow_unknown=True)
-    except Exception:
-        logger.warning("忽略包含无效字段的 runtime config: %s", path, exc_info=True)
-        return []
-    ignored_keys = sorted(set(raw_values) - set(cleaned))
-    if ignored_keys:
-        logger.info("runtime config 忽略已移除字段: %s", ", ".join(ignored_keys))
+    cleaned: dict[str, Any] = {}
+    removed_keys: list[str] = []
+    invalid_keys: list[str] = []
+    for key, value in raw_values.items():
+        if key not in ADMIN_CONFIG_FIELDS:
+            removed_keys.append(key)
+            continue
+        try:
+            cleaned[key] = _coerce_field(ADMIN_CONFIG_FIELDS[key], value)
+        except (TypeError, ValueError, KeyError):
+            invalid_keys.append(key)
+            logger.warning("runtime config 字段校验失败，已忽略字段 %s: %r", key, value, exc_info=True)
+    if removed_keys:
+        logger.info("runtime config 忽略已移除字段: %s", ", ".join(sorted(removed_keys)))
+    if invalid_keys:
+        logger.warning("runtime config 已跳过无效字段: %s", ", ".join(sorted(invalid_keys)))
+    if not cleaned and raw_values:
+        logger.warning("runtime config 未包含可加载的有效字段: %s", path)
+    if removed_keys or invalid_keys:
+        _atomic_write_json(path, {"version": 1, "updated_at": int(time.time()), "values": cleaned})
+        logger.info("已清理 runtime config 中不可用字段并保留有效设置: %s", path)
     for key, value in cleaned.items():
         setattr(cfg, key, value)
     logger.info("已加载 Admin runtime config: %s (%d fields)", path, len(cleaned))

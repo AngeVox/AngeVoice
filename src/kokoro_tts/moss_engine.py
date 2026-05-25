@@ -189,6 +189,8 @@ class MossNanoEngine(MossStreamingMixin):
             "consecutive_timeouts": self._consecutive_timeouts,
             "process_isolated": self._process_isolated,
             "process_alive": bool(self._process_client and self._process_client.alive),
+            "worker_pid": self._process_client.pid if self._process_client else None,
+            "release_guarantee": "worker_exit" if self._process_isolated else "in_process_best_effort",
             "vram_guard_enabled": bool(getattr(self.config, "moss_vram_guard_enabled", True)),
             "vram": self._vram_status(),
             "low_vram_mode": self._low_vram_mode,

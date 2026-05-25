@@ -323,8 +323,11 @@ environment:
 | `KOKORO_DEVICE` | `auto` | `auto` / `cpu` / `cuda` |
 | `KOKORO_WORKERS` | `1` | Uvicorn workers; keep 1 for GPU |
 | `KOKORO_MAX_CONCURRENT_REQUESTS` | `1` | Max in-process synthesis concurrency; conservative for NAS/old GPUs, raise to 2-4 only on larger GPUs |
-| `KOKORO_RATE_LIMIT_QPS` | `0` | Per API-key/client-IP rate limit; 0 disables it |
-| `KOKORO_MAX_QUEUE_LENGTH` | `0` | Global request queue limit; 0 disables it |
+| `KOKORO_RATE_LIMIT_QPS` | `10` | Per API-key/client-IP rate limit; set 0 only for trusted local networks or protected reverse proxies |
+| `KOKORO_RATE_LIMIT_BURST` | `20` | Token-bucket burst capacity per client |
+| `KOKORO_MAX_QUEUE_LENGTH` | `50` | Maximum concurrent in-flight HTTP requests; 0 disables this guard |
+| `KOKORO_WS_MAX_CONNECTIONS` | `16` | Maximum simultaneous WebSocket sessions; 0 disables this guard |
+| `KOKORO_WS_MAX_MESSAGE_BYTES` | `33554432` | Maximum inbound WebSocket JSON message size; sized for a 20 MiB base64 reference-audio payload |
 | `KOKORO_API_KEY` | - | Enables Bearer auth; `auto` generates and persists a strong random key on first start; placeholder values are rejected |
 | `ANGEVOICE_API_KEY_FILE` | `/app/credentials/.angevoice-api-key` | Persistent key file used by `KOKORO_API_KEY=auto`; admin UI can reveal/rotate it |
 | `ANGEVOICE_RUNTIME_CONFIG_FILE` | `/app/config/runtime-config.json` | Runtime settings saved by the admin UI; overrides environment variables and can be exported as an ENV patch |
@@ -334,7 +337,9 @@ environment:
 | `KOKORO_ADMIN_ENABLED` | `true` in Docker templates | The admin UI/API is available behind authentication. New deployments can sign in with `admin / admin123`; change the credentials before public exposure. |
 | `KOKORO_MP3_ENABLED` | `false` | Enable MP3 output, requires ffmpeg |
 | `ANGEVOICE_ENABLED_MODELS` | `kokoro,moss,zipvoice` | Public product model IDs; runtime providers are selected by Provider Policy and the deployment image. |
-| `ANGEVOICE_DEFAULT_MODEL` | `kokoro` | Startup model |
+| `ANGEVOICE_DEFAULT_MODEL` | `kokoro` | Model selected in Studio on startup; loading is controlled by `ANGEVOICE_STARTUP_PRELOAD_ENABLED` |
+| `ANGEVOICE_STARTUP_PRELOAD_ENABLED` | App and formal templates `false` | Preload a model through its worker during service startup; otherwise the first synthesis wakes it on demand |
+| `ANGEVOICE_STARTUP_PRELOAD_MODEL` | `kokoro` | Model ID preloaded when startup preload is enabled |
 | `ANGEVOICE_MODEL_UNLOAD_ON_SWITCH` | `true` | Unload old engine when switching |
 | `ANGEVOICE_SAVE_OUTPUTS` | `true` | Save HTTP synthesis outputs in Docker profiles; code default is `false` outside Docker |
 | `ANGEVOICE_MODELS_ROOT` | `/app/models` | Unified model root; Docker mounts host `./models` here |
@@ -363,6 +368,7 @@ environment:
 | `MOSS_AUTO_FALLBACK_CPU` | `true` | Fall back to CPU when CUDA self-test fails |
 | `MOSS_STREAM_PREBUFFER_SECONDS` | `0.75` | Browser prebuffer for MOSS streaming, reducing underflow on NAS/older GPUs |
 | `MOSS_STREAM_QUEUE_MAX_ITEMS` | `8` | MOSS streaming queue depth to absorb short decode/browser/network jitter |
+| `KOKORO_PROCESS_ISOLATION_ENABLED` | App default `false`; Docker/fnOS templates `true` | Run Kokoro in a killable worker so formal deployments can reclaim RAM/VRAM on release |
 | `MOSS_PROCESS_ISOLATION_ENABLED` | App default `false`; Docker/fnOS templates `true` | Enable killable MOSS process isolation; formal deployment templates enable it so a timed-out worker can be terminated and rebuilt |
 | `MOSS_PROCESS_ISOLATION_PROVIDERS` | App default `cuda`; Docker/fnOS templates `cpu,cuda` | Providers executed in an isolated worker process |
 | `MOSS_PROCESS_KILL_GRACE_SECONDS` | `2` | Grace seconds before force-killing a timed-out worker |
@@ -379,7 +385,7 @@ environment:
 
 ## Security notes
 
-- Set `KOKORO_API_KEY` for public or semi-public deployments; `KOKORO_API_KEY=auto` can generate a persistent random key on first start. The default Docker path is `credentials/.angevoice-api-key`.
+- Docker/fnOS templates default to `KOKORO_API_KEY=auto` and enable basic HTTP/WebSocket entry guards. Leaving the API key empty remains supported only for trusted local/source deployments; do not expose that mode publicly.
 - Docker templates provide `admin / admin123` for first entry so users can obtain the API key. Change the credentials before public exposure; changed passwords are stored only as hashes. Restrict `/admin` at the reverse proxy.
 - `.pt` voice upload is disabled by default. Only upload trusted files.
 

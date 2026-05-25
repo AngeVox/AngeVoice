@@ -25,6 +25,8 @@ cd docker/legacy-gpu && docker compose up -d
 
 默认 Compose 引用 `latest` 镜像标签，便于持续更新。需要固定部署内容时，可在本地 Compose 或 fnOS 环境变量中将镜像替换为指定标签或 digest。
 
+正式 Docker 画像默认启用 Kokoro、MOSS-TTS-Nano 与 ZipVoice 的可销毁进程隔离，并将启动预载关闭：Studio 仍默认选择 Kokoro，首次生成时自动唤醒模型。管理后台可开启启动预载或关闭单模型隔离；关闭隔离后，主机 RAM 不保证在模型释放时完整回落。
+
 ## 持久化目录
 
 所有画像使用同一套持久化目录：

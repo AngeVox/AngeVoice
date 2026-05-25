@@ -397,7 +397,9 @@ environment:
 | `KOKORO_ADMIN_ENABLED` | Docker 默认 `true` | 是否启用管理后台和管理接口；首次可用 `admin / admin123` 登录，公网暴露前必须在后台改密 |
 | `KOKORO_MP3_ENABLED` | `false` | 是否启用 MP3 输出，依赖 ffmpeg |
 | `ANGEVOICE_ENABLED_MODELS` | `kokoro,moss,zipvoice` | 启用的公开产品模型 ID；GPU/CPU 实际运行方式由 Provider Policy 与部署画像决定 |
-| `ANGEVOICE_DEFAULT_MODEL` | `kokoro` | 启动时加载的默认模型 |
+| `ANGEVOICE_DEFAULT_MODEL` | `kokoro` | Studio 启动后默认选中的模型；是否启动加载由 `ANGEVOICE_STARTUP_PRELOAD_ENABLED` 决定 |
+| `ANGEVOICE_STARTUP_PRELOAD_ENABLED` | 程序与正式模板默认 `false` | 是否在服务启动后通过 Worker 预载模型；关闭时首次生成会按需唤醒 |
+| `ANGEVOICE_STARTUP_PRELOAD_MODEL` | `kokoro` | 开启启动预载时要唤醒的模型 ID |
 | `ANGEVOICE_MODEL_UNLOAD_ON_SWITCH` | `true` | 切换模型时卸载旧模型 |
 | `ANGEVOICE_SAVE_OUTPUTS` | `true` | 是否保存 HTTP 合成结果，Docker 默认写入 `/app/outputs` |
 | `ANGEVOICE_MODELS_ROOT` | `/app/models` | 统一模型根目录，Docker 挂载宿主机 `./models` 到这里 |
@@ -421,9 +423,12 @@ environment:
 | `MOSS_REALTIME_STREAMING_DECODE` | `true` | 是否启用 MOSS 官方逐帧实时解码；默认开启以降低首包等待；如出现电流音/卡顿可改为 `false` 走质量优先整块生成后分包 |
 | `MOSS_STREAM_PREBUFFER_SECONDS` | `0.75` | MOSS 浏览器流式播放预缓冲，减少老显卡长文本 underflow/断续 |
 | `MOSS_STREAM_QUEUE_MAX_ITEMS` | `8` | MOSS 流式队列深度，避免短抖动直接造成播放断流 |
+| `KOKORO_PROCESS_ISOLATION_ENABLED` | 程序默认 `false`；Docker/fnOS 模板为 `true` | Kokoro 是否在可销毁 Worker 中运行；正式部署默认开启以便释放 RAM/VRAM |
 | `MOSS_PROCESS_ISOLATION_ENABLED` | 程序默认 `false`；Docker/fnOS 模板为 `true` | 是否启用 MOSS 进程级隔离；正式部署模板默认启用，使推理超时后可终止 worker 并自动恢复 |
 | `MOSS_PROCESS_ISOLATION_PROVIDERS` | 程序默认 `cuda`；Docker/fnOS 模板为 `cpu,cuda` | 哪些 provider 走隔离子进程，逗号分隔 |
-| `MOSS_PROCESS_KILL_GRACE_SECONDS` | `2` | 超时后终止 worker 的宽限秒数 |
+| `MOSS_PROCESS_KILL_GRACE_SECONDS` | `2` | MOSS 超时后终止 worker 的宽限秒数 |
+| `ZIPVOICE_PROCESS_ISOLATION_ENABLED` | 程序默认 `false`；Docker/fnOS 模板为 `true` | ZipVoice 是否在可销毁 Worker 中运行；NAS/GPU 长驻部署建议保持开启 |
+| `ANGEVOICE_ENGINE_PROCESS_KILL_GRACE_SECONDS` | `2` | Kokoro/ZipVoice Worker 优雅退出等待秒数，超时后终止以释放资源 |
 | `MOSS_QUALITY_GATE_ENABLED` | `true` | 拒绝静音、NaN/Inf 或明显 clipping 的 MOSS 自检输出 |
 | `MOSS_OUTPUT_TARGET_PEAK` | `0.86` | MOSS 输出峰值目标，兼顾动态和爆音保护 |
 | `MOSS_OUTPUT_GAIN` | `0.94` | MOSS 后处理轻增益，避免默认声音过低并保留动态 |
@@ -437,8 +442,11 @@ environment:
 | `MOSS_STREAM_BUDGET_THRESHOLD_HIGH` | `1.20` | 音频播放余量高阈值（秒），低于此值每次解码 4 帧，高于此值每次解码 8 帧 |
 | `MOSS_STREAM_CHUNK_MIN_FLOOR` | `0.10` | 流式最小分包时长下限（秒），避免过短碎片造成卡顿感 |
 | `MOSS_VRAM_SNAPSHOT_TTL_SECONDS` | `10` | MOSS 显存快照缓存 TTL，减少流式过程中频繁查询 torch/nvidia-smi 造成的卡顿 |
-| `KOKORO_RATE_LIMIT_QPS` | `0` | 按 API Key 或客户端 IP 限流，0=关闭；运行中修改需重启中间件生效 |
-| `KOKORO_MAX_QUEUE_LENGTH` | `0` | 全局 in-flight 请求上限，0=关闭；运行中修改需重启中间件生效 |
+| `KOKORO_RATE_LIMIT_QPS` | `10` | 按 API Key 或客户端 IP 限流；可信内网可设为 0 关闭，运行中修改需重启生效 |
+| `KOKORO_RATE_LIMIT_BURST` | `20` | 客户端令牌桶允许的短时突发请求数 |
+| `KOKORO_MAX_QUEUE_LENGTH` | `50` | HTTP 同时在途请求入口上限；0=关闭保护 |
+| `KOKORO_WS_MAX_CONNECTIONS` | `16` | WebSocket 同时连接上限；0=关闭保护 |
+| `KOKORO_WS_MAX_MESSAGE_BYTES` | `33554432` | WebSocket 单条 JSON 消息大小上限，默认兼容 20 MiB 参考音频 base64 首包 |
 | `KOKORO_TRUST_PROXY_HEADERS` | `false` | 默认不信任 `X-Forwarded-For`/`X-Real-IP`，避免裸露公网时被伪造绕过限流；确认在可信反代后面才设 true |
 | `KOKORO_PUBLIC_STATUS_ENDPOINTS` | `true` | 是否公开 `/v1/models`、`/v1/models/current`、`/v1/audio/voices` 和页面模型目录 bootstrap；公网敏感部署可设为 false，`/health` 仅返回最小健康信息 |
 
@@ -446,7 +454,7 @@ environment:
 
 ## 安全说明
 
-- 公网部署建议设置 `KOKORO_API_KEY`；生产模板可用 `KOKORO_API_KEY=auto` 自动生成，查看路径默认是 `credentials/.angevoice-api-key`，并在反向代理层限制来源。
+- Docker/fnOS 模板默认使用 `KOKORO_API_KEY=auto` 自动生成 API Key，并默认启用基础 HTTP 限流、入口容量和 WebSocket 连接/消息保护；源码直跑若显式留空 API Key，仅适合可信本地网络。
 - 管理后台首次可使用 `admin / admin123` 进入，以便获取 API Key；后台会提示默认凭据风险。公网部署必须先修改管理员凭据，修改后磁盘仅保留 PBKDF2 哈希，并应限制 API 来源。
 - `.pt` 音色上传默认关闭。只上传可信来源文件；PyTorch 权重文件不应来自不可信渠道。
 
@@ -463,7 +471,8 @@ environment:
 ## 已知限制
 
 - AngeVoice 不是独立训练的新模型，音质、许可证和语言能力受上游模型影响。
-- MOSS 的公开产品名称始终为 `MOSS-TTS-Nano`，旧 `moss-nano-cpu` / `moss-nano-cuda` 仅为兼容输入别名；Docker/fnOS 正式模板默认启用可终止的隔离 worker，以便超时后恢复；若手动关闭进程隔离，应理解底层 ONNX Runtime 卡死时可能需要重启容器。
+- Kokoro、MOSS-TTS-Nano 与 ZipVoice 的 Docker/fnOS 正式模板均默认启用可终止的隔离 Worker；默认启动不预载模型，首次生成会显示唤醒/加载提示。手动关闭隔离后，显存可尝试释放，但主机 RAM 不保证恢复到空闲基线。
+- MOSS 的公开产品名称始终为 `MOSS-TTS-Nano`，旧 `moss-nano-cpu` / `moss-nano-cuda` 仅为兼容输入别名。
 - 长文本依赖分段合成，极长文本建议走批量/任务队列工作流。
 - GPU 场景不建议多 worker 同时加载模型，容易造成显存占用翻倍。
 - MP3 输出依赖 ffmpeg。

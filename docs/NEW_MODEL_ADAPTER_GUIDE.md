@@ -89,3 +89,34 @@ GET /v1/voice-profiles/{engine}/{voice_id}/reference.wav
 为接入新模型重写已稳定的 Kokoro/MOSS/ZipVoice runtime
 在 Studio 中按 model id 复制一套录音/Profile UI
 ```
+
+## 可销毁 Worker 接入：第四、第五模型保持低侵入
+
+需要完整释放 RAM/VRAM 的模型应将实际推理 runtime 放入可销毁子进程，而 API 主进程只持有请求、状态、Profile 元数据和 Worker 客户端。通用生命周期已收敛在：
+
+```text
+workers/process_worker.py    EngineProcessClient：启动、请求串行、流式事件、取消、退出与异常状态
+workers/factories.py         子进程 runtime factory 注册表
+engines/adapters/*           稳定产品 adapter 与 capabilities/provider/status 映射
+```
+
+新增可隔离模型的最小步骤：
+
+1. 在 `workers/factories.py` 注册 runtime factory；factory 只在 Worker 内创建真实模型实例。
+2. 新增 adapter，通过 `EngineProcessClient(config, engine_id=<canonical_id>, requested_provider=...)` 转发加载、生成、流式和释放；线程内运行可作为明确可选的调试/兼容路径。
+3. 产品注册层只在 `create_engine()` 真正实例化该模型时延迟导入 native runtime；不得在 `engines/__init__.py`、`engines/adapters/__init__.py` 或 registry 模块顶层提前导入会反向依赖 `engines.base` 的模型实现，以免形成循环导入。
+4. 在 `EngineRegistry`、`ProviderPolicy` 和动态参数 schema 注册产品能力、provider 与参数。
+5. 有参考音频/Profile 能力时接入 `VoiceProfileService`，不复制路由或 Studio 表单。
+6. 在资源状态中透出 `worker_pid`、`worker_alive`、`worker_healthy`、`worker_last_exit_reason` 和 provider 数据。
+7. 添加单模型唤醒/释放、流式取消、异常退出重启、三模型或多模型轮换后的 RSS/VRAM 回落测试。
+
+Worker 设计约束：
+
+```text
+同一 Worker 的 request/stream 必须单飞读取结果队列；
+每次重新启动必须新建命令和结果队列，不能复用被强杀进程的队列；
+正常空闲退出属于 healthy，已加载 Worker 意外退出才记录为 unhealthy；
+强制取消和释放必须能终止卡死 Worker，不被普通请求锁阻塞。
+```
+
+因此，后续模型扩展不需要在公共 HTTP/WebSocket 路由里新增按模型分支，也不需要修改 Kokoro、MOSS 或 ZipVoice 的稳定推理实现。

@@ -69,6 +69,7 @@ STR_ENV: dict[str, str] = {
     "KOKORO_STREAM_FORMAT": "stream_format",
     "KOKORO_MP3_BITRATE": "mp3_bitrate",
     "ANGEVOICE_DEFAULT_MODEL": "default_model",
+    "ANGEVOICE_STARTUP_PRELOAD_MODEL": "startup_preload_model",
     "ANGEVOICE_OUTPUT_DIR": "output_dir",
     "ANGEVOICE_RUNTIME_CONFIG_FILE": "runtime_config_file",
     "ANGEVOICE_UPDATE_REPOSITORY": "update_repository",
@@ -130,6 +131,8 @@ INT_ENV: dict[str, IntEnvSpec] = {
     "MOSS_LOW_VRAM_TEXT_TOKENS": IntEnvSpec("moss_low_vram_text_tokens", 1),
     "KOKORO_RATE_LIMIT_BURST": IntEnvSpec("rate_limit_burst", 0),
     "KOKORO_MAX_QUEUE_LENGTH": IntEnvSpec("max_queue_length", 0),
+    "KOKORO_WS_MAX_CONNECTIONS": IntEnvSpec("websocket_max_connections", 0),
+    "KOKORO_WS_MAX_MESSAGE_BYTES": IntEnvSpec("websocket_max_message_bytes", 1024),
 }
 
 FLOAT_ENV: dict[str, FloatEnvSpec] = {
@@ -156,6 +159,7 @@ FLOAT_ENV: dict[str, FloatEnvSpec] = {
     "MOSS_STREAM_BUDGET_THRESHOLD_HIGH": FloatEnvSpec("moss_stream_budget_threshold_high", 0.0),
     "MOSS_STREAM_CHUNK_MIN_FLOOR": FloatEnvSpec("moss_stream_chunk_min_floor", 0.01),
     "MOSS_PROCESS_KILL_GRACE_SECONDS": FloatEnvSpec("moss_process_kill_grace_seconds", 0.1, 30.0),
+    "ANGEVOICE_ENGINE_PROCESS_KILL_GRACE_SECONDS": FloatEnvSpec("engine_process_kill_grace_seconds", 0.1, 30.0),
     "MOSS_OUTPUT_EDGE_FADE_MS": FloatEnvSpec("moss_output_edge_fade_ms", 0.0, 20.0),
     "MOSS_TRIM_SILENCE_DB": FloatEnvSpec("moss_trim_silence_db", -90.0, -10.0),
     "MOSS_MAX_SILENCE_MS": FloatEnvSpec("moss_max_silence_ms", 0.0, 5000.0),
@@ -195,6 +199,9 @@ BOOL_ENV: dict[str, str] = {
     "MOSS_QUALITY_GATE_ENABLED": "moss_quality_gate_enabled",
     "MOSS_OUTPUT_PEAK_NORMALIZE_ENABLED": "moss_output_peak_normalize_enabled",
     "MOSS_PROCESS_ISOLATION_ENABLED": "moss_process_isolation_enabled",
+    "KOKORO_PROCESS_ISOLATION_ENABLED": "kokoro_process_isolation_enabled",
+    "ZIPVOICE_PROCESS_ISOLATION_ENABLED": "zipvoice_process_isolation_enabled",
+    "ANGEVOICE_STARTUP_PRELOAD_ENABLED": "startup_preload_enabled",
     "MOSS_OUTPUT_DECLICK_ENABLED": "moss_output_declick_enabled",
     "MOSS_AUDIO_POLISH_ENABLED": "moss_audio_polish_enabled",
     "MOSS_TRIM_SILENCE_ENABLED": "moss_trim_silence_enabled",

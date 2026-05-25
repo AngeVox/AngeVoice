@@ -77,3 +77,21 @@ Authorization: Bearer ...
 ## 更新提示
 
 管理后台提供轻量版本检查与发布说明链接，只用于提示新版本；本版不做自动拉取镜像或自动升级。升级仍应先阅读发布说明、备份持久目录并在版本化镜像或测试部署中验证。
+
+
+## 默认入口保护与 WebSocket 边界
+
+正式 Docker/fnOS 模板默认启用以下基础保护：
+
+```env
+KOKORO_RATE_LIMIT_QPS=10
+KOKORO_RATE_LIMIT_BURST=20
+KOKORO_MAX_QUEUE_LENGTH=50
+KOKORO_WS_MAX_CONNECTIONS=16
+KOKORO_WS_MAX_MESSAGE_BYTES=33554432
+```
+
+- HTTP 令牌桶按 API Key 或客户端地址限制请求速率；只有在可信内网或上游反向代理已负责限流时才建议将其设为 `0`。
+- WebSocket 同时会话数量默认受限，防止大量空闲连接耗尽应用资源。
+- WebSocket 单条 JSON 消息限制为 32 MiB，以容纳最大 20 MiB 参考音频的 base64 首包，同时阻止异常大消息。
+- `KOKORO_API_KEY` 显式留空仍是源码开发/可信内网兼容模式；服务绑定非回环地址时会输出警告，公网部署不得依赖该模式。

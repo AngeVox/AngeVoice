@@ -311,22 +311,18 @@ docker ps --format "table {{.Names}}\t{{.Image}}\t{{.Status}}"
 
 单张 8GB 卡不建议同时跑多个会加载 GPU 模型的容器。`MOSS_CUDA_MEMORY_LIMIT_MB` 默认保持 `0`；只有在 Tesla P4、RTX 3070 这类紧张环境排障时，才建议手动设置成 `4096` 或更低测试。
 
-MOSS 进程级隔离在正式部署模板中默认开启；它和播放音质不是同一个开关：
+正式 Docker 与 fnOS 模板默认对三模型开启进程级隔离；它和播放音质不是同一个开关，而是空闲 RAM/VRAM 回收与卡死恢复策略：
 
 ```env
+KOKORO_PROCESS_ISOLATION_ENABLED=true
 MOSS_PROCESS_ISOLATION_ENABLED=true
 MOSS_PROCESS_ISOLATION_PROVIDERS=cpu,cuda
-MOSS_PROCESS_KILL_GRACE_SECONDS=2
+ZIPVOICE_PROCESS_ISOLATION_ENABLED=true
+ANGEVOICE_ENGINE_PROCESS_KILL_GRACE_SECONDS=2
+ANGEVOICE_STARTUP_PRELOAD_ENABLED=false
 ```
 
-如果你确认 ONNX/CUDA 底层调用会卡死，可临时开启硬隔离：
-
-```env
-MOSS_PROCESS_ISOLATION_ENABLED=true
-MOSS_PROCESS_ISOLATION_PROVIDERS=cpu,cuda
-```
-
-开启后主进程会在 worker 长时间无事件或超时后终止子进程，并在下次请求重新创建 runtime。CPU 默认不隔离；如需排查 CPU runtime 卡死，可临时设置 `MOSS_PROCESS_ISOLATION_PROVIDERS=cpu,cuda`。
+开启隔离后，模型由可销毁 Worker 承载；空闲释放、模型切换、流式取消或超时终止 Worker 后，下次请求会自动重新唤醒。管理后台允许关闭 Kokoro / ZipVoice 隔离用于兼容性调试，但页面会提示线程内运行不保证主机 RAM 完整回收。若希望开机即热启动，可开启启动预载；预载同样通过 Worker 完成，不将模型载入 API 主进程。
 
 ## 7. 输出音频没有持久化
 

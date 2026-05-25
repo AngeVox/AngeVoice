@@ -225,12 +225,23 @@ class EngineManager:
                         self._pending_rebuild.add(target_id)
                         logger.warning("执行待重建失败，保留待重建标记：%s", target_id, exc_info=True)
 
+    def _unload_other_loaded_models(self, target_id: str) -> None:
+        """Keep one warm runtime by default to protect NAS RAM/VRAM budgets."""
+        for model_id, other in list(self._engines.items()):
+            if model_id == target_id or not bool(getattr(other, "is_loaded", False)):
+                continue
+            if self._active_count(model_id) > 0:
+                raise HTTPException(status_code=409, detail=f"Model {model_id} is busy; cannot wake {target_id} yet")
+            self.unload_model(model_id, force=False, raise_if_busy=False)
+
     def get_engine(self, model_id: str | None = None, *, load: bool = True, provider_hint: str | None = None):
         resolution = self.resolve_model_id(model_id)
         target_id = resolution.canonical_id
         effective_provider_hint = provider_hint or resolution.provider_hint
         self._ensure_resolution_enabled(resolution)
         with self._lock:
+            if load:
+                self._unload_other_loaded_models(target_id)
             engine = self._engines.get(target_id)
             if engine is not None and target_id == "moss" and effective_provider_hint:
                 current_provider = str(getattr(engine, "requested_provider", "") or "").strip().lower()
@@ -421,6 +432,10 @@ class EngineManager:
             "idle_unload_current": bool(getattr(self.cfg, "model_idle_unload_current", True)),
             "idle_unloaded": idle_unloaded,
             "wakeable": True,
+            "process_isolated": bool(getattr(self.cfg, f"{spec.id}_process_isolation_enabled", False)) if spec.id in {"kokoro", "moss", "zipvoice"} else False,
+            "process_alive": False,
+            "worker_pid": None,
+            "release_guarantee": "worker_exit" if bool(getattr(self.cfg, f"{spec.id}_process_isolation_enabled", False)) else "in_process_best_effort",
             "last_generation_seconds": None,
             "last_audio_seconds": None,
             "last_rtf": None,

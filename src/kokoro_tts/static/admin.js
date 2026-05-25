@@ -175,10 +175,10 @@ function providerLabel(m) {
 }
 
 function modelCard(m) {
-  const state = m.loaded ? (m.healthy === false ? '异常' : '已加载') : (m.idle_unloaded ? '休眠' : '未加载');
+  const state = m.loaded ? (m.healthy === false ? '异常' : '已加载') : (m.process_isolated ? '休眠 · 按需唤醒' : (m.idle_unloaded ? '休眠' : '未加载'));
   const active = Number(m.active_count || 0);
   const provider = providerLabel(m);
-  const isolation = m.process_isolated ? `隔离 ${m.process_alive ? '在线' : '未启动'}` : '线程内';
+  const isolation = m.process_isolated ? `进程隔离 · Worker ${m.process_alive ? `在线${m.worker_pid ? ` #${m.worker_pid}` : ''}` : '已退出'}` : '线程内 · RAM 不保证完整回收';
   const quality = m.last_output_quality || {};
   const id = escapeHtml(m.id);
   return `<article class="model-card ${m.current ? 'current' : ''}">
@@ -194,7 +194,7 @@ function modelCard(m) {
       <span>模式 ${(m.modes || []).join(', ') || '-'}</span>
       <span>长静音 ${quality.long_silence_count ?? '-'}</span>
       <span>超时 ${m.consecutive_timeouts ?? 0}</span>
-      <span>${m.pending_rebuild ? '待重建' : (m.low_vram_mode ? '低显存' : '显存正常')}</span>
+      <span>${m.pending_rebuild ? '待重建' : (m.process_isolated && !m.process_alive ? 'RAM/VRAM 可回收' : (m.low_vram_mode ? '低显存' : '显存正常'))}</span>
       ${m.fallback_reason ? `<span title="${escapeHtml(m.fallback_reason)}">回退原因：${escapeHtml(m.fallback_reason)}</span>` : ''}
     </div>
     <div class="button-row compact">

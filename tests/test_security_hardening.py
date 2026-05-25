@@ -242,3 +242,98 @@ def test_websocket_cancel_notice_is_not_created_when_event_loop_rejects_scheduli
     session.loop.call_soon_threadsafe.assert_called_once_with(session._schedule_cancelled_notice)
     notify.assert_not_called()
 
+
+
+def test_websocket_query_token_authenticates_before_payload_and_keeps_legacy_payload_shape():
+    engine = _fake_engine()
+    engine.synthesize_stream.return_value = iter([{"type": "done", "total_segments": 0, "total_audio_chunks": 0}])
+    cfg = TTSConfig(api_key="secret-token")
+    app = create_app(config=cfg, engine=engine)
+    with TestClient(app) as client:
+        with client.websocket_connect("/ws/v1/tts?token=secret-token") as ws:
+            ws.send_json({"text": "测试", "voice": "zm_010", "format": "pcm_s16le"})
+            frame = ws.receive_json()
+    assert frame["type"] == "done"
+
+
+def test_websocket_invalid_query_token_is_rejected_without_processing_request():
+    from starlette.websockets import WebSocketDisconnect
+
+    cfg = TTSConfig(api_key="secret-token")
+    app = create_app(config=cfg, engine=_fake_engine())
+    with TestClient(app) as client:
+        with pytest.raises(WebSocketDisconnect) as exc:
+            with client.websocket_connect("/ws/v1/tts?token=wrong"):
+                pass
+    assert exc.value.code == 1008
+
+
+def test_websocket_preauth_does_not_reject_when_api_key_is_not_configured():
+    """A supplied query token must not create an auth requirement on an open service."""
+    engine = _fake_engine()
+    engine.synthesize_stream.return_value = iter([{"type": "done", "total_segments": 0, "total_audio_chunks": 0}])
+    cfg = TTSConfig(api_key=None)
+    app = create_app(config=cfg, engine=engine)
+    with TestClient(app) as client:
+        with client.websocket_connect("/ws/v1/tts?token=ignored-when-auth-disabled") as ws:
+            ws.send_json({"text": "测试", "voice": "zm_010", "format": "pcm_s16le"})
+            frame = ws.receive_json()
+    assert frame["type"] == "done"
+
+
+def test_websocket_preauth_uses_persisted_key_even_when_cfg_api_key_is_none(tmp_path):
+    """Pre-auth resolves the effective persisted key instead of reading cfg.api_key only."""
+    engine = _fake_engine()
+    engine.synthesize_stream.return_value = iter([{"type": "done", "total_segments": 0, "total_audio_chunks": 0}])
+    key_file = tmp_path / ".angevoice-api-key"
+    key_file.write_text("persisted-token\n", encoding="utf-8")
+    cfg = TTSConfig(api_key=None, api_key_file=key_file)
+    app = create_app(config=cfg, engine=engine)
+    with TestClient(app) as client:
+        with client.websocket_connect("/ws/v1/tts?token=persisted-token") as ws:
+            ws.send_json({"text": "测试", "voice": "zm_010", "format": "pcm_s16le"})
+            frame = ws.receive_json()
+    assert frame["type"] == "done"
+
+
+def test_websocket_message_budget_rejects_oversized_json_without_starting_engine():
+    from starlette.websockets import WebSocketDisconnect
+
+    engine = _fake_engine()
+    cfg = TTSConfig(websocket_max_message_bytes=1024, rate_limit_qps=0, max_queue_length=0)
+    app = create_app(config=cfg, engine=engine)
+    with TestClient(app) as client:
+        with client.websocket_connect("/ws/v1/tts") as ws:
+            ws.send_json({"text": "超" * 2048, "voice": "zm_010", "format": "pcm_s16le"})
+            frame = ws.receive_json()
+            assert frame["type"] == "error"
+            assert "过大" in frame["message"]
+    engine.synthesize_stream.assert_not_called()
+
+
+def test_websocket_connection_gate_rejects_excess_idle_sessions():
+    from starlette.websockets import WebSocketDisconnect
+
+    cfg = TTSConfig(websocket_max_connections=1, rate_limit_qps=0, max_queue_length=0, request_timeout_seconds=30)
+    app = create_app(config=cfg, engine=_fake_engine())
+    with TestClient(app) as client:
+        with client.websocket_connect("/ws/v1/tts"):
+            with pytest.raises(WebSocketDisconnect) as exc:
+                with client.websocket_connect("/ws/v1/tts"):
+                    pass
+            assert exc.value.code == 1013
+    assert app.state.angevoice.snapshot_stats()["ws_connections_rejected_total"] == 1
+
+
+def test_external_bind_without_api_key_warns_but_remains_supported(caplog):
+    cfg = TTSConfig(host="0.0.0.0", api_key=None)
+    with caplog.at_level("WARNING"):
+        cfg.validate_security()
+    assert "API authentication is disabled" in caplog.text
+
+
+def test_loopback_bind_without_api_key_does_not_warn(caplog):
+    cfg = TTSConfig(host="127.0.0.1", api_key=None)
+    with caplog.at_level("WARNING"):
+        cfg.validate_security()
+    assert "API authentication is disabled" not in caplog.text

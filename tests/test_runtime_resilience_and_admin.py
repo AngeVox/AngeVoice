@@ -42,6 +42,10 @@ def test_admin_schema_separates_product_parameter_groups_and_exposes_zipvoice_co
     assert fields["moss_segment_length"]["group"] == "moss"
     assert fields["zipvoice_num_steps"]["group"] == "zipvoice"
     assert fields["zipvoice_prompt_audio_max_seconds"]["default"] == 15.0
+    assert fields["websocket_max_connections"]["default"] == 16
+    assert fields["websocket_max_message_bytes"]["default"] == 33554432
+    assert fields["rate_limit_qps"]["default"] == 10.0
+    assert fields["max_queue_length"]["default"] == 50
 
 
 def test_zero_moss_silence_limit_disables_compression_instead_of_removing_silence():
@@ -147,3 +151,14 @@ def test_runtime_config_write_uses_private_atomic_target_without_stale_tmp(tmp_p
     assert path.exists()
     assert path.stat().st_mode & 0o777 == 0o600
     assert not list(tmp_path.glob("*.tmp"))
+
+
+def test_formal_docker_template_enables_safe_entry_guardrails_by_default():
+    env = (ROOT / "docker" / "angevoice.env").read_text(encoding="utf-8")
+    fnos_env = (ROOT / "packaging" / "fnos" / "AngeVoice" / "app" / "docker" / "angevoice.env").read_text(encoding="utf-8")
+    for content in (env, fnos_env):
+        assert "KOKORO_RATE_LIMIT_QPS=10" in content
+        assert "KOKORO_RATE_LIMIT_BURST=20" in content
+        assert "KOKORO_MAX_QUEUE_LENGTH=50" in content
+        assert "KOKORO_WS_MAX_CONNECTIONS=16" in content
+        assert "KOKORO_WS_MAX_MESSAGE_BYTES=33554432" in content

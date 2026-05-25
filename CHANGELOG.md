@@ -1,5 +1,32 @@
 # Changelog
 
+## [2.6.601] - 2026-05-25
+
+### 发布前入口加固
+
+- 正式模板默认启用基础 HTTP 限流与入口容量保护，并新增 WebSocket 连接/消息边界配置，避免公网误暴露时无保护承压。
+- 保留 `admin / admin123` 首次进入策略与显著改密提示；源码模式显式关闭 API Key 时在非回环监听地址输出安全警告。
+
+
+### 资源休眠与模型生命周期
+
+- Kokoro 与 ZipVoice 新增可销毁 Worker 进程隔离，正式 Docker/fnOS 模板默认开启；MOSS 保留已验证的隔离实现并统一展示 Worker 状态。
+- 管理后台新增 Kokoro/ZipVoice 进程隔离设置、启动预载开关、预载模型选择与 Worker 退出等待设置；隔离关闭时明确提示 RAM 不保证完整回收。
+- 默认启动只选择 Kokoro，不再将模型权重预载入 API 主进程；首次生成按需唤醒，用户也可选择通过 Worker 启动预热模型。
+- 模型切换时默认释放旧的已加载运行时，减少 Tesla P4 与 NAS 长驻部署中的 RAM/VRAM 叠加占用。
+
+### 兼容性与扩展性
+
+- 修复 ZipVoice runtime 与统一引擎注册层之间的循环导入：注册表仅在实例化 ZipVoice 时延迟导入实际运行时，保留兼容导出但不在模块初始化阶段加载 native engine。
+- 为新增模型延续“轻量产品注册 + Worker factory 延迟创建实际 runtime”的扩展边界，避免后续模型接入重新侵入通用路由与资源生命周期。
+- 完善三模型隔离运行、Worker 按需启动/退出、模型切换与 WebSocket 流式路径的一致性，确保释放策略可被诊断状态准确反映。
+
+### fnOS / 部署维护
+
+- fnOS/FPK 延用已实机验证的一份 `docker-compose.yaml` + 三个互斥 profile service，通过 `COMPOSE_PROFILES` 选择 CPU、标准 GPU或 Legacy GPU 路径；三类镜像继续使用 `:latest`。
+- 正式 Compose 与 fnOS 模板统一启用三模型进程隔离并关闭默认启动预载。
+- 部署镜像保持 `:latest` 引用，不将 `2.6.601` 写死到 Docker、FPK 或 CI 镜像选择链路中。
+
 ## [2.6.6] - 2026-05-24
 
 ### 三模型与统一扩展架构

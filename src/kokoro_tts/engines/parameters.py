@@ -111,7 +111,15 @@ class EngineParameterSchema:
                     parsed_value = int(value)
                 except (TypeError, ValueError) as exc:
                     raise HTTPException(status_code=400, detail=f"{key} 必须为整数") from exc
-                if spec.minimum is not None and parsed_value < spec.minimum or spec.maximum is not None and parsed_value > spec.maximum:
-                    raise HTTPException(status_code=400, detail=f"{key} 必须在 {spec.minimum:g} 到 {spec.maximum:g} 之间")
+                below_minimum = spec.minimum is not None and parsed_value < spec.minimum
+                above_maximum = spec.maximum is not None and parsed_value > spec.maximum
+                if below_minimum or above_maximum:
+                    if spec.minimum is not None and spec.maximum is not None:
+                        detail = f"{key} 必须在 {spec.minimum:g} 到 {spec.maximum:g} 之间"
+                    elif spec.minimum is not None:
+                        detail = f"{key} 必须大于或等于 {spec.minimum:g}"
+                    else:
+                        detail = f"{key} 必须小于或等于 {spec.maximum:g}"
+                    raise HTTPException(status_code=400, detail=detail)
                 parsed[key] = parsed_value
         return parsed

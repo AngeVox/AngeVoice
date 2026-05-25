@@ -38,6 +38,8 @@ class ServiceState:
         self.model_manager.bind_voice_profile_service(self.voice_profiles)
         self.eng = eng or self.model_manager.get_engine(self.model_manager.current_model_id, load=False)
         self.tts_semaphore = asyncio.Semaphore(max(1, int(cfg.max_concurrent_requests)))
+        self._websocket_connections = 0
+        self._websocket_connection_lock = asyncio.Lock()
         self.tts_cache: OrderedDict[str, tuple[bytes, str]] = OrderedDict()
         self._cache_bytes = 0
         self.cache_lock = threading.Lock()
@@ -58,6 +60,8 @@ class ServiceState:
             "audio_bytes_total": 0,
             "synthesis_seconds_total": 0.0,
             "ws_cancelled_total": 0,
+            "ws_connections_rejected_total": 0,
+            "ws_connections_peak": 0,
             "outputs_saved_total": 0,
             "started_at": time.time(),
         }
@@ -71,10 +75,32 @@ class ServiceState:
 
     def snapshot_stats(self) -> dict:
         with self.stats_lock:
-            return dict(self.stats)
+            snapshot = dict(self.stats)
+        snapshot["ws_connections_active"] = self._websocket_connections
+        return snapshot
 
     def new_request_id(self) -> str:
         return uuid.uuid4().hex[:12]
+
+    async def try_acquire_websocket_connection(self) -> bool:
+        """Reserve one WebSocket session slot before accepting the handshake."""
+        limit = max(0, int(getattr(self.cfg, "websocket_max_connections", 0) or 0))
+        async with self._websocket_connection_lock:
+            if limit and self._websocket_connections >= limit:
+                self.inc_stat("ws_connections_rejected_total")
+                return False
+            self._websocket_connections += 1
+            with self.stats_lock:
+                self.stats["ws_connections_peak"] = max(self.stats.get("ws_connections_peak", 0), self._websocket_connections)
+            return True
+
+    async def release_websocket_connection(self) -> None:
+        async with self._websocket_connection_lock:
+            self._websocket_connections = max(0, self._websocket_connections - 1)
+
+    @property
+    def active_websocket_connections(self) -> int:
+        return self._websocket_connections
 
     def cache_key(
         self,

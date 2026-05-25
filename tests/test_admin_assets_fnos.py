@@ -129,23 +129,27 @@ def test_admin_can_persist_new_credentials_and_download_redacted_diagnostics(mon
 
 
 
-def test_fnos_final_package_uses_one_compose_file_with_pre_start_profile_routing_for_v266():
+def test_fnos_package_uses_verified_compose_profile_template_for_v26601():
     root = Path(__file__).resolve().parents[1]
     guide = (root / "docs/FNOS_FPK.md").read_text(encoding="utf-8")
     manifest = (root / "packaging/fnos/AngeVoice/manifest").read_text(encoding="utf-8")
     compose = (root / "packaging/fnos/AngeVoice/app/docker/docker-compose.yaml").read_text(encoding="utf-8")
     install_callback = (root / "packaging/fnos/AngeVoice/cmd/install_callback").read_text(encoding="utf-8")
-    assert "一个固定的 `app/docker/docker-compose.yaml`" in guide
-    assert "COMPOSE_PROFILES=cpu | gpu | legacy-gpu" in guide
-    assert "version               = 2.6.6" in manifest
-    for profile in ("cpu", "gpu", "legacy-gpu"):
-        assert f'profiles: ["{profile}"]' in compose
-        assert f"ghcr.io/ang77712829/angevoice-{profile}:latest" in compose
+    assert "单一 Compose 文件 + 三个互斥 profile service" in guide
+    assert "COMPOSE_PROFILES" in guide
+    assert "version               = 2.6.601" in manifest
+    assert compose.count("profiles:") == 3
+    assert "angevoice-cpu:" in compose and "angevoice-gpu:" in compose and "angevoice-legacy-gpu:" in compose
+    assert "ghcr.io/ang77712829/angevoice-gpu:latest" in compose
     assert "${wizard_admin_password:-admin123}" in compose
-    assert "ZIPVOICE_EXECUTION_PROVIDER" in compose and "zipvoice" in compose
+    assert "ZIPVOICE_PROCESS_ISOLATION_ENABLED" in compose
+    assert "ANGEVOICE_STARTUP_PRELOAD_ENABLED" in compose
     assert "COMPOSE_PROFILES" in install_callback
+    assert "wizard_run_mode" not in install_callback
+    assert "wizard_container_runtime" not in install_callback
     assert "_mode_env" not in install_callback
     fnos_env = (root / "packaging/fnos/AngeVoice/app/docker/angevoice.env").read_text(encoding="utf-8")
-    assert "不包含真实 API Key 或可登录默认密码" not in fnos_env
-    assert "首次进入默认凭据在下方明示" in fnos_env
-
+    assert "KOKORO_PROCESS_ISOLATION_ENABLED=true" in fnos_env
+    assert "MOSS_PROCESS_ISOLATION_ENABLED=true" in fnos_env
+    assert "ZIPVOICE_PROCESS_ISOLATION_ENABLED=true" in fnos_env
+    assert "ANGEVOICE_STARTUP_PRELOAD_ENABLED=false" in fnos_env

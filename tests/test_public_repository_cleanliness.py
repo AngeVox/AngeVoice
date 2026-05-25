@@ -31,7 +31,7 @@ def test_public_markdown_links_resolve_within_source_tree():
                 assert destination.exists(), f"{path.relative_to(ROOT)} -> {target}"
 
 
-def test_runtime_templates_use_latest_images_and_fnos_uses_pre_start_profile_routing():
+def test_runtime_templates_use_latest_images_and_fnos_uses_verified_profile_routing():
     image_files = [
         ROOT / "docker/cpu/docker-compose.yml",
         ROOT / "docker/gpu/docker-compose.yml",
@@ -40,14 +40,14 @@ def test_runtime_templates_use_latest_images_and_fnos_uses_pre_start_profile_rou
     ]
     for path in image_files:
         text = path.read_text(encoding="utf-8")
-        assert ":2.6.6" not in text
+        assert ":2.6.601" not in text
         for line in text.splitlines():
             if "angevoice-" in line and "ghcr.io/" in line:
                 assert ":latest" in line, f"{path.relative_to(ROOT)}: {line}"
     compose = (ROOT / "packaging/fnos/AngeVoice/app/docker/docker-compose.yaml").read_text(encoding="utf-8")
-    for profile in ("cpu", "gpu", "legacy-gpu"):
-        assert f'profiles: ["{profile}"]' in compose
+    assert compose.count("profiles:") == 3
+    assert "angevoice-cpu:latest" in compose and "angevoice-gpu:latest" in compose and "angevoice-legacy-gpu:latest" in compose
     install = (ROOT / "packaging/fnos/AngeVoice/wizard/install").read_text(encoding="utf-8")
-    assert "COMPOSE_PROFILES" in install
+    assert "COMPOSE_PROFILES" in install and "wizard_run_mode" not in install
     assert not (ROOT / "packaging/fnos/AngeVoice/app/docker/.env").exists()
 

@@ -1,6 +1,6 @@
-# AngeVoice fnOS Docker 编排
-# 保持一个 docker-compose.yaml，由 fnOS 安装向导直接提供 COMPOSE_PROFILES。
-# docker-project 解析编排时即可选择 CPU / GPU / Legacy GPU 服务，不依赖 callback 改写镜像。
+# AngeVoice fnOS template: one Compose file with three mutually exclusive profile services.
+# fnOS injects COMPOSE_PROFILES before docker-project creates containers. This is the
+# verified installation mechanism; all deployable images remain on :latest.
 name: angevoice-fnos
 
 services:
@@ -21,24 +21,25 @@ services:
       KOKORO_DEVICE: "cpu"
       ANGEVOICE_ENABLED_MODELS: "kokoro,moss,zipvoice"
       ANGEVOICE_DEFAULT_MODEL: "kokoro"
-      MOSS_EXECUTION_PROVIDER: "cpu"
-      MOSS_CUDA_ENABLED: "false"
-      MOSS_AUTO_FALLBACK_CPU: "true"
+      KOKORO_PROCESS_ISOLATION_ENABLED: "true"
       MOSS_PROCESS_ISOLATION_ENABLED: "true"
       MOSS_PROCESS_ISOLATION_PROVIDERS: "cpu,cuda"
+      ZIPVOICE_PROCESS_ISOLATION_ENABLED: "true"
+      ANGEVOICE_ENGINE_PROCESS_KILL_GRACE_SECONDS: "2"
+      ANGEVOICE_STARTUP_PRELOAD_ENABLED: "false"
+      ANGEVOICE_STARTUP_PRELOAD_MODEL: "kokoro"
+      MOSS_EXECUTION_PROVIDER: "cpu"
+      MOSS_CUDA_ENABLED: "false"
       ZIPVOICE_EXECUTION_PROVIDER: "cpu"
       ZIPVOICE_CUDA_ENABLED: "false"
       ZIPVOICE_AUTO_FALLBACK_CPU: "true"
-      ZIPVOICE_PROMPT_AUDIO_MAX_SECONDS: "15"
-      ZIPVOICE_CPU_THREADS: "4"
-      ZIPVOICE_NUM_STEPS: "8"
-      ZIPVOICE_MODEL_ROOT: /app/models/zipvoice
-      ZIPVOICE_PROFILES_DIR: /app/prompts/zipvoice
-      ZIPVOICE_REPO_PATH: /opt/ZipVoice
-      ANGEVOICE_CREDENTIALS_DIR: /app/credentials
-      ANGEVOICE_ADMIN_CREDENTIALS_FILE: /app/credentials/admin-credentials.json
-      ANGEVOICE_API_KEY_FILE: /app/credentials/.angevoice-api-key
-      ANGEVOICE_RUNTIME_CONFIG_FILE: /app/config/runtime-config.json
+      ZIPVOICE_MODEL_ROOT: "/app/models/zipvoice"
+      ZIPVOICE_PROFILES_DIR: "/app/prompts/zipvoice"
+      ZIPVOICE_REPO_PATH: "/opt/ZipVoice"
+      ANGEVOICE_CREDENTIALS_DIR: "/app/credentials"
+      ANGEVOICE_ADMIN_CREDENTIALS_FILE: "/app/credentials/admin-credentials.json"
+      ANGEVOICE_API_KEY_FILE: "/app/credentials/.angevoice-api-key"
+      ANGEVOICE_RUNTIME_CONFIG_FILE: "/app/config/runtime-config.json"
     volumes:
       - "${TRIM_PKGVAR}/models:/app/models"
       - "${TRIM_PKGVAR}/prompts:/app/prompts"
@@ -50,7 +51,7 @@ services:
       test: ["CMD", "python3", "-c", "import urllib.request,json; d=json.loads(urllib.request.urlopen('http://localhost:8000/health').read()); assert d.get('status') in {'ok','idle','loading'}"]
       interval: 30s
       timeout: 10s
-      retries: 5
+      retries: 6
       start_period: 300s
     restart: unless-stopped
 
@@ -71,28 +72,30 @@ services:
       KOKORO_DEVICE: "cuda"
       ANGEVOICE_ENABLED_MODELS: "kokoro,moss,zipvoice"
       ANGEVOICE_DEFAULT_MODEL: "kokoro"
+      KOKORO_PROCESS_ISOLATION_ENABLED: "true"
+      MOSS_PROCESS_ISOLATION_ENABLED: "true"
+      MOSS_PROCESS_ISOLATION_PROVIDERS: "cpu,cuda"
+      ZIPVOICE_PROCESS_ISOLATION_ENABLED: "true"
+      ANGEVOICE_ENGINE_PROCESS_KILL_GRACE_SECONDS: "2"
+      ANGEVOICE_STARTUP_PRELOAD_ENABLED: "false"
+      ANGEVOICE_STARTUP_PRELOAD_MODEL: "kokoro"
       MOSS_EXECUTION_PROVIDER: "cuda"
       MOSS_CUDA_ENABLED: "true"
       MOSS_AUTO_FALLBACK_CPU: "true"
-      MOSS_PROCESS_ISOLATION_ENABLED: "true"
-      MOSS_PROCESS_ISOLATION_PROVIDERS: "cpu,cuda"
       ZIPVOICE_EXECUTION_PROVIDER: "cuda"
       ZIPVOICE_CUDA_ENABLED: "true"
       ZIPVOICE_AUTO_FALLBACK_CPU: "true"
-      ZIPVOICE_PROMPT_AUDIO_MAX_SECONDS: "15"
       ZIPVOICE_CUDA_MAX_DURATION: "36"
       ZIPVOICE_CUDA_DEVICE_INDEX: "0"
-      ZIPVOICE_CPU_THREADS: "4"
-      ZIPVOICE_NUM_STEPS: "8"
-      ZIPVOICE_MODEL_ROOT: /app/models/zipvoice
-      ZIPVOICE_PROFILES_DIR: /app/prompts/zipvoice
-      ZIPVOICE_REPO_PATH: /opt/ZipVoice
-      ANGEVOICE_CREDENTIALS_DIR: /app/credentials
-      ANGEVOICE_ADMIN_CREDENTIALS_FILE: /app/credentials/admin-credentials.json
-      ANGEVOICE_API_KEY_FILE: /app/credentials/.angevoice-api-key
-      ANGEVOICE_RUNTIME_CONFIG_FILE: /app/config/runtime-config.json
-      NVIDIA_VISIBLE_DEVICES: all
-      NVIDIA_DRIVER_CAPABILITIES: compute,utility
+      ZIPVOICE_MODEL_ROOT: "/app/models/zipvoice"
+      ZIPVOICE_PROFILES_DIR: "/app/prompts/zipvoice"
+      ZIPVOICE_REPO_PATH: "/opt/ZipVoice"
+      ANGEVOICE_CREDENTIALS_DIR: "/app/credentials"
+      ANGEVOICE_ADMIN_CREDENTIALS_FILE: "/app/credentials/admin-credentials.json"
+      ANGEVOICE_API_KEY_FILE: "/app/credentials/.angevoice-api-key"
+      ANGEVOICE_RUNTIME_CONFIG_FILE: "/app/config/runtime-config.json"
+      NVIDIA_VISIBLE_DEVICES: "all"
+      NVIDIA_DRIVER_CAPABILITIES: "compute,utility"
     volumes:
       - "${TRIM_PKGVAR}/models:/app/models"
       - "${TRIM_PKGVAR}/prompts:/app/prompts"
@@ -111,7 +114,7 @@ services:
       test: ["CMD", "python3", "-c", "import urllib.request,json; d=json.loads(urllib.request.urlopen('http://localhost:8000/health').read()); assert d.get('status') in {'ok','idle','loading'}"]
       interval: 30s
       timeout: 10s
-      retries: 5
+      retries: 6
       start_period: 300s
     restart: unless-stopped
 
@@ -134,26 +137,27 @@ services:
       KOKORO_SEGMENT_LENGTH: "100"
       ANGEVOICE_ENABLED_MODELS: "kokoro,moss,zipvoice"
       ANGEVOICE_DEFAULT_MODEL: "kokoro"
-      MOSS_EXECUTION_PROVIDER: "cpu"
-      MOSS_CUDA_ENABLED: "false"
-      MOSS_AUTO_FALLBACK_CPU: "true"
+      KOKORO_PROCESS_ISOLATION_ENABLED: "true"
       MOSS_PROCESS_ISOLATION_ENABLED: "true"
       MOSS_PROCESS_ISOLATION_PROVIDERS: "cpu,cuda"
+      ZIPVOICE_PROCESS_ISOLATION_ENABLED: "true"
+      ANGEVOICE_ENGINE_PROCESS_KILL_GRACE_SECONDS: "2"
+      ANGEVOICE_STARTUP_PRELOAD_ENABLED: "false"
+      ANGEVOICE_STARTUP_PRELOAD_MODEL: "kokoro"
+      MOSS_EXECUTION_PROVIDER: "cpu"
+      MOSS_CUDA_ENABLED: "false"
       ZIPVOICE_EXECUTION_PROVIDER: "cpu"
       ZIPVOICE_CUDA_ENABLED: "false"
       ZIPVOICE_AUTO_FALLBACK_CPU: "true"
-      ZIPVOICE_PROMPT_AUDIO_MAX_SECONDS: "15"
-      ZIPVOICE_CPU_THREADS: "4"
-      ZIPVOICE_NUM_STEPS: "8"
-      ZIPVOICE_MODEL_ROOT: /app/models/zipvoice
-      ZIPVOICE_PROFILES_DIR: /app/prompts/zipvoice
-      ZIPVOICE_REPO_PATH: /opt/ZipVoice
-      ANGEVOICE_CREDENTIALS_DIR: /app/credentials
-      ANGEVOICE_ADMIN_CREDENTIALS_FILE: /app/credentials/admin-credentials.json
-      ANGEVOICE_API_KEY_FILE: /app/credentials/.angevoice-api-key
-      ANGEVOICE_RUNTIME_CONFIG_FILE: /app/config/runtime-config.json
-      NVIDIA_VISIBLE_DEVICES: all
-      NVIDIA_DRIVER_CAPABILITIES: compute,utility
+      ZIPVOICE_MODEL_ROOT: "/app/models/zipvoice"
+      ZIPVOICE_PROFILES_DIR: "/app/prompts/zipvoice"
+      ZIPVOICE_REPO_PATH: "/opt/ZipVoice"
+      ANGEVOICE_CREDENTIALS_DIR: "/app/credentials"
+      ANGEVOICE_ADMIN_CREDENTIALS_FILE: "/app/credentials/admin-credentials.json"
+      ANGEVOICE_API_KEY_FILE: "/app/credentials/.angevoice-api-key"
+      ANGEVOICE_RUNTIME_CONFIG_FILE: "/app/config/runtime-config.json"
+      NVIDIA_VISIBLE_DEVICES: "all"
+      NVIDIA_DRIVER_CAPABILITIES: "compute,utility"
     volumes:
       - "${TRIM_PKGVAR}/models:/app/models"
       - "${TRIM_PKGVAR}/prompts:/app/prompts"

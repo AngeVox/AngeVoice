@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 import base64
 import binascii
+import json
 import logging
 import threading
 import time
@@ -22,6 +23,14 @@ from ..security import verify_ws_key
 from ..service_state import ServiceState
 
 logger = logging.getLogger(__name__)
+
+
+class WebSocketPayloadTooLarge(ValueError):
+    """Raised when an inbound WebSocket JSON message exceeds configured limits."""
+
+
+class WebSocketPayloadInvalid(ValueError):
+    """Raised when an inbound WebSocket frame is not a JSON object."""
 
 
 class WsSessionState(str, Enum):
@@ -65,21 +74,73 @@ class TtsWebSocketSession:
         self.phase = phase
         logger.debug("WS state -> %s", phase.value, extra={"request_id": self.request_id, "phase": phase.value, **extra})
 
+    async def _receive_json_limited(self) -> dict:
+        """Read a JSON object while enforcing a per-message allocation budget.
+
+        ``run_server`` also forwards this limit to Uvicorn as ``ws_max_size`` so
+        normal deployments reject large frames before decoding. This route-level
+        guard remains effective under TestClient or alternative ASGI launchers.
+        """
+        frame = await self.websocket.receive()
+        if frame.get("type") == "websocket.disconnect":
+            raise WebSocketDisconnect(code=int(frame.get("code") or 1000))
+        raw = frame.get("text")
+        if raw is None:
+            raw_bytes = frame.get("bytes") or b""
+        else:
+            raw_bytes = str(raw).encode("utf-8")
+        limit = max(1024, int(getattr(self.cfg, "websocket_max_message_bytes", 32 * 1024 * 1024) or 32 * 1024 * 1024))
+        if len(raw_bytes) > limit:
+            raise WebSocketPayloadTooLarge(f"WebSocket message exceeds {limit} bytes")
+        try:
+            value = json.loads(raw_bytes.decode("utf-8"))
+        except (UnicodeDecodeError, json.JSONDecodeError) as exc:
+            raise WebSocketPayloadInvalid("WebSocket message must be a JSON object") from exc
+        if not isinstance(value, dict):
+            raise WebSocketPayloadInvalid("WebSocket message must be a JSON object")
+        return value
+
     async def run(self) -> None:
+        # New clients can authenticate during the handshake through Authorization
+        # or ?token=, allowing invalid connections to be refused before accept.
+        # The first-message token remains supported for existing Studio clients.
+        preauth_token = str(self.websocket.query_params.get("token", "") or "")
+        has_preauth = bool(preauth_token or self.websocket.headers.get("authorization", ""))
+        if has_preauth and not await verify_ws_key(self.cfg, self.websocket, token=preauth_token):
+            with suppress(Exception):
+                await self.websocket.close(code=1008, reason="authentication failed")
+            return
         await self.websocket.accept()
         self._transition(WsSessionState.ACCEPTED)
         try:
-            msg = await self.websocket.receive_json()
+            handshake_timeout = min(15.0, max(1.0, float(getattr(self.cfg, "request_timeout_seconds", 300.0) or 300.0)))
+            msg = await asyncio.wait_for(self._receive_json_limited(), timeout=handshake_timeout)
+            if has_preauth and not msg.get("token"):
+                msg["token"] = preauth_token
             params = await self._parse_and_validate_first_message(msg)
             if params is None:
                 return
             await self._stream(params)
+        except WebSocketPayloadTooLarge:
+            self._transition(WsSessionState.ERROR, reason="message-too-large")
+            self.state.inc_stat("requests_error")
+            self.state.finish_request(self.request_id, "error", error="WebSocket 请求过大")
+            with suppress(Exception):
+                await self.websocket.send_json({"type": "error", "message": "WebSocket 请求内容过大", "request_id": self.request_id})
+                await self.websocket.close(code=1009, reason="message too large")
+        except WebSocketPayloadInvalid:
+            self._transition(WsSessionState.ERROR, reason="invalid-json")
+            self.state.inc_stat("requests_error")
+            self.state.finish_request(self.request_id, "error", error="WebSocket JSON 无效")
+            with suppress(Exception):
+                await self.websocket.send_json({"type": "error", "message": "WebSocket 请求格式无效", "request_id": self.request_id})
+                await self.websocket.close(code=1003, reason="invalid JSON")
         except asyncio.TimeoutError:
             self._transition(WsSessionState.ERROR, reason="timeout")
             self.state.inc_stat("requests_error")
             self.state.finish_request(self.request_id, "timeout")
             with suppress(Exception):
-                await self.websocket.send_json({"type": "error", "message": "合成超时", "request_id": self.request_id})
+                await self.websocket.send_json({"type": "error", "message": "WebSocket 请求超时", "request_id": self.request_id})
         except WebSocketDisconnect as exc:
             self._transition(WsSessionState.CANCELLING, reason="disconnect-before-payload")
             self.state.request_cancel(self.request_id)
@@ -204,8 +265,12 @@ class TtsWebSocketSession:
     async def _control_listener(self) -> None:
         while not self.cancel_event.is_set():
             try:
-                control_msg = await self.websocket.receive_json()
+                control_msg = await self._receive_json_limited()
             except WebSocketDisconnect:
+                await self._mark_client_cancelled()
+                break
+            except (WebSocketPayloadTooLarge, WebSocketPayloadInvalid):
+                logger.warning("WebSocket 控制消息无效或过大", extra={"request_id": self.request_id})
                 await self._mark_client_cancelled()
                 break
             except Exception:
@@ -372,6 +437,13 @@ def create_ws_router(state: ServiceState) -> APIRouter:
 
     @router.websocket("/ws/v1/tts")
     async def ws_tts(websocket: WebSocket):
-        await TtsWebSocketSession(websocket=websocket, state=state).run()
+        if not await state.try_acquire_websocket_connection():
+            with suppress(Exception):
+                await websocket.close(code=1013, reason="WebSocket connection capacity reached")
+            return
+        try:
+            await TtsWebSocketSession(websocket=websocket, state=state).run()
+        finally:
+            await state.release_websocket_connection()
 
     return router

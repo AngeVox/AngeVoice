@@ -95,6 +95,10 @@ class TTSConfig:
     stream_binary_enabled: bool = True
     stream_chunk_seconds: float = 0.55
     stream_prebuffer_seconds: float = 0.25
+    # WebSocket resource guardrails. 0 max connections explicitly disables the connection cap.
+    websocket_max_connections: int = 16
+    # Supports up to a 20 MiB reference audio upload after base64 expansion plus JSON overhead.
+    websocket_max_message_bytes: int = 32 * 1024 * 1024
 
     cache_enabled: bool = True
     cache_max_items: int = 64
@@ -116,6 +120,9 @@ class TTSConfig:
 
     enabled_models: list[str] = field(default_factory=lambda: ["kokoro"])
     default_model: str = "kokoro"
+    # Studio default selection is independent from optional cold-start preload.
+    startup_preload_enabled: bool = False
+    startup_preload_model: str = "kokoro"
     model_switch_enabled: bool = True
     model_unload_on_switch: bool = True
     model_switch_timeout_seconds: float = 300.0
@@ -179,6 +186,10 @@ class TTSConfig:
     moss_output_target_peak: float = 0.86
     moss_output_gain: float = 0.94
     moss_process_isolation_enabled: bool = False
+    # Library defaults preserve embedding compatibility; official deployment templates enable isolation.
+    kokoro_process_isolation_enabled: bool = False
+    zipvoice_process_isolation_enabled: bool = False
+    engine_process_kill_grace_seconds: float = 2.0
     moss_output_declick_enabled: bool = True
     moss_output_edge_fade_ms: float = 1.5
     moss_audio_polish_enabled: bool = True
@@ -222,10 +233,10 @@ class TTSConfig:
     zipvoice_prompt_upload_max_bytes: int = 20 * 1024 * 1024
     zipvoice_prompt_audio_max_seconds: float = 15.0
 
-    # 限流：按客户端令牌桶 + 全局并发闸门；0 表示关闭。
-    rate_limit_qps: float = 0.0
-    rate_limit_burst: int = 5
-    max_queue_length: int = 0
+    # 限流：默认提供基础入口保护；可信内网可显式配置为 0 关闭。
+    rate_limit_qps: float = 10.0
+    rate_limit_burst: int = 20
+    max_queue_length: int = 50
     trust_proxy_headers: bool = False
     public_status_endpoints: bool = True
 
@@ -298,6 +309,14 @@ class TTSConfig:
         normalized_key = api_key.lower()
         if api_key and normalized_key in PLACEHOLDER_API_KEYS:
             raise ValueError("KOKORO_API_KEY is still a placeholder; set a real secret or leave it empty")
+        from .config_api_key import effective_api_key
+        externally_bound = str(self.host or "").strip().lower() not in {"127.0.0.1", "localhost", "::1"}
+        if externally_bound and not effective_api_key(self):
+            logger.warning(
+                "API authentication is disabled while the service is bound to %s; "
+                "set KOKORO_API_KEY=auto or a strong key before exposing this service outside a trusted network",
+                self.host,
+            )
         admin_username = (os.environ.get("ANGEVOICE_ADMIN_USERNAME") or os.environ.get("KOKORO_ADMIN_USERNAME") or "admin").strip()
         admin_password = (
             os.environ.get("ANGEVOICE_ADMIN_PASSWORD")

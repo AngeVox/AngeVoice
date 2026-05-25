@@ -1,8 +1,8 @@
-"""MOSS 进程级隔离 worker。
+"""Killable worker processes for Kokoro and ZipVoice runtimes.
 
-CUDA/ONNX Runtime 偶发硬卡死时，线程池无法真正取消底层调用。
-本模块把 MOSS 推理放入独立子进程，主进程超时后可以终止子进程，
-从而避免主 Web 服务被卡死的 runtime 拖住。
+The API process owns routing, persistent profile metadata and configuration.  A
+heavy inference runtime is constructed in a spawned child process so idle/model
+release can let the operating system reliably reclaim CPU RSS and GPU memory.
 """
 
 from __future__ import annotations
@@ -16,37 +16,43 @@ import uuid
 from dataclasses import dataclass
 from typing import Callable, Iterator
 
+from .factories import create_worker_engine, supported_worker_engines
+
 
 @dataclass(frozen=True)
-class MossWorkerResult:
-    """子进程返回给主进程的一条消息。"""
-
+class WorkerResult:
     request_id: str
     kind: str
     payload: object
 
 
-class MossProcessTimeoutError(TimeoutError):
-    """MOSS 子进程请求超时。"""
+class EngineProcessTimeoutError(TimeoutError):
+    """A model worker stopped producing results before its request deadline."""
 
 
-class MossProcessClient:
-    """持有一个 MOSS worker 子进程，并提供同步请求/流式请求接口。"""
+class EngineProcessClient:
+    """One lazily started, single-flight child process for an inference runtime."""
 
-    def __init__(self, *, config, provider: str, engine_id: str, logger=None):
+    def __init__(self, *, config, engine_id: str, requested_provider: str | None = None, logger=None):
+        if engine_id not in supported_worker_engines():
+            raise ValueError(f"Unsupported generic worker engine: {engine_id}")
         self.config = config
-        self.provider = provider
         self.engine_id = engine_id
+        self.requested_provider = requested_provider
         self.logger = logger
         self._ctx = mp.get_context("spawn")
         self._command_queue = None
         self._result_queue = None
         self._process: mp.Process | None = None
         self._lifecycle_lock = threading.RLock()
-        # One MOSS runtime must have only one result-queue consumer. This mirrors
-        # the generic worker contract used by Kokoro/ZipVoice and prevents
-        # concurrent HTTP/WebSocket requests from stealing each other's frames.
+        # A loaded runtime is intentionally single-flight.  Serialising all queue
+        # consumers prevents simultaneous HTTP/WebSocket callers from stealing
+        # each other's messages and producing false timeouts.
         self._request_lock = threading.RLock()
+        self._loaded = False
+        self._last_metadata: dict = {}
+        self._unhealthy = False
+        self._last_exit_reason = ""
 
     @property
     def alive(self) -> bool:
@@ -55,31 +61,52 @@ class MossProcessClient:
 
     @property
     def pid(self) -> int | None:
-        """PID of the live isolated MOSS worker, when available."""
-
         return self._process.pid if self.alive and self._process is not None else None
 
-    def start(self) -> None:
-        """按需启动 worker 子进程。"""
+    @property
+    def is_loaded(self) -> bool:
+        return bool(self.alive and self._loaded)
 
+    @property
+    def last_metadata(self) -> dict:
+        return dict(self._last_metadata)
+
+    @property
+    def is_healthy(self) -> bool:
+        """Idle workers are healthy; loaded workers that crash are not."""
+
+        process = self._process
+        if self._unhealthy:
+            return False
+        if self._loaded and process is not None and not process.is_alive():
+            return False
+        return True
+
+    @property
+    def last_exit_reason(self) -> str:
+        return self._last_exit_reason
+
+    def start(self) -> None:
         with self._lifecycle_lock:
             if self.alive:
                 return
-            # A killed or cancelled worker may leave commands/results behind.
-            # A new queue generation makes the next wake-up deterministic.
+            # A killed worker may leave unconsumed commands/results behind.  New
+            # queues make the next wake-up a clean runtime generation.
             self._command_queue = self._ctx.Queue()
             self._result_queue = self._ctx.Queue()
+            self._loaded = False
             self._process = self._ctx.Process(
                 target=_worker_main,
-                args=(self.config, self.provider, self.engine_id, self._command_queue, self._result_queue),
-                name=f"{self.engine_id}-process-worker",
+                args=(self.config, self.engine_id, self.requested_provider, self._command_queue, self._result_queue),
+                name=f"angevoice-{self.engine_id}-worker",
                 daemon=True,
             )
             self._process.start()
 
     def close(self, *, kill: bool = False) -> None:
-        """关闭 worker；强制取消可绕过请求锁中断卡死推理。"""
-
+        # Force release/cancellation must be able to kill a stuck inference even
+        # while the request thread owns _request_lock.  Graceful idle release is
+        # serialised so it never interrupts an accepted request accidentally.
         if kill:
             with self._lifecycle_lock:
                 self._close_locked(kill=True)
@@ -90,9 +117,10 @@ class MossProcessClient:
     def _close_locked(self, *, kill: bool) -> None:
         process = self._process
         if process is None:
+            self._loaded = False
             self._discard_queues()
             return
-        grace = float(getattr(self.config, "moss_process_kill_grace_seconds", 2.0) or 2.0)
+        grace = float(getattr(self.config, "engine_process_kill_grace_seconds", 2.0) or 2.0)
         if process.is_alive() and not kill:
             try:
                 if self._command_queue is not None:
@@ -107,102 +135,114 @@ class MossProcessClient:
             process.kill()
             process.join(timeout=min(1.0, grace))
         self._process = None
+        self._loaded = False
+        self._unhealthy = False
+        self._last_exit_reason = ""
         self._discard_queues()
 
-    def request(self, command: str, payload: dict | None = None, *, timeout: float) -> object:
-        """发送一次普通请求，并等待单个结果。"""
+    def load(self, *, timeout: float) -> dict:
+        value = self.request("load", {}, timeout=timeout)
+        self._loaded = True
+        self._unhealthy = False
+        self._last_exit_reason = ""
+        self._last_metadata = dict(value) if isinstance(value, dict) else {}
+        return dict(self._last_metadata)
 
+    def request(self, command: str, payload: dict | None = None, *, timeout: float) -> object:
         with self._request_lock:
             request_id = self._send(command, payload or {})
             result = self._wait_for(request_id, timeout=timeout)
             if result.kind == "error":
                 raise RuntimeError(str(result.payload))
             if result.kind != "result":
-                raise RuntimeError(f"MOSS worker returned unexpected message: {result.kind}")
+                raise RuntimeError(f"{self.engine_id} worker returned unexpected message: {result.kind}")
+            if command in {"load", "metadata"} and isinstance(result.payload, dict):
+                self._last_metadata = dict(result.payload)
+                self._loaded = bool(self._last_metadata.get("loaded", command == "load"))
             return result.payload
 
     def stream(
         self,
-        command: str,
-        payload: dict | None = None,
+        payload: dict,
         *,
         timeout: float,
         cancel_check: Callable[[], bool] | None = None,
     ) -> Iterator[dict]:
-        """发送一次流式请求；同一 Worker 的结果消费严格串行。"""
-
         with self._request_lock:
-            request_id = self._send(command, payload or {})
+            request_id = self._send("synthesize_stream", payload)
             idle_timeout = max(1.0, float(timeout))
             deadline = time.monotonic() + idle_timeout
             while True:
                 if cancel_check is not None:
                     try:
                         if cancel_check():
+                            # Torch/ONNX execution cannot always be interrupted
+                            # safely inside a thread.  Killing this isolated worker
+                            # is intentional and keeps the API wakeable.
                             self.close(kill=True)
                             return
                     except Exception:
                         if self.logger:
-                            self.logger.debug("MOSS worker cancel_check 失败", exc_info=True)
+                            self.logger.debug("%s worker cancel_check failed", self.engine_id, exc_info=True)
                 remaining = deadline - time.monotonic()
                 if remaining <= 0:
                     self.close(kill=True)
-                    raise MossProcessTimeoutError(f"MOSS worker stream idle timed out after {timeout}s")
-                process = self._process
-                if process is not None and not process.is_alive():
-                    raise RuntimeError(f"MOSS worker exited unexpectedly with code {process.exitcode}")
+                    raise EngineProcessTimeoutError(f"{self.engine_id} worker stream idle timed out after {timeout}s")
+                self._raise_if_worker_exited()
                 try:
                     raw = self._require_result_queue().get(timeout=min(0.2, remaining))
                 except queue.Empty:
                     continue
-                result = MossWorkerResult(*raw)
+                result = WorkerResult(*raw)
                 if result.request_id != request_id:
-                    if self.logger:
-                        self.logger.debug("丢弃过期 MOSS worker 流式消息：%s", result.request_id)
                     continue
                 deadline = time.monotonic() + idle_timeout
                 if result.kind == "event":
                     yield result.payload
-                    continue
-                if result.kind == "done":
+                elif result.kind == "done":
                     return
-                if result.kind == "error":
+                elif result.kind == "error":
                     raise RuntimeError(str(result.payload))
-                raise RuntimeError(f"MOSS worker returned unexpected stream message: {result.kind}")
+                else:
+                    raise RuntimeError(f"{self.engine_id} worker returned unexpected stream message: {result.kind}")
 
     def _send(self, command: str, payload: dict) -> str:
         self.start()
         request_id = uuid.uuid4().hex
         if self._command_queue is None:
-            raise RuntimeError("MOSS worker command queue is unavailable")
+            raise RuntimeError(f"{self.engine_id} worker command queue is unavailable")
         self._command_queue.put((request_id, command, payload))
         return request_id
 
-    def _wait_for(self, request_id: str, *, timeout: float) -> MossWorkerResult:
+    def _wait_for(self, request_id: str, *, timeout: float) -> WorkerResult:
         deadline = time.monotonic() + max(0.01, float(timeout))
         while True:
             remaining = deadline - time.monotonic()
             if remaining <= 0:
                 self.close(kill=True)
-                raise MossProcessTimeoutError(f"MOSS worker timed out after {timeout}s")
-            process = self._process
-            if process is not None and not process.is_alive():
-                raise RuntimeError(f"MOSS worker exited unexpectedly with code {process.exitcode}")
+                raise EngineProcessTimeoutError(f"{self.engine_id} worker timed out after {timeout}s")
+            self._raise_if_worker_exited()
             try:
                 raw = self._require_result_queue().get(timeout=min(0.2, remaining))
             except queue.Empty:
                 continue
-            result = MossWorkerResult(*raw)
+            result = WorkerResult(*raw)
             if result.request_id == request_id:
                 return result
-            # 当前实现串行使用 worker。若看到非当前请求，直接丢弃并记录；
-            # 这样可避免旧请求残留污染当前请求。
-            if self.logger:
-                self.logger.debug("丢弃过期 MOSS worker 消息：%s", result.request_id)
+
+    def _raise_if_worker_exited(self) -> None:
+        if self._process is not None and not self._process.is_alive():
+            code = self._process.exitcode
+            was_loaded = self._loaded
+            self._loaded = False
+            if was_loaded:
+                self._unhealthy = True
+                self._last_exit_reason = f"worker exited unexpectedly with code {code}"
+            raise RuntimeError(f"{self.engine_id} worker exited unexpectedly with code {code}")
 
     def _require_result_queue(self):
         if self._result_queue is None:
-            raise RuntimeError("MOSS worker result queue is unavailable")
+            raise RuntimeError(f"{self.engine_id} worker result queue is unavailable")
         return self._result_queue
 
     def _discard_queues(self) -> None:
@@ -218,17 +258,13 @@ class MossProcessClient:
         self._result_queue = None
 
 
-def _worker_main(config, provider: str, engine_id: str, command_queue, result_queue) -> None:
-    """子进程主循环。"""
-
+def _worker_main(config, engine_id: str, requested_provider: str | None, command_queue, result_queue) -> None:
     engine = None
 
     def ensure_engine():
         nonlocal engine
         if engine is None:
-            from ..moss_engine import MossNanoEngine
-
-            engine = MossNanoEngine(config, execution_provider=provider, engine_id=engine_id, process_isolation=False)
+            engine = create_worker_engine(config, engine_id, requested_provider)
             engine.load()
         return engine
 
@@ -247,20 +283,18 @@ def _worker_main(config, provider: str, engine_id: str, command_queue, result_qu
                 result_queue.put((request_id, "result", current.metadata()))
             elif command == "metadata":
                 result_queue.put((request_id, "result", current.metadata()))
-            elif command == "voices":
-                result_queue.put((request_id, "result", current.get_voices()))
+            elif command == "synthesize":
+                result_queue.put((request_id, "result", current.synthesize(**payload)))
             elif command == "synthesize_array":
-                result = current.synthesize_array(**payload)
-                result_queue.put((request_id, "result", result))
+                result_queue.put((request_id, "result", current.synthesize_array(**payload)))
             elif command == "synthesize_stream":
+                payload.pop("cancel_check", None)
                 for item in current.synthesize_stream(**payload):
                     result_queue.put((request_id, "event", item))
                 result_queue.put((request_id, "done", None))
-            elif command == "unload":
-                current.unload()
-                engine = None
-                result_queue.put((request_id, "result", {"ok": True}))
+            elif command == "get_voices":
+                result_queue.put((request_id, "result", current.get_voices()))
             else:
-                raise RuntimeError(f"未知 MOSS worker 命令：{command}")
-        except BaseException as exc:  # noqa: BLE001 - 子进程必须把所有异常传回主进程
+                raise RuntimeError(f"Unknown {engine_id} worker command: {command}")
+        except BaseException as exc:  # noqa: BLE001
             result_queue.put((request_id, "error", f"{type(exc).__name__}: {exc}\n{traceback.format_exc()}"))

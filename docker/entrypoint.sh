@@ -1,6 +1,48 @@
 #!/bin/bash
 set -euo pipefail
 
+# Compose profiles explicitly define provider/device settings for fnOS packages.
+# ANGEVOICE_RUN_MODE remains an optional compatibility override for manual callers;
+# when it is explicitly supplied, it must win over CPU-safe env-file defaults.
+case "${ANGEVOICE_RUN_MODE:-}" in
+  gpu)
+    export ANGEVOICE_DEPLOYMENT_PROFILE="gpu"
+    export KOKORO_DEVICE="cuda"
+    export MOSS_EXECUTION_PROVIDER="cuda"
+    export MOSS_CUDA_ENABLED="true"
+    export ZIPVOICE_EXECUTION_PROVIDER="cuda"
+    export ZIPVOICE_CUDA_ENABLED="true"
+    ;;
+  legacy-gpu)
+    export ANGEVOICE_DEPLOYMENT_PROFILE="legacy-gpu"
+    export KOKORO_DEVICE="cuda"
+    export MOSS_EXECUTION_PROVIDER="cpu"
+    export MOSS_CUDA_ENABLED="false"
+    export ZIPVOICE_EXECUTION_PROVIDER="cpu"
+    export ZIPVOICE_CUDA_ENABLED="false"
+    ;;
+  cpu)
+    export ANGEVOICE_DEPLOYMENT_PROFILE="cpu"
+    export KOKORO_DEVICE="cpu"
+    export MOSS_EXECUTION_PROVIDER="cpu"
+    export MOSS_CUDA_ENABLED="false"
+    export ZIPVOICE_EXECUTION_PROVIDER="cpu"
+    export ZIPVOICE_CUDA_ENABLED="false"
+    ;;
+  "")
+    export ANGEVOICE_DEPLOYMENT_PROFILE="${ANGEVOICE_DEPLOYMENT_PROFILE:-cpu}"
+    export KOKORO_DEVICE="${KOKORO_DEVICE:-cpu}"
+    export MOSS_EXECUTION_PROVIDER="${MOSS_EXECUTION_PROVIDER:-cpu}"
+    export MOSS_CUDA_ENABLED="${MOSS_CUDA_ENABLED:-false}"
+    export ZIPVOICE_EXECUTION_PROVIDER="${ZIPVOICE_EXECUTION_PROVIDER:-cpu}"
+    export ZIPVOICE_CUDA_ENABLED="${ZIPVOICE_CUDA_ENABLED:-false}"
+    ;;
+  *)
+    echo "Unsupported ANGEVOICE_RUN_MODE=${ANGEVOICE_RUN_MODE}" >&2
+    exit 2
+    ;;
+esac
+
 # 统一模型目录：Compose 默认把宿主机 ./models 挂载到 /app/models。
 export ANGEVOICE_MODELS_ROOT="${ANGEVOICE_MODELS_ROOT:-/app/models}"
 export KOKORO_MODEL_DIR="${KOKORO_MODEL_DIR:-${ANGEVOICE_MODELS_ROOT}/models--hexgrad--Kokoro-82M-v1.1-zh}"

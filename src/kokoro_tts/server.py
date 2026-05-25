@@ -63,6 +63,7 @@ _WORKER_ENV_EXPORTS = {
     "KOKORO_MP3_ENABLED": "mp3_enabled",
     "ANGEVOICE_ENABLED_MODELS": "enabled_models",
     "ANGEVOICE_DEFAULT_MODEL": "default_model",
+    "ANGEVOICE_STARTUP_PRELOAD_MODEL": "startup_preload_model",
     "ANGEVOICE_MODEL_SWITCH_ENABLED": "model_switch_enabled",
     "ANGEVOICE_MODEL_UNLOAD_ON_SWITCH": "model_unload_on_switch",
     "ANGEVOICE_MODEL_SWITCH_TIMEOUT_SECONDS": "model_switch_timeout_seconds",
@@ -130,8 +131,12 @@ _WORKER_ENV_EXPORTS = {
     "MOSS_OUTPUT_TARGET_PEAK": "moss_output_target_peak",
     "MOSS_OUTPUT_GAIN": "moss_output_gain",
     "MOSS_PROCESS_ISOLATION_ENABLED": "moss_process_isolation_enabled",
+    "KOKORO_PROCESS_ISOLATION_ENABLED": "kokoro_process_isolation_enabled",
+    "ZIPVOICE_PROCESS_ISOLATION_ENABLED": "zipvoice_process_isolation_enabled",
+    "ANGEVOICE_STARTUP_PRELOAD_ENABLED": "startup_preload_enabled",
     "MOSS_PROCESS_ISOLATION_PROVIDERS": "moss_process_isolation_providers",
     "MOSS_PROCESS_KILL_GRACE_SECONDS": "moss_process_kill_grace_seconds",
+    "ANGEVOICE_ENGINE_PROCESS_KILL_GRACE_SECONDS": "engine_process_kill_grace_seconds",
     "MOSS_OUTPUT_DECLICK_ENABLED": "moss_output_declick_enabled",
     "MOSS_OUTPUT_EDGE_FADE_MS": "moss_output_edge_fade_ms",
     "MOSS_AUDIO_POLISH_ENABLED": "moss_audio_polish_enabled",
@@ -159,6 +164,8 @@ _WORKER_ENV_EXPORTS = {
     "KOKORO_MAX_QUEUE_LENGTH": "max_queue_length",
     "KOKORO_TRUST_PROXY_HEADERS": "trust_proxy_headers",
     "KOKORO_PUBLIC_STATUS_ENDPOINTS": "public_status_endpoints",
+    "KOKORO_WS_MAX_CONNECTIONS": "websocket_max_connections",
+    "KOKORO_WS_MAX_MESSAGE_BYTES": "websocket_max_message_bytes",
 }
 
 
@@ -207,9 +214,19 @@ def create_app(config: Optional[TTSConfig] = None, engine: Optional[TTSEngine] =
 
     @asynccontextmanager
     async def lifespan(app):
-        state.model_manager.switch_model(cfg.default_model, load=True)
+        # Selecting a Studio default must not force weights into PID 1.
+        # Optional startup preload always follows the configured adapter/worker path.
+        state.model_manager.switch_model(cfg.default_model, load=False)
+        if bool(getattr(cfg, "startup_preload_enabled", False)):
+            preload_model = str(getattr(cfg, "startup_preload_model", "") or cfg.default_model)
+            available_models = {item.id for item in state.model_manager.list_specs()}
+            if preload_model in available_models:
+                state.model_manager.switch_model(preload_model, load=True)
+                logger.info("Startup preload completed (model=%s)", preload_model)
+            else:
+                logger.warning("Startup preload skipped: model %s is not enabled", preload_model)
         current = state.model_manager.current_snapshot()
-        logger.info("AngeVoice service started (model=%s device=%s)", current.get("id"), current.get("device"))
+        logger.info("AngeVoice service started (selected_model=%s preload=%s)", current.get("id"), bool(getattr(cfg, "startup_preload_enabled", False)))
         yield
         state.model_manager.stop_idle_timer()
 
@@ -283,8 +300,9 @@ def run_server(config: Optional[TTSConfig] = None):
             host=cfg.host,
             port=cfg.port,
             workers=cfg.workers,
+            ws_max_size=max(1024, int(cfg.websocket_max_message_bytes)),
         )
         return
 
     app = create_app(config=cfg)
-    uvicorn.run(app, host=cfg.host, port=cfg.port, workers=1)
+    uvicorn.run(app, host=cfg.host, port=cfg.port, workers=1, ws_max_size=max(1024, int(cfg.websocket_max_message_bytes)))

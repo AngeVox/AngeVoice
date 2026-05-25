@@ -45,6 +45,33 @@ Studio 的浏览器录音会生成标准 WAV，并与文件上传走同一参考
 
 流式能力只表示分段可以逐步播放，不等价于实时对话。最终文案必须依据实测：首段音频延迟、热 RTF、长文本稳定性、取消释放和多轮资源数据。若门槛不满足，Kokoro 仍为实时交互默认模型，ZipVoice 定位为高质量克隆与长文本。
 
+## 进程隔离、按需唤醒与启动预载
+
+正式 Docker 与 fnOS 模板默认对三个模型开启进程隔离：
+
+```env
+KOKORO_PROCESS_ISOLATION_ENABLED=true
+MOSS_PROCESS_ISOLATION_ENABLED=true
+MOSS_PROCESS_ISOLATION_PROVIDERS=cpu,cuda
+ZIPVOICE_PROCESS_ISOLATION_ENABLED=true
+ANGEVOICE_STARTUP_PRELOAD_ENABLED=false
+ANGEVOICE_STARTUP_PRELOAD_MODEL=kokoro
+```
+
+服务启动时默认只在 Studio 中选中 Kokoro，不把模型权重加载进 API 主进程；首次合成会显示正在唤醒/加载模型。用户可在管理后台按模型关闭隔离，或开启启动预载，但关闭隔离后属于线程内运行，主机 RAM 仅尽力释放，不能承诺回到冷启动基线。开启预载时也通过对应 Worker 加载模型，空闲释放或切换模型时结束 Worker，以便操作系统回收 RAM/VRAM。
+
+默认仅保留一个已加载模型运行时：从 Kokoro 切换到 ZipVoice 或 MOSS 时会先释放旧模型 Worker，避免 NAS 内存和 Tesla P4 显存叠加占用。
+
 ## 资产、缓存与释放
 
 模型资产通过后台状态/修复能力管理；Voice Profile、模型资产、配置、凭据与输出均为持久化数据。诊断应同时展示 provider、缓存、RSS/GPU 显存、active task、最近 RTF 与资源释放状态。
+
+## Worker 生命周期与诊断字段
+
+隔离运行的模型通过统一状态字段展示实际资源生命周期：
+
+```text
+worker_pid / worker_alive / worker_healthy / worker_last_exit_reason
+```
+
+`休眠 · Worker 已退出` 表示正常按需释放，不属于故障；模型曾经加载成功后 Worker 非预期退出时，诊断会记录异常原因，并允许下一次请求重新创建干净 Worker。为防止取消或强杀留下的旧消息污染下一次合成，每一代 Worker 均使用新的命令队列和结果队列；同一 Worker 的普通请求与流式请求串行读取结果队列，强制取消仍可直接中止卡住的 Worker。

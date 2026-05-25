@@ -128,7 +128,14 @@ def create_admin_router(state: ServiceState) -> APIRouter:
         changed, restart_required, rebuild_moss = apply_config_patch(cfg, req)
         rebuilt: list[str] = []
         if rebuild_moss:
-            for model_id in ("moss",):
+            rebuild_targets = set()
+            if any(key.startswith("moss_") for key in changed):
+                rebuild_targets.add("moss")
+            if "kokoro_process_isolation_enabled" in changed:
+                rebuild_targets.add("kokoro")
+            if "zipvoice_process_isolation_enabled" in changed:
+                rebuild_targets.add("zipvoice")
+            for model_id in sorted(rebuild_targets):
                 if state.model_manager.drop_model(model_id, force=False, raise_if_busy=False):
                     rebuilt.append(model_id)
             if rebuilt:
@@ -148,7 +155,14 @@ def create_admin_router(state: ServiceState) -> APIRouter:
         changed, restart_required, rebuild_moss = apply_config_profile(cfg, req.profile)
         rebuilt: list[str] = []
         if rebuild_moss:
-            for model_id in ("moss",):
+            rebuild_targets = set()
+            if any(key.startswith("moss_") for key in changed):
+                rebuild_targets.add("moss")
+            if "kokoro_process_isolation_enabled" in changed:
+                rebuild_targets.add("kokoro")
+            if "zipvoice_process_isolation_enabled" in changed:
+                rebuild_targets.add("zipvoice")
+            for model_id in sorted(rebuild_targets):
                 if state.model_manager.drop_model(model_id, force=False, raise_if_busy=False):
                     rebuilt.append(model_id)
             if rebuilt:

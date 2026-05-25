@@ -41,6 +41,11 @@ services:
       # GPU 镜像对 ZipVoice 默认请求 CUDA provider；实际 provider 与 fallback 状态由诊断接口展示。
       ANGEVOICE_ENABLED_MODELS: kokoro,moss,zipvoice
       ANGEVOICE_DEFAULT_MODEL: kokoro
+      KOKORO_PROCESS_ISOLATION_ENABLED: "true"
+      ZIPVOICE_PROCESS_ISOLATION_ENABLED: "true"
+      ANGEVOICE_ENGINE_PROCESS_KILL_GRACE_SECONDS: "2"
+      ANGEVOICE_STARTUP_PRELOAD_ENABLED: "false"
+      ANGEVOICE_STARTUP_PRELOAD_MODEL: kokoro
       MOSS_EXECUTION_PROVIDER: cuda
       MOSS_CUDA_ENABLED: "true"
       MOSS_AUTO_FALLBACK_CPU: "true"
