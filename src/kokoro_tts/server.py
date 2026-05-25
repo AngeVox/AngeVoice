@@ -221,7 +221,7 @@ def create_app(config: Optional[TTSConfig] = None, engine: Optional[TTSEngine] =
             preload_model = str(getattr(cfg, "startup_preload_model", "") or cfg.default_model)
             available_models = {item.id for item in state.model_manager.list_specs()}
             if preload_model in available_models:
-                state.model_manager.switch_model(preload_model, load=True)
+                state.model_manager.warm_model(preload_model)
                 logger.info("Startup preload completed (model=%s)", preload_model)
             else:
                 logger.warning("Startup preload skipped: model %s is not enabled", preload_model)

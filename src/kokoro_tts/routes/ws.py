@@ -19,7 +19,7 @@ from starlette.websockets import WebSocketDisconnect
 
 from ..contracts import StreamingRequest
 from ..prompt_audio import decode_prompt_audio_base64, save_prompt_audio_bytes, validate_reference_audio_duration
-from ..security import verify_ws_key
+from ..security import _extract_bearer_token, verify_ws_key
 from ..service_state import ServiceState
 
 logger = logging.getLogger(__name__)
@@ -105,7 +105,9 @@ class TtsWebSocketSession:
         # or ?token=, allowing invalid connections to be refused before accept.
         # The first-message token remains supported for existing Studio clients.
         preauth_token = str(self.websocket.query_params.get("token", "") or "")
-        has_preauth = bool(preauth_token or self.websocket.headers.get("authorization", ""))
+        auth_header = self.websocket.headers.get("authorization", "")
+        bearer_token = _extract_bearer_token(auth_header)
+        has_preauth = bool(preauth_token or bearer_token)
         if has_preauth and not await verify_ws_key(self.cfg, self.websocket, token=preauth_token):
             with suppress(Exception):
                 await self.websocket.close(code=1008, reason="authentication failed")

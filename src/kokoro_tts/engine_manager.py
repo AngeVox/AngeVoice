@@ -240,9 +240,10 @@ class EngineManager:
         effective_provider_hint = provider_hint or resolution.provider_hint
         self._ensure_resolution_enabled(resolution)
         with self._lock:
-            if load:
-                self._unload_other_loaded_models(target_id)
             engine = self._engines.get(target_id)
+            needs_load = bool(load and (engine is None or not bool(getattr(engine, "is_loaded", False))))
+            if needs_load:
+                self._unload_other_loaded_models(target_id)
             if engine is not None and target_id == "moss" and effective_provider_hint:
                 current_provider = str(getattr(engine, "requested_provider", "") or "").strip().lower()
                 if current_provider and current_provider != effective_provider_hint:
@@ -278,6 +279,18 @@ class EngineManager:
                     raise
                 self._touch_model(target_id)
             return engine
+
+    def warm_model(self, model_id: str, *, provider_hint: str | None = None) -> dict[str, Any]:
+        """Load a model into memory without changing the selected runtime model."""
+        resolution = self.resolve_model_id(model_id)
+        target_id = resolution.canonical_id
+        self._ensure_resolution_enabled(resolution)
+        engine = self.get_engine(
+            target_id,
+            load=True,
+            provider_hint=provider_hint or resolution.provider_hint,
+        )
+        return self._engine_metadata(engine)
 
     def unload_model(self, model_id: str, *, force: bool = False, raise_if_busy: bool = True) -> bool:
         target_id = self.normalize_model_id(model_id)
