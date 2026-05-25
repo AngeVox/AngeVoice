@@ -108,10 +108,17 @@ class TtsWebSocketSession:
         auth_header = self.websocket.headers.get("authorization", "")
         bearer_token = _extract_bearer_token(auth_header)
         has_preauth = bool(preauth_token or bearer_token)
-        if has_preauth and not await verify_ws_key(self.cfg, self.websocket, token=preauth_token):
+
+        # Query-string tokens are treated as explicit handshake authentication
+        # and continue to hard-fail before websocket accept when invalid.
+        if preauth_token and not await verify_ws_key(self.cfg, self.websocket, token=preauth_token):
             with suppress(Exception):
                 await self.websocket.close(code=1008, reason="authentication failed")
             return
+
+        # Bearer pre-auth remains opportunistic so legacy first-message token
+        # authentication keeps working when proxies or stale SDKs attach an
+        # outdated Authorization header during reconnect or key rotation.
         await self.websocket.accept()
         self._transition(WsSessionState.ACCEPTED)
         try:

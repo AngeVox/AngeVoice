@@ -242,8 +242,10 @@ class EngineManager:
         with self._lock:
             engine = self._engines.get(target_id)
             needs_load = bool(load and (engine is None or not bool(getattr(engine, "is_loaded", False))))
+            unloaded_for_target = False
             if needs_load:
                 self._unload_other_loaded_models(target_id)
+                unloaded_for_target = True
             if engine is not None and target_id == "moss" and effective_provider_hint:
                 current_provider = str(getattr(engine, "requested_provider", "") or "").strip().lower()
                 if current_provider and current_provider != effective_provider_hint:
@@ -251,6 +253,10 @@ class EngineManager:
                         raise HTTPException(status_code=409, detail="MOSS provider switch is busy")
                     self.drop_model(target_id, force=False, raise_if_busy=True)
                     engine = None
+                    needs_load = bool(load)
+            if needs_load and engine is None and not unloaded_for_target:
+                self._unload_other_loaded_models(target_id)
+
             if engine is not None and (getattr(engine, "is_healthy", True) is False):
                 logger.info("丢弃异常模型实例后重新创建：%s", target_id)
                 self.drop_model(target_id, force=True, raise_if_busy=False)
