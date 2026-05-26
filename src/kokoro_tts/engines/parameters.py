@@ -1,4 +1,4 @@
-"""Dynamic engine parameter schema and backward-compatible value parsing."""
+"""动态引擎参数模式和向后兼容的值解析。"""
 
 from __future__ import annotations
 
@@ -36,11 +36,10 @@ class EngineParameter:
 
 
 class EngineParameterSchema:
-    """Single registry of public per-engine generation controls.
+    """公共每引擎生成控件的单一注册表。
 
-    Routes submit a generic mapping and no longer validate parameters with
-    model-specific helper functions.  Legacy field names remain the public keys
-    for legacy compatibility.
+    路由提交通用映射，不再使用特定模型的辅助函数验证参数。
+    旧版字段名保留为公共键以保持向后兼容。
     """
 
     def __init__(self):
@@ -87,8 +86,8 @@ class EngineParameterSchema:
         if not available:
             return {}
         raw: dict[str, Any] = {}
-        # Parse legacy top-level fields first, then let the generic
-        # engine_params payload win when both are supplied during migration.
+        # 先解析旧版顶层字段，然后在迁移期间两者都提供时
+        # 让通用 engine_params 负载生效。
         if source is not None:
             for key in available:
                 value = self._lookup(source, key)

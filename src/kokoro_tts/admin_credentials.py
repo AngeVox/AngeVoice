@@ -134,9 +134,9 @@ class AdminCredentialStore:
         try:
             supplied_username = str(username or "")
             expected_username = str(data["username"])
-            # secrets.compare_digest on str only accepts ASCII; compare UTF-8 bytes
-            # so human-facing Unicode administrator names (including Chinese)
-            # remain supported without weakening constant-time equality checks.
+            # secrets.compare_digest 对 str 只接受 ASCII；改用 UTF-8 字节比较，
+            # 这样面向用户的 Unicode 管理员名称（包括中文）
+            # 也能在不削弱常量时间相等检查的前提下正常支持。
             if not secrets.compare_digest(
                 supplied_username.encode("utf-8"), expected_username.encode("utf-8")
             ):

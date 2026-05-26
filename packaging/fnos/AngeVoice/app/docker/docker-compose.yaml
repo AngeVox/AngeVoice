@@ -1,6 +1,6 @@
-# AngeVoice fnOS template: one Compose file with three mutually exclusive profile services.
-# fnOS injects COMPOSE_PROFILES before docker-project creates containers. This is the
-# verified installation mechanism; all deployable images remain on :latest.
+# AngeVoice fnOS 模板：一个 Compose 文件包含三个互斥的 profile 服务。
+# fnOS 在 docker-project 创建容器前注入 COMPOSE_PROFILES。这是经过验证的
+# 安装机制；所有可部署镜像保持 :latest。
 name: angevoice-fnos
 
 services:
@@ -25,7 +25,7 @@ services:
       MOSS_PROCESS_ISOLATION_ENABLED: "true"
       MOSS_PROCESS_ISOLATION_PROVIDERS: "cpu,cuda"
       ZIPVOICE_PROCESS_ISOLATION_ENABLED: "true"
-      ANGEVOICE_ENGINE_PROCESS_KILL_GRACE_SECONDS: "2"
+      ANGEVOICE_ENGINE_PROCESS_KILL_GRACE_SECONDS: "5"
       ANGEVOICE_STARTUP_PRELOAD_ENABLED: "false"
       ANGEVOICE_STARTUP_PRELOAD_MODEL: "kokoro"
       MOSS_EXECUTION_PROVIDER: "cpu"
@@ -76,7 +76,7 @@ services:
       MOSS_PROCESS_ISOLATION_ENABLED: "true"
       MOSS_PROCESS_ISOLATION_PROVIDERS: "cpu,cuda"
       ZIPVOICE_PROCESS_ISOLATION_ENABLED: "true"
-      ANGEVOICE_ENGINE_PROCESS_KILL_GRACE_SECONDS: "2"
+      ANGEVOICE_ENGINE_PROCESS_KILL_GRACE_SECONDS: "5"
       ANGEVOICE_STARTUP_PRELOAD_ENABLED: "false"
       ANGEVOICE_STARTUP_PRELOAD_MODEL: "kokoro"
       MOSS_EXECUTION_PROVIDER: "cuda"
@@ -141,7 +141,7 @@ services:
       MOSS_PROCESS_ISOLATION_ENABLED: "true"
       MOSS_PROCESS_ISOLATION_PROVIDERS: "cpu,cuda"
       ZIPVOICE_PROCESS_ISOLATION_ENABLED: "true"
-      ANGEVOICE_ENGINE_PROCESS_KILL_GRACE_SECONDS: "2"
+      ANGEVOICE_ENGINE_PROCESS_KILL_GRACE_SECONDS: "5"
       ANGEVOICE_STARTUP_PRELOAD_ENABLED: "false"
       ANGEVOICE_STARTUP_PRELOAD_MODEL: "kokoro"
       MOSS_EXECUTION_PROVIDER: "cpu"

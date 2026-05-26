@@ -91,6 +91,7 @@ def _wav_to_mp3(wav_bytes: bytes, bitrate: str = "192k") -> bytes:
         stdout=subprocess.PIPE,
         stderr=subprocess.PIPE,
         check=False,
+        timeout=30,
     )
     if proc.returncode != 0:
         err = proc.stderr.decode("utf-8", errors="ignore") or "ffmpeg mp3 conversion failed"
@@ -249,14 +250,14 @@ def register_extra_routes(
         cfg.voices_dir.mkdir(parents=True, exist_ok=True)
         voices_root = cfg.voices_dir.resolve()
         target = voices_root / filename
-        # The basename check prevents normal traversal; resolved-parent and symlink
-        # checks prevent a pre-created link in a writable volume from redirecting writes.
+        # basename 检查防止常规遍历；解析父目录和符号链接
+        # 检查防止可写卷中预先创建的链接重定向写入。
         if target.parent.resolve() != voices_root:
             raise HTTPException(status_code=400, detail="Invalid voice file path")
         if target.is_symlink() or (target.exists() and not target.is_file()):
             raise HTTPException(status_code=409, detail="Voice target is not a regular file")
-        # Keep the resolved destination within the configured voice root even if the
-        # underlying filesystem contains unusual links or mount redirections.
+        # 即使底层文件系统包含异常链接或挂载重定向，
+        # 也将解析后的目标保持在配置的音色根目录内。
         try:
             target.resolve(strict=False).relative_to(voices_root)
         except ValueError as exc:

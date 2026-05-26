@@ -111,8 +111,8 @@ class MossNanoEngine(MossStreamingMixin):
 
     @property
     def is_healthy(self) -> bool:
-        # Loaded state and health are separate: an intentionally idle/unloaded
-        # engine is not poisoned and must not be recreated on every status read.
+        # 加载状态和健康状态是分开的：故意空闲/卸载的
+        # 引擎没有被污染，不应在每次状态读取时重建。
         return not self._unhealthy
 
     @property
@@ -281,11 +281,10 @@ class MossNanoEngine(MossStreamingMixin):
         if self._process_client is not None:
             self._process_client.close(kill=bool(force))
             self._process_client = None
-        # A non-isolated ONNX runtime cannot be interrupted once its worker is
-        # executing.  After a timeout, never block the service waiting for the
-        # old worker's lock: EngineManager drops this poisoned instance and
-        # builds a fresh engine object.  Formal Docker/fnOS profiles enable
-        # process isolation so the timed-out worker can be killed cleanly.
+        # 非隔离的 ONNX 运行时一旦 worker 开始执行就无法中断。
+        # 超时后，绝不阻塞服务等待旧 worker 的锁：EngineManager 丢弃
+        # 此受损实例并构建全新的引擎对象。正式的 Docker/fnOS 配置
+        # 启用进程隔离，以便超时的 worker 可被干净地杀死。
         lock_acquired = False
         if force or self._unhealthy:
             lock_acquired = self._runtime_lock.acquire(timeout=0.25)
@@ -329,6 +328,11 @@ class MossNanoEngine(MossStreamingMixin):
         return write_wav_bytes(waveform, self.sample_rate)
 
     def synthesize_array(self, text: str, voice: str = "", speed: float = 1.0, prompt_audio_path: str | None = None):
+        """非流式合成。
+
+        进程隔离模式下超时可终止子进程；非隔离模式下 cancel 仅在推理
+        帧间隙生效，无法中断正在进行的 ONNX/CUDA 单帧推理。
+        """
         self._validate_request(text=text, voice=voice, speed=speed)
         prepared_text = self._clean_text(text)
         segments = self._segment_text(prepared_text)
@@ -817,7 +821,7 @@ class MossNanoEngine(MossStreamingMixin):
         import numpy as np
 
         if not self._runtime_supports_frame_streaming():
-            raise RuntimeError("MOSS runtime does not support incremental codec streaming")
+            raise RuntimeError("MOSS 运行时不支持增量编解码流式传输")
         pending_decode_frames: list[list[int]] = []
         waveforms: list = []
         self._runtime.codec_streaming_session.reset()

@@ -90,9 +90,8 @@ class EngineRegistry:
                 raise HTTPException(status_code=404, detail="MOSS CUDA provider is disabled")
             return MossAdapter(cfg, requested_provider=provider)
         if model_id == "zipvoice":
-            # Runtime imports are deliberately lazy: registry metadata must stay
-            # lightweight, and direct imports of zipvoice.engine must not recurse
-            # through engines -> registry -> adapters -> zipvoice.engine.
+            # 运行时导入故意延迟：注册表元数据必须保持轻量，
+            # 直接导入 zipvoice.engine 不能通过 engines -> registry -> adapters -> zipvoice.engine 递归。
             from ..zipvoice.engine import ZipVoiceEngine
 
             provider = provider_hint or self.provider_policy.requested_provider("zipvoice", cfg, cfg.enabled_models)
@@ -100,9 +99,8 @@ class EngineRegistry:
         raise HTTPException(status_code=404, detail=f"Unknown model: {model_id}")
 
     def capabilities_for(self, spec: EngineSpec, cfg: TTSConfig) -> EngineCapabilities:
-        # Never instantiate a runtime only to render the catalog. MOSS creates
-        # worker/executor state during construction, which would leak on every
-        # /health or /v1/models request if we created temporary adapters here.
+        # 不能仅为渲染目录就实例化运行时。MOSS 在构造时创建 worker/executor 状态，
+        # 每次 /health 或 /v1/models 请求都会泄漏。
         if spec.id == "kokoro":
             return EngineCapabilities(
                 modes=("preset_voice",),

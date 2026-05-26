@@ -83,7 +83,7 @@ class ServiceState:
         return uuid.uuid4().hex[:12]
 
     async def try_acquire_websocket_connection(self) -> bool:
-        """Reserve one WebSocket session slot before accepting the handshake."""
+        """在接受握手前预留一个 WebSocket 会话槽位。"""
         limit = max(0, int(getattr(self.cfg, "websocket_max_connections", 0) or 0))
         async with self._websocket_connection_lock:
             if limit and self._websocket_connections >= limit:
@@ -216,7 +216,7 @@ class ServiceState:
         return self.runtime_resources.release(clear_cache=clear_cache, unload_models=unload_models, include_current=include_current)
 
     def _zipvoice_prompt_context(self, model_id: str, voice: str, prompt_audio_path: str | None, prompt_audio_id: str, prompt_text: str) -> tuple[str | None, str, str, str]:
-        """Compatibility proxy for legacy tests and older internal callers."""
+        """兼容旧测试和旧版内部调用者的代理。"""
         condition = self.voice_profiles.resolve_condition(
             model_id, voice, prompt_audio_path=prompt_audio_path, prompt_audio_id=prompt_audio_id, prompt_text=prompt_text
         )
@@ -233,18 +233,17 @@ class ServiceState:
             item.update({"status": status, "updated_at": time.time(), **extra})
 
     def request_snapshot(self, *, limit: int | None = None, recent_first: bool = True) -> list[dict]:
-        """Return a stable request snapshot without exposing the live shared mapping."""
+        """返回稳定请求快照，不暴露实时共享映射。"""
         with self.request_lock:
             values = [dict(item) for item in self.active_requests.values()]
         values.sort(key=lambda item: float(item.get("updated_at", 0) or 0), reverse=recent_first)
         return values[:limit] if limit is not None else values
 
     def _prune_request_history(self, *, maximum: int = 100, remove_count: int = 20) -> None:
-        """Prune completed history entries without removing running requests.
+        """清理已完成的历史记录条目，不移除正在运行的请求。
 
-        The mapping is small and bounded, so selecting and removing entries under
-        the same lock is preferable to a two-phase scan that can race with status
-        updates from a concurrent synthesis request.
+        该映射小且有界，因此在同一锁下选择和删除条目
+        优于可能与并发合成请求状态更新竞争的两阶段扫描。
         """
         terminal = {"done", "error", "timeout", "cancelled"}
         with self.request_lock:

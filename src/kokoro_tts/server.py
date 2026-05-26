@@ -181,8 +181,8 @@ def _export_config_for_workers(cfg: TTSConfig) -> None:
     for env_name, attr in _WORKER_ENV_EXPORTS.items():
         os.environ[env_name] = _stringify_env_value(getattr(cfg, attr))
     os.environ["KOKORO_CORS_ORIGINS"] = ",".join(cfg.cors_origins)
-    # API keys remain in the durable credentials file or operator-provided env;
-    # never inject a rotated/generated secret into the parent worker environment.
+    # API 密钥保留在持久凭证文件或运维人员提供的环境变量中；
+    # 绝不将轮换/生成的密钥注入父 worker 环境。
     if cfg.moss_model_dir:
         os.environ["MOSS_MODEL_DIR"] = str(cfg.moss_model_dir)
     if cfg.moss_audio_tokenizer_model_dir:
@@ -214,8 +214,8 @@ def create_app(config: Optional[TTSConfig] = None, engine: Optional[TTSEngine] =
 
     @asynccontextmanager
     async def lifespan(app):
-        # Selecting a Studio default must not force weights into PID 1.
-        # Optional startup preload always follows the configured adapter/worker path.
+        # 选择 Studio 默认值不应强制将权重加载到 PID 1。
+        # 可选的启动预加载始终遵循配置的适配器/worker 路径。
         state.model_manager.switch_model(cfg.default_model, load=False)
         if bool(getattr(cfg, "startup_preload_enabled", False)):
             preload_model = str(getattr(cfg, "startup_preload_model", "") or cfg.default_model)

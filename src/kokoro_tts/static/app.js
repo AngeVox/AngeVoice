@@ -1416,14 +1416,23 @@ async function synthesizeStream(text, voice, speed) {
   }
 
   const protocol = location.protocol === 'https:' ? 'wss:' : 'ws:';
-  state.currentWs = new WebSocket(`${protocol}//${location.host}/ws/v1/tts`);
+  // Capture the WebSocket instance in a local variable so that all event
+  // handlers below close over *this specific connection*.  If the user
+  // stops and starts a new synthesis before the old WebSocket closes,
+  // state.currentWs will already point to the new connection.  Guards
+  // like `if (ws !== state.currentWs) return;` ensure the stale handlers
+  // of the old connection never touch the new connection's state.
+  const ws = new WebSocket(`${protocol}//${location.host}/ws/v1/tts`);
+  state.currentWs = ws;
   state.currentPlayer = new StreamPlayer();
   state.currentRequestId = '';
   state.lastBlob = null;
   state.totalSegments = 0;
   state.totalAudioChunks = 0;
 
-  state.currentWs.onopen = () => {
+  ws.onopen = () => {
+    // Guard: a new synthesis may have replaced state.currentWs already.
+    if (ws !== state.currentWs) { try { ws.close(); } catch (_) {} return; }
     const payload = {
       text,
       model: state.selectedModel,
@@ -1443,16 +1452,17 @@ async function synthesizeStream(text, voice, speed) {
     if (modelRequiresPromptText() && !voice && promptAudio) {
       if (!els.promptText.value.trim()) {
         setProgress('当前模型临时克隆需要填写参考文本', true);
-        cleanupWs(true);
+        cleanupWs(ws, true);
         return;
       }
       // 临时克隆才发送参考文本；已保存音色仅由服务端读取其固化的参考条件。
       payload.prompt_text = els.promptText.value.trim();
     }
-    state.currentWs.send(JSON.stringify(payload));
+    ws.send(JSON.stringify(payload));
   };
 
-  state.currentWs.onmessage = event => {
+  ws.onmessage = event => {
+    if (ws !== state.currentWs) return;
     if (typeof event.data !== 'string') return;
     const msg = JSON.parse(event.data);
     if (msg.request_id) {
@@ -1476,34 +1486,47 @@ async function synthesizeStream(text, voice, speed) {
         els.audio.src = URL.createObjectURL(state.lastBlob);
       }
       setProgress(`合成完成：文本 ${msg.total_segments || state.totalSegments} 段，音频块 ${msg.total_audio_chunks || state.totalAudioChunks}`);
-      cleanupWs(false);
+      cleanupWs(ws, false);
     } else if (msg.type === 'cancelled') {
       setProgress('已停止', true);
-      cleanupWs(false);
+      cleanupWs(ws, false);
     } else if (msg.type === 'error' || msg.type === 'segment_error') {
       setProgress(msg.message || '流式合成失败', true);
-      cleanupWs(true);
+      cleanupWs(ws, true);
     }
   };
 
-  state.currentWs.onerror = () => {
+  ws.onerror = () => {
+    if (ws !== state.currentWs) return;
     setProgress('WebSocket 连接失败', true);
-    cleanupWs(true);
+    cleanupWs(ws, true);
   };
 
-  state.currentWs.onclose = () => {
-    cleanupWs(false);
+  ws.onclose = () => {
+    if (ws !== state.currentWs) return;
+    cleanupWs(ws, false);
   };
 }
 
-function cleanupWs(hadError) {
-  if (state.currentWs) {
-    state.currentWs.onclose = null;
-    try {
-      state.currentWs.close();
-    } catch (_) {
-      // 连接已经关闭。
-    }
+function cleanupWs(ws, hadError) {
+  // Guard: only clean up state if this WebSocket is still the active one.
+  // If a new synthesis has already started, state.currentWs points to the
+  // new connection and we must not touch it here.
+  if (ws !== state.currentWs) {
+    // The caller's WS is stale; just make sure it's closed and bail out.
+    try { ws.close(); } catch (_) {}
+    return;
+  }
+  // Detach all handlers before closing so that ws.close() below does not
+  // re-trigger this function through the onclose event.
+  ws.onopen = null;
+  ws.onmessage = null;
+  ws.onerror = null;
+  ws.onclose = null;
+  try {
+    ws.close();
+  } catch (_) {
+    // 连接已经关闭。
   }
   state.currentWs = null;
   setBusy(false);
@@ -1534,13 +1557,29 @@ async function stopCurrent() {
   }
   if (state.currentAbort) {
     state.currentAbort.abort();
+    state.currentAbort = null;
   }
-  if (state.currentWs?.readyState === WebSocket.OPEN) {
-    state.currentWs.send(JSON.stringify({ type: 'cancel' }));
+  // Detach all handlers from the current WebSocket BEFORE sending cancel and
+  // before closing, so that the ws.onclose event does not fire cleanupWs and
+  // accidentally interfere with a new synthesis that may start right after.
+  const ws = state.currentWs;
+  if (ws) {
+    ws.onopen = null;
+    ws.onmessage = null;
+    ws.onerror = null;
+    ws.onclose = null;
+    state.currentWs = null;
+    if (ws.readyState === WebSocket.OPEN) {
+      try { ws.send(JSON.stringify({ type: 'cancel' })); } catch (_) {}
+    }
+    try { ws.close(); } catch (_) {}
   }
   if (state.currentRequestId) {
     apiFetch(`/v1/audio/requests/${state.currentRequestId}/cancel`, { method: 'POST' }).catch(() => {});
+    state.currentRequestId = '';
   }
+  // Mark as idle immediately so the UI is responsive for the next action.
+  setBusy(false);
   setProgress('已停止', true);
   updateButtons();
 }
@@ -1569,6 +1608,10 @@ function bindSpotlights() {
 function bindEvents() {
   els.form.addEventListener('submit', async event => {
     event.preventDefault();
+    // Block re-submission while synthesis is already in progress.
+    // The generate button is disabled in this state, but form submission
+    // can still fire via keyboard (Enter) even on a disabled button.
+    if (state.busy) return;
     const text = els.text.value.trim();
     if (!text) {
       setProgress('请输入文本', true);

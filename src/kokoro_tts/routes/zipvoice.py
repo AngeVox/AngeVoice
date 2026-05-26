@@ -45,8 +45,8 @@ def create_zipvoice_router(state: ServiceState, verify_api_key) -> APIRouter:
     router = APIRouter()
     cfg = state.cfg
     assets = ZipVoiceAssetManager(cfg)
-    # Register ZipVoice-specific reference prompts behind the generic profile service seam.
-    # Future adapters register their own prompts without changing Studio or public routes.
+    # 在通用配置档案服务接缝后注册 ZipVoice 专用参考提示。
+    # 未来的适配器可注册自己的提示，无需更改 Studio 或公共路由。
     state.voice_profiles.register_recommended_prompts("zipvoice", _recommendations())
 
     def require_profile_engine(engine: str) -> str:
@@ -137,7 +137,7 @@ def create_zipvoice_router(state: ServiceState, verify_api_key) -> APIRouter:
 
     @router.get("/v1/zipvoice/recommended-prompts")
     async def recommended_prompts():
-        # legacy compatibility endpoint. New UI uses /v1/reference-audio/{engine}/recommended-prompts.
+        # 旧版兼容端点。新版 UI 使用 /v1/reference-audio/{engine}/recommended-prompts。
         return {"engine": "zipvoice", "recommended_duration_seconds": "<3", "maximum_duration_seconds": state.voice_profiles.reference_max_seconds("zipvoice"), "items": state.voice_profiles.recommended_prompts("zipvoice")}
 
     @router.get("/v1/voice-profiles")

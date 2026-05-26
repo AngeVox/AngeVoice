@@ -15,7 +15,7 @@ Usage:
     angevoice voices
 """
 
-__version__ = "2.6.601"
+__version__ = "2.6.602"
 
 
 def __getattr__(name):

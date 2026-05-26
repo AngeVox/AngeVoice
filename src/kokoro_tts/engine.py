@@ -1,7 +1,7 @@
-"""AngeVoice core TTS engine.
+"""AngeVoice 核心 TTS 引擎。
 
-Built on Kokoro v1.1 Chinese model. Heavy dependencies such as numpy, torch and
-kokoro are imported lazily when the model is loaded or audio is encoded.
+基于 Kokoro v1.1 中文模型构建。numpy、torch 和 kokoro 等重依赖
+在加载模型或编码音频时按需导入。
 """
 
 from __future__ import annotations
@@ -41,10 +41,10 @@ _DIGITS_ZH_READING = {**_DIGITS_ZH, "1": "幺"}
 
 
 def _spell_digits(text: str, use_yao: bool = False) -> str:
-    """Read a digit sequence one digit at a time.
+    """逐个读取数字序列。
 
-    Do not insert spaces here. Spaces can make Chinese TTS sound choppy and can
-    also leak into normalized dates/IDs.
+    此处不要插入空格。空格会让中文 TTS 听起来断断续续，
+    也可能泄漏到规范化的日期/ID 中。
     """
     table = _DIGITS_ZH_READING if use_yao else _DIGITS_ZH
     return "".join(table.get(ch, ch) for ch in text)
@@ -152,11 +152,10 @@ _DATE_CONTEXT_WORDS = ("今天", "明天", "昨天", "后天", "前天", "今年
 
 
 def _looks_like_short_date_context(text: str, start: int, end: int) -> bool:
-    """Heuristically decide whether M.D / M-D should be read as month-day.
+    """启发式判断 M.D / M-D 是否应按月-日读取。
 
-    This intentionally avoids converting naked decimals and common software
-    versions. A shorthand date needs an explicit date marker around it, e.g.
-    ``4.20号``、``4.20更新``、``活动在4.20``.
+    这里有意避免转换裸小数和常见软件版本号。简写日期需要
+    显式的日期标记，例如 ``4.20号``、``4.20更新``、``活动在4.20``。
     """
 
     before = text[max(0, start - 8):start]
@@ -173,7 +172,7 @@ def _looks_like_short_date_context(text: str, start: int, end: int) -> bool:
 
 
 def _normalize_short_month_day(text: str) -> str:
-    """Normalize context-backed M.D shorthand dates before decimal handling."""
+    """在小数处理前规范化有上下文支持的 M.D 简写日期。"""
 
     def repl(match: re.Match[str]) -> str:
         month = int(match.group("month"))
@@ -191,11 +190,10 @@ def _normalize_short_month_day(text: str) -> str:
     )
 
 def normalize_text_for_tts(text: str, model: str = "kokoro") -> str:
-    """Normalize common Chinese TTS patterns before synthesis.
+    """在合成前规范化常见的中文 TTS 模式。
 
-    This intentionally stays conservative. It handles common phone numbers,
-    dates, money, percentages and long numeric IDs without trying to become a
-    full Chinese TN engine.
+    这里有意保持保守。它处理常见电话号码、日期、金额、百分比
+    和长数字 ID，而不试图成为一个完整的中文 TN 引擎。
     """
     if not text:
         return text
@@ -266,7 +264,7 @@ def normalize_text_for_tts(text: str, model: str = "kokoro") -> str:
 
 
 class TTSEngine:
-    """Kokoro v1.1 backed TTS engine."""
+    """基于 Kokoro v1.1 的 TTS 引擎。"""
 
     engine_id = "kokoro"
     display_name = "Kokoro v1.1 Chinese"
@@ -390,8 +388,8 @@ class TTSEngine:
 
             # Kokoro 的 repo_id 必须始终是合法的 Hugging Face 仓库名。
             # 即使使用 /app/models 这样的本地模型目录，也不能把绝对路径传给 repo_id，
-            # 否则 huggingface_hub 会报：
-            #   Repo id must be in the form 'repo_name' or 'namespace/repo_name': '/app/models'
+            # 否则 huggingface_hub 会报错：
+            #   仓库名格式必须为 'repo_name' 或 'namespace/repo_name'：'/app/models'
             # 本地模型通过 config/model 显式路径加载；repo_id 只保留为合法标识，
             # 供 Kokoro 内部默认映射和 Pipeline 初始化使用。
             repo_id = self._safe_kokoro_repo_id()

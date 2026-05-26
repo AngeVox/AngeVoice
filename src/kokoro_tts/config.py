@@ -95,9 +95,9 @@ class TTSConfig:
     stream_binary_enabled: bool = True
     stream_chunk_seconds: float = 0.55
     stream_prebuffer_seconds: float = 0.25
-    # WebSocket resource guardrails. 0 max connections explicitly disables the connection cap.
+    # WebSocket 资源保护。0 最大连接数显式禁用连接上限。
     websocket_max_connections: int = 16
-    # Supports up to a 20 MiB reference audio upload after base64 expansion plus JSON overhead.
+    # 支持 base64 解码后最多 20 MiB 参考音频上传加 JSON 开销。
     websocket_max_message_bytes: int = 32 * 1024 * 1024
 
     cache_enabled: bool = True
@@ -120,7 +120,7 @@ class TTSConfig:
 
     enabled_models: list[str] = field(default_factory=lambda: ["kokoro"])
     default_model: str = "kokoro"
-    # Studio default selection is independent from optional cold-start preload.
+    # Studio 默认选择与可选冷启动预加载独立。
     startup_preload_enabled: bool = False
     startup_preload_model: str = "kokoro"
     model_switch_enabled: bool = True
@@ -186,7 +186,7 @@ class TTSConfig:
     moss_output_target_peak: float = 0.86
     moss_output_gain: float = 0.94
     moss_process_isolation_enabled: bool = False
-    # Library defaults preserve embedding compatibility; official deployment templates enable isolation.
+    # 库默认值保持嵌入兼容性；正式部署模板启用隔离。
     kokoro_process_isolation_enabled: bool = False
     zipvoice_process_isolation_enabled: bool = False
     engine_process_kill_grace_seconds: float = 2.0

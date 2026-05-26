@@ -26,11 +26,11 @@ logger = logging.getLogger(__name__)
 
 
 class WebSocketPayloadTooLarge(ValueError):
-    """Raised when an inbound WebSocket JSON message exceeds configured limits."""
+    """入站 WebSocket JSON 消息超过配置限制时抛出。"""
 
 
 class WebSocketPayloadInvalid(ValueError):
-    """Raised when an inbound WebSocket frame is not a JSON object."""
+    """入站 WebSocket 帧不是 JSON 对象时抛出。"""
 
 
 class WsSessionState(str, Enum):
@@ -75,11 +75,11 @@ class TtsWebSocketSession:
         logger.debug("WS state -> %s", phase.value, extra={"request_id": self.request_id, "phase": phase.value, **extra})
 
     async def _receive_json_limited(self) -> dict:
-        """Read a JSON object while enforcing a per-message allocation budget.
+        """读取 JSON 对象，同时强制执行每条消息的分配预算。
 
-        ``run_server`` also forwards this limit to Uvicorn as ``ws_max_size`` so
-        normal deployments reject large frames before decoding. This route-level
-        guard remains effective under TestClient or alternative ASGI launchers.
+        ``run_server`` 还将此限制作为 ``ws_max_size`` 转发给 Uvicorn，
+        以便正常部署在解码前拒绝大帧。此路由级保护在 TestClient
+        或替代 ASGI 启动器下仍然有效。
         """
         frame = await self.websocket.receive()
         if frame.get("type") == "websocket.disconnect":
@@ -101,24 +101,24 @@ class TtsWebSocketSession:
         return value
 
     async def run(self) -> None:
-        # New clients can authenticate during the handshake through Authorization
-        # or ?token=, allowing invalid connections to be refused before accept.
-        # The first-message token remains supported for existing Studio clients.
+        # 新客户端可以在握手期间通过 Authorization
+        # 或 ?token= 进行身份验证，允许在接受前拒绝无效连接。
+        # 首条消息 token 仍为现有 Studio 客户端支持。
         preauth_token = str(self.websocket.query_params.get("token", "") or "")
         auth_header = self.websocket.headers.get("authorization", "")
         bearer_token = _extract_bearer_token(auth_header)
         has_preauth = bool(preauth_token or bearer_token)
 
-        # Query-string tokens are treated as explicit handshake authentication
-        # and continue to hard-fail before websocket accept when invalid.
+        # 查询字符串 token 被视为显式握手身份验证，
+        # 无效时继续在 websocket 接受前硬失败。
         if preauth_token and not await verify_ws_key(self.cfg, self.websocket, token=preauth_token):
             with suppress(Exception):
                 await self.websocket.close(code=1008, reason="authentication failed")
             return
 
-        # Bearer pre-auth remains opportunistic so legacy first-message token
-        # authentication keeps working when proxies or stale SDKs attach an
-        # outdated Authorization header during reconnect or key rotation.
+        # Bearer 预认证保持机会主义，以便旧版首条消息 token
+        # 认证在代理或过时 SDK 在重连或密钥轮换期间附加
+        # 过期 Authorization 头时仍能正常工作。
         await self.websocket.accept()
         self._transition(WsSessionState.ACCEPTED)
         try:
@@ -298,7 +298,7 @@ class TtsWebSocketSession:
         await self._notify_cancelled()
 
     def _thread_put(self, item) -> bool:
-        """Put a producer frame without letting a stalled consumer pin a worker forever."""
+        """放入生产者帧，不让停滞的消费者永久占用 worker。"""
         assert self.loop is not None
         queue_wait_limit = min(max(float(getattr(self.cfg, "request_timeout_seconds", 30) or 30), 1.0), 30.0)
         deadline = time.monotonic() + queue_wait_limit
@@ -341,10 +341,9 @@ class TtsWebSocketSession:
         finally:
             if self.loop is not None:
                 if self.cancel_event.is_set() or self.state.is_cancelled(self.request_id):
-                    # Create the coroutine inside the loop callback only after the callback
-                    # has actually been accepted. This avoids leaking an un-awaited
-                    # coroutine when the event loop closes between producer shutdown
-                    # and call_soon_threadsafe().
+                    # 仅在回调被实际接受后才在循环回调内创建协程。
+                    # 这避免了在生产者关闭和 call_soon_threadsafe() 之间
+                    # 事件循环关闭时泄漏未等待的协程。
                     if not self.loop.is_closed():
                         with suppress(RuntimeError):
                             self.loop.call_soon_threadsafe(self._schedule_cancelled_notice)
@@ -353,11 +352,11 @@ class TtsWebSocketSession:
                         self._thread_put(self.done_marker)
 
     def _schedule_cancelled_notice(self) -> None:
-        """Notify cancellation from the event-loop thread without pre-creating a coroutine."""
+        """从事件循环线程通知取消，无需预先创建协程。"""
         asyncio.create_task(self._notify_cancelled())
 
     def _record_stream_error(self, message: str) -> None:
-        """Record one terminal stream error per request, even if multiple frames are malformed."""
+        """记录每个请求的一个终止流错误，即使多个帧格式错误。"""
         self._transition(WsSessionState.ERROR, reason="stream-error-frame")
         self.saw_stream_error = True
         if not self.stream_error_counted:

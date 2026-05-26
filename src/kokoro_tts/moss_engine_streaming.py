@@ -1,7 +1,7 @@
-"""Streaming methods for the MOSS-TTS-Nano AngeVoice adapter.
+"""MOSS-TTS-Nano AngeVoice 适配器的流式方法。
 
-Kept as a mixin so ``moss_engine.py`` remains focused on lifecycle and
-non-streaming synthesis while this module owns WebSocket/streaming behavior.
+作为 mixin 保留，使 ``moss_engine.py`` 专注于生命周期和非流式合成，
+而本模块负责 WebSocket/流式行为。
 """
 
 from __future__ import annotations
@@ -39,6 +39,12 @@ class MossStreamingMixin:
         prompt_audio_path: str | None = None,
         cancel_check: Callable[[], bool] | None = None,
     ):
+        """流式合成。
+
+        进程隔离模式下，cancel_check 通过共享内存标志通知子进程在帧间隙停止，
+        不杀进程，模型保持加载。非隔离模式下，cancel_check 在帧间隙检查，
+        无法中断正在进行的 ONNX/CUDA 单帧推理。
+        """
         if fmt not in self.SUPPORTED_STREAM_FORMATS:
             yield {"type": "error", "message": f"Unsupported format: {fmt}"}
             return

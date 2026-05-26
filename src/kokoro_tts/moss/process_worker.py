@@ -44,10 +44,12 @@ class MossProcessClient:
         self._result_queue = None
         self._process: mp.Process | None = None
         self._lifecycle_lock = threading.RLock()
-        # One MOSS runtime must have only one result-queue consumer. This mirrors
-        # the generic worker contract used by Kokoro/ZipVoice and prevents
-        # concurrent HTTP/WebSocket requests from stealing each other's frames.
+        # 一个 MOSS 运行时只能有一个结果队列消费者。这与 Kokoro/ZipVoice
+        # 使用的通用 worker 契约一致，防止并发 HTTP/WebSocket 请求互相抢帧。
         self._request_lock = threading.RLock()
+        # 共享内存标志：主进程置 1 通知 worker 子进程放弃当前 synthesize_stream，
+        # 但不杀进程。worker 在每次新命令开始时重置为 0。
+        self._cancel_flag = self._ctx.Value("b", 0)
 
     @property
     def alive(self) -> bool:
@@ -56,7 +58,7 @@ class MossProcessClient:
 
     @property
     def pid(self) -> int | None:
-        """PID of the live isolated MOSS worker, when available."""
+        """存活的隔离 MOSS worker 的 PID（如果可用）。"""
 
         return self._process.pid if self.alive and self._process is not None else None
 
@@ -66,13 +68,20 @@ class MossProcessClient:
         with self._lifecycle_lock:
             if self.alive:
                 return
-            # A killed or cancelled worker may leave commands/results behind.
-            # A new queue generation makes the next wake-up deterministic.
+            # 被杀死或取消的 worker 可能残留命令/结果。
+            # 新的队列代次让下次唤醒变为确定性的。
             self._command_queue = self._ctx.Queue()
             self._result_queue = self._ctx.Queue()
+            # 启动新 worker 进程时重置取消标志。
+            try:
+                self._cancel_flag.value = 0
+            except Exception:
+                if self.logger:
+                    self.logger.debug("重置 cancel_flag 失败", exc_info=True)
             self._process = self._ctx.Process(
                 target=_worker_main,
-                args=(self.config, self.provider, self.engine_id, self._command_queue, self._result_queue),
+                args=(self.config, self.provider, self.engine_id,
+                      self._command_queue, self._result_queue, self._cancel_flag),
                 name=f"{self.engine_id}-process-worker",
                 daemon=True,
             )
@@ -93,7 +102,9 @@ class MossProcessClient:
         if process is None:
             self._discard_queues()
             return
-        grace = float(getattr(self.config, "moss_process_kill_grace_seconds", 2.0) or 2.0)
+        # CUDA 上下文（context）销毁可能需要额外时间；kill 模式给更长的宽限期。
+        base_grace = float(getattr(self.config, "moss_process_kill_grace_seconds", 2.0) or 2.0)
+        grace = max(base_grace, 5.0) if kill else base_grace
         if process.is_alive() and not kill:
             try:
                 if self._command_queue is not None:
@@ -108,6 +119,12 @@ class MossProcessClient:
             process.kill()
             process.join(timeout=min(1.0, grace))
         self._process = None
+        # 在下次全新启动前重置取消标志。
+        try:
+            self._cancel_flag.value = 0
+        except Exception:
+            if self.logger:
+                self.logger.debug("重置 cancel_flag 失败", exc_info=True)
         self._discard_queues()
 
     def request(self, command: str, payload: dict | None = None, *, timeout: float) -> object:
@@ -133,20 +150,43 @@ class MossProcessClient:
         """发送一次流式请求；同一 Worker 的结果消费严格串行。"""
 
         with self._request_lock:
+            # 确保取消标志在新请求开始前清空，避免上一次软取消信号泄漏到本次请求。
+            try:
+                self._cancel_flag.value = 0
+            except Exception:
+                if self.logger:
+                    self.logger.debug("重置 cancel_flag 失败", exc_info=True)
             request_id = self._send(command, payload or {})
             idle_timeout = max(1.0, float(timeout))
             deadline = time.monotonic() + idle_timeout
+            drain_deadline: float | None = None
             while True:
                 if cancel_check is not None:
                     try:
                         if cancel_check():
-                            self.close(kill=True)
-                            return
+                            # 向 worker 子进程发送软取消信号（在 yield 间隙检查），
+                            # 而非杀掉整个进程重新加载 MOSS 模型。
+                            # worker 在下一个命令开始时重置标志，故为一次性信号。
+                            try:
+                                self._cancel_flag.value = 1
+                            except Exception:
+                                if self.logger:
+                                    self.logger.debug("设置 cancel_flag 失败", exc_info=True)
+                            # cancel 后设置 drain 上限，避免 stale frames 无限重置 deadline。
+                            drain_deadline = time.monotonic() + 5.0
                     except Exception:
                         if self.logger:
                             self.logger.debug("MOSS worker cancel_check 失败", exc_info=True)
                 remaining = deadline - time.monotonic()
+                if drain_deadline is not None:
+                    drain_remaining = drain_deadline - time.monotonic()
+                    if drain_remaining <= 0:
+                        # cancel 后 stale frames 超出宽限时间，强制终止 worker。
+                        self.close(kill=True)
+                        return
+                    remaining = min(remaining, drain_remaining)
                 if remaining <= 0:
+                    # 硬超时：worker 确实卡死了，kill 合理。
                     self.close(kill=True)
                     raise MossProcessTimeoutError(f"MOSS worker stream idle timed out after {timeout}s")
                 process = self._process
@@ -158,10 +198,16 @@ class MossProcessClient:
                     continue
                 result = MossWorkerResult(*raw)
                 if result.request_id != request_id:
+                    # 上一次取消请求的残留帧，worker 仍在排空。
+                    # worker 存活且在工作，重置 deadline 避免伪超时；
+                    # 但若已处于 cancel drain 阶段则不重置 drain_deadline。
+                    deadline = time.monotonic() + idle_timeout
                     if self.logger:
                         self.logger.debug("丢弃过期 MOSS worker 流式消息：%s", result.request_id)
                     continue
                 deadline = time.monotonic() + idle_timeout
+                # 收到属于当前请求的帧，清除 drain 状态。
+                drain_deadline = None
                 if result.kind == "event":
                     yield result.payload
                     continue
@@ -231,7 +277,8 @@ class MossProcessClient:
         self._result_queue = None
 
 
-def _worker_main(config, provider: str, engine_id: str, command_queue, result_queue) -> None:
+def _worker_main(config, provider: str, engine_id: str,
+                 command_queue, result_queue, cancel_flag) -> None:
     """子进程主循环。"""
 
     engine = None
@@ -247,6 +294,12 @@ def _worker_main(config, provider: str, engine_id: str, command_queue, result_qu
 
     while True:
         request_id, command, payload = command_queue.get()
+        # 在每个命令开始时重置取消标志，
+        # 避免之前的软取消信号意外中止下一个请求。
+        try:
+            cancel_flag.value = 0
+        except Exception:
+            pass  # 子进程内无法用 logger，静默处理
         if command == "shutdown":
             try:
                 if engine is not None:
@@ -266,9 +319,26 @@ def _worker_main(config, provider: str, engine_id: str, command_queue, result_qu
                 result = current.synthesize_array(**payload)
                 result_queue.put((request_id, "result", result))
             elif command == "synthesize_stream":
+                cancelled = False
                 for item in current.synthesize_stream(**payload):
+                    # 在每个 yield 的帧之间检查共享取消标志。
+                    # 这允许主进程中止流消费，
+                    # 而无需杀死 worker 进程或重新加载 MOSS 模型。
+                    try:
+                        if cancel_flag.value:
+                            cancelled = True
+                            break
+                    except Exception:
+                        pass
                     result_queue.put((request_id, "event", item))
+                # 始终发送终止消息，以便消费者可以干净地排空。
                 result_queue.put((request_id, "done", None))
+                if cancelled:
+                    # 立即重置标志，使下一个命令能干净启动。
+                    try:
+                        cancel_flag.value = 0
+                    except Exception:
+                        pass  # 子进程内无法用 logger
             elif command == "unload":
                 current.unload()
                 engine = None

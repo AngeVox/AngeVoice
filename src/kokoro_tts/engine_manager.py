@@ -31,9 +31,9 @@ class EngineManager:
         self.cfg = cfg
         self.registry = EngineRegistry()
         self._voice_profile_service = None
-        # Lifecycle transitions intentionally re-enter public helpers while the
-        # rollback boundary is held (switch -> load/unload/drop).  RLock keeps
-        # that transaction atomic; replacing it with Lock would deadlock.
+        # 生命周期转换有意在持有回滚边界时重入公共辅助方法
+        # （切换 -> 加载/卸载/丢弃）。RLock 保持该事务原子性；
+        # 替换为 Lock 会导致死锁。
         self._lock = threading.RLock()
         self._engines: dict[str, object] = {}
         self._current_model_id = self.normalize_model_id(cfg.default_model)
@@ -53,7 +53,7 @@ class EngineManager:
         return self._current_model_id
 
     def bind_voice_profile_service(self, service) -> None:
-        """Bind the single profile owner used by profile-capable adapters."""
+        """绑定支持配置档案适配器使用的唯一配置档案所有者。"""
         with self._lock:
             self._voice_profile_service = service
             existing = self._engines.get("zipvoice")
@@ -126,7 +126,7 @@ class EngineManager:
             self._idle_timer = None
 
     def resolve_model_id(self, model_id: str | None):
-        """Resolve public and legacy model identifiers to one canonical product ID."""
+        """将公共和旧版模型标识符解析为一个规范的产品 ID。"""
         default_id = getattr(self, "_current_model_id", "") or self.cfg.default_model or "kokoro"
         return self.registry.resolve(model_id, default_id=default_id)
 
@@ -134,7 +134,7 @@ class EngineManager:
         return self.resolve_model_id(model_id).canonical_id
 
     def list_specs(self) -> list[EngineSpec]:
-        """Return only product-level models suitable for public UI/catalog APIs."""
+        """仅返回适合公共 UI/目录 API 的产品级模型。"""
         return self.registry.list_specs(self.cfg)
 
     def list_models(self) -> list[dict]:
@@ -193,8 +193,8 @@ class EngineManager:
         resolution = self.resolve_model_id(model_id)
         target_id = resolution.canonical_id
         self._ensure_resolution_enabled(resolution)
-        # Keep switch/load/active-count registration atomic. switch_model and
-        # get_engine may re-enter the deliberate RLock above.
+        # 保持 switch/load/active-count 注册原子性。switch_model 和
+        # get_engine 可能重入上方的 RLock。
         with self._lock:
             self._touch_model(target_id)
             if target_id != self._current_model_id and self.cfg.model_unload_on_switch:
@@ -226,7 +226,7 @@ class EngineManager:
                         logger.warning("执行待重建失败，保留待重建标记：%s", target_id, exc_info=True)
 
     def _unload_other_loaded_models(self, target_id: str) -> None:
-        """Keep one warm runtime by default to protect NAS RAM/VRAM budgets."""
+        """默认保留一个热运行时以保护 NAS 内存/显存预算。"""
         for model_id, other in list(self._engines.items()):
             if model_id == target_id or not bool(getattr(other, "is_loaded", False)):
                 continue
@@ -287,7 +287,7 @@ class EngineManager:
             return engine
 
     def warm_model(self, model_id: str, *, provider_hint: str | None = None) -> dict[str, Any]:
-        """Load a model into memory without changing the selected runtime model."""
+        """将模型加载到内存中，不更改选定的运行时模型。"""
         resolution = self.resolve_model_id(model_id)
         target_id = resolution.canonical_id
         self._ensure_resolution_enabled(resolution)
@@ -330,7 +330,7 @@ class EngineManager:
 
 
     def drop_model(self, model_id: str, *, force: bool = False, raise_if_busy: bool = True) -> bool:
-        """卸载并移除引擎对象，让下次加载使用当前配置重新构建。"""
+        """卸载并移除引擎对象，使下次加载使用当前配置重新构建。"""
         target_id = self.normalize_model_id(model_id)
         with self._lock:
             active = self._active_count(target_id)
@@ -367,7 +367,7 @@ class EngineManager:
             return True
 
     def drop_matching(self, predicate, *, force: bool = False) -> list[str]:
-        """移除所有符合 predicate(model_id) 的缓存引擎对象。"""
+        """移除所有符合 predicate（谓词）(model_id) 的缓存引擎对象。"""
         dropped: list[str] = []
         with self._lock:
             model_ids = list(self._engines)
@@ -398,7 +398,7 @@ class EngineManager:
             raise HTTPException(status_code=404, detail=f"Model is not enabled: {model_id}")
 
     def _ensure_resolution_enabled(self, resolution) -> None:
-        """Keep legacy provider aliases compatible without silently enabling another provider."""
+        """保持旧版提供商别名兼容，而不会静默启用另一个提供商。"""
         self._ensure_enabled(resolution.canonical_id)
         if resolution.canonical_id != "moss" or not resolution.provider_hint:
             return
@@ -423,8 +423,8 @@ class EngineManager:
         engine = self._engines.get(spec.id)
         loaded = bool(getattr(engine, "is_loaded", False)) if engine is not None else False
         healthy = bool(getattr(engine, "is_healthy", True)) if engine is not None else True
-        # Keep last runtime/provider metrics observable after idle/manual unload.
-        # metadata() for product engines is side-effect free and does not reload weights.
+        # 在空闲/手动卸载后保持最后的运行时/提供者指标可观察。
+        # 产品引擎的 metadata() 无副作用，不会重新加载权重。
         runtime = self._engine_metadata(engine) if engine is not None else {}
         active_count = self._active_count(spec.id)
         idle_timeout = float(getattr(self.cfg, "model_idle_timeout_seconds", 0) or 0)
@@ -460,7 +460,7 @@ class EngineManager:
             "last_rtf": None,
         }
 
-        # 静态能力字段先合入，运行时 metadata 再合入。运行时字段允许覆盖
+        # 静态能力字段先合入，运行时 metadata（元数据）再合入。运行时字段允许覆盖
         # loaded/device/voices 等动态值，但基础 id/name/backend 不应被静默改写。
         snapshot.update(self._static_capabilities(spec))
         snapshot["parameter_schema"] = self.registry.parameter_schema_for(spec.id)
