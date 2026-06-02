@@ -32,9 +32,9 @@ json.loads((p / 'config/resource').read_text(encoding='utf-8'))
 json.loads((p / 'config/privilege').read_text(encoding='utf-8'))
 compose = (p / 'app/docker/docker-compose.yaml').read_text(encoding='utf-8')
 for profile, service, image in (
-    ('cpu', 'angevoice-cpu', 'ang77712829/angevoice-cpu:latest'),
-    ('gpu', 'angevoice-gpu', 'ang77712829/angevoice-gpu:latest'),
-    ('legacy-gpu', 'angevoice-legacy-gpu', 'ang77712829/angevoice-legacy-gpu:latest'),
+    ('cpu', 'angevoice-cpu', 'maxblack777/angevoice-cpu:latest'),
+    ('gpu', 'angevoice-gpu', 'maxblack777/angevoice-gpu:latest'),
+    ('legacy-gpu', 'angevoice-legacy-gpu', 'maxblack777/angevoice-legacy-gpu:latest'),
 ):
     assert f'  {service}:' in compose
     assert f'profiles: ["{profile}"]' in compose

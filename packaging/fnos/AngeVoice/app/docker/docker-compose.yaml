@@ -6,7 +6,7 @@ name: angevoice-fnos
 services:
   angevoice-cpu:
     profiles: ["cpu"]
-    image: ang77712829/angevoice-cpu:latest
+    image: maxblack777/angevoice-cpu:latest
     container_name: angevoice-cpu
     ports:
       - "${wizard_http_port:-8101}:8000"
@@ -57,7 +57,7 @@ services:
 
   angevoice-gpu:
     profiles: ["gpu"]
-    image: ang77712829/angevoice-gpu:latest
+    image: maxblack777/angevoice-gpu:latest
     container_name: angevoice-gpu
     ports:
       - "${wizard_http_port:-8101}:8000"
@@ -120,7 +120,7 @@ services:
 
   angevoice-legacy-gpu:
     profiles: ["legacy-gpu"]
-    image: ang77712829/angevoice-legacy-gpu:latest
+    image: maxblack777/angevoice-legacy-gpu:latest
     container_name: angevoice-legacy-gpu
     ports:
       - "${wizard_http_port:-8101}:8000"

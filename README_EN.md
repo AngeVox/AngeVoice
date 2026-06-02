@@ -144,12 +144,12 @@ cd docker/legacy-gpu && sudo docker compose up -d
 
 ### China Mirror Acceleration
 
-Docker Compose pulls Docker Hub images (`ang77712829/angevoice-*:latest`) by default. If Docker Hub is slow from mainland China, use a Docker mirror proxy:
+Docker Compose pulls Docker Hub images (`maxblack777/angevoice-*:latest`) by default. If Docker Hub is slow from mainland China, use a Docker mirror proxy:
 
 ```bash
 # Option 1: Pull via mirror, then retag
-docker pull docker.1ms.run/ang77712829/angevoice-gpu:latest
-docker tag docker.1ms.run/ang77712829/angevoice-gpu:latest ang77712829/angevoice-gpu:latest
+docker pull docker.1ms.run/maxblack777/angevoice-gpu:latest
+docker tag docker.1ms.run/maxblack777/angevoice-gpu:latest maxblack777/angevoice-gpu:latest
 
 # Option 2: Configure Docker daemon global mirror (recommended)
 # Edit /etc/docker/daemon.json and add:

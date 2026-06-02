@@ -2,7 +2,7 @@ name: angevoice-gpu
 
 services:
   angevoice-gpu:
-    image: ang77712829/angevoice-gpu:latest
+    image: maxblack777/angevoice-gpu:latest
     container_name: angevoice-gpu
     build:
       context: ../..

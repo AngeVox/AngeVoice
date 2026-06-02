@@ -2,15 +2,15 @@
 
 AngeVoice 的 fnOS 包采用经过真实安装验证的 **单一 Compose 文件 + 三个互斥 profile service** 机制：`app/docker/docker-compose.yaml` 同时声明 `angevoice-cpu`、`angevoice-gpu` 与 `angevoice-legacy-gpu`，安装向导通过 `COMPOSE_PROFILES=cpu | gpu | legacy-gpu` 在 docker-project 启动前选择且仅选择一个运行路径。
 
-这仍然只有一份 Docker 编排配置文件，不依赖 callback 在容器创建后改写镜像，也不会引入未经验证的单 service 动态镜像/运行时路由。三类镜像默认从 Docker Hub 的 `ang77712829/angevoice-*` 仓库拉取，全部固定使用 `:latest` 标签，发布补丁版本时无需在部署链路反复替换版本号。
+这仍然只有一份 Docker 编排配置文件，不依赖 callback 在容器创建后改写镜像，也不会引入未经验证的单 service 动态镜像/运行时路由。三类镜像默认从 Docker Hub 的 `maxblack777/angevoice-*` 仓库拉取，全部固定使用 `:latest` 标签，发布补丁版本时无需在部署链路反复替换版本号。
 
 ## 安装运行模式
 
 | 向导选项 | Profile / service | 镜像 | Provider 策略 |
 |---|---|---|---|
-| CPU | `cpu` / `angevoice-cpu` | `ang77712829/angevoice-cpu:latest` | Kokoro、MOSS-TTS-Nano、ZipVoice 均走 CPU |
-| 标准 GPU | `gpu` / `angevoice-gpu` | `ang77712829/angevoice-gpu:latest` | NVIDIA 主路径；Kokoro、MOSS、ZipVoice 请求 CUDA，ZipVoice/MOSS 可按策略回退 CPU |
-| Legacy GPU | `legacy-gpu` / `angevoice-legacy-gpu` | `ang77712829/angevoice-legacy-gpu:latest` | 仅标准 GPU 无法可靠运行时回退；Kokoro CUDA，MOSS/ZipVoice 默认 CPU 稳定路径 |
+| CPU | `cpu` / `angevoice-cpu` | `maxblack777/angevoice-cpu:latest` | Kokoro、MOSS-TTS-Nano、ZipVoice 均走 CPU |
+| 标准 GPU | `gpu` / `angevoice-gpu` | `maxblack777/angevoice-gpu:latest` | NVIDIA 主路径；Kokoro、MOSS、ZipVoice 请求 CUDA，ZipVoice/MOSS 可按策略回退 CPU |
+| Legacy GPU | `legacy-gpu` / `angevoice-legacy-gpu` | `maxblack777/angevoice-legacy-gpu:latest` | 仅标准 GPU 无法可靠运行时回退；Kokoro CUDA，MOSS/ZipVoice 默认 CPU 稳定路径 |
 
 Tesla P4 的首选路径是 **标准 GPU**；`legacy-gpu` 不是默认推荐路线，仅作为兼容保底。
 

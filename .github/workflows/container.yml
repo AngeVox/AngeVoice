@@ -108,7 +108,7 @@ jobs:
         uses: docker/metadata-action@v6
         with:
           images: |
-            ang77712829/${{ matrix.image }}
+            maxblack777/${{ matrix.image }}
             ghcr.io/${{ github.repository_owner }}/${{ matrix.image }}
           tags: |
             type=raw,value=latest,enable=${{ steps.publish.outputs.release == 'true' }}
