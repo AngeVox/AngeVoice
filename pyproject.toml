@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "angevoice"
-version = "2.6.610"
+version = "2.6.611"
 description = "AngeVoice: self-hosted TTS service integrating Kokoro, MOSS-TTS-Nano and ZipVoice"
 readme = "README.md"
 license = {text = "Apache-2.0"}

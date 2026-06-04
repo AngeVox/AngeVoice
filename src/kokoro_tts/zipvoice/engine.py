@@ -93,7 +93,7 @@ class ZipVoiceEngine:
                 try:
                     metadata = self._worker.load(timeout=float(getattr(self.cfg, "model_switch_timeout_seconds", 300.0)))
                     self._actual_provider = str(metadata.get("actual_provider") or "") or None
-                    self._fallback = bool(metadata.get("provider_fallback", False))
+                    self._fallback = bool(metadata.get("fallback", False))
                     self._fallback_reason = str(metadata.get("fallback_reason") or "")
                     self._unhealthy = False
                 except Exception:
@@ -175,7 +175,7 @@ class ZipVoiceEngine:
             }
             result.update(self.capabilities().as_dict())
             actual = str(worker_meta.get("actual_provider") or self._actual_provider or "") or ("cpu_onnx_int8" if self.requested_provider == "cpu" else None)
-            fallback = bool(worker_meta.get("provider_fallback", self._fallback))
+            fallback = bool(worker_meta.get("fallback", self._fallback))
             reason = str(worker_meta.get("fallback_reason") or self._fallback_reason or "")
             result.update(ProviderStatus(self.requested_provider, actual, fallback, reason, assume_requested_if_unknown=self.is_loaded).as_dict())
             if self.runtime is not None:

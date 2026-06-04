@@ -1,5 +1,5 @@
 appname               = AngeVoice
-version               = 2.6.610
+version               = 2.6.611
 display_name          = AngeVoice
 desc                  = 本地 TTS 与音色克隆服务，支持 Kokoro、MOSS-TTS-Nano、ZipVoice；提供 Studio、管理后台、OpenAI 兼容 API 与 WebSocket 分句流式输出。
 platform              = all
@@ -15,5 +15,5 @@ desktop_uidir         = ui
 desktop_applaunchname = AngeVoice.Application
 service_port          = 8101
 checkport             = false
-changelog             = v2.6.610：修复 MOSS 长文本停止/重开与流式自动断开；新增空闲卸载后彻底清理开关；同步后台、ENV 与文档。
+changelog             = v2.6.611：修复更新检查仓库地址与 ZipVoice CUDA 状态误报；保留 Docker Hub 镜像仓库为 maxblack777。
 checksum                   = generated_at_package_build

@@ -139,7 +139,7 @@ def test_fnos_package_uses_verified_compose_profile_template_for_v26601():
     install_callback = (root / "packaging/fnos/AngeVoice/cmd/install_callback").read_text(encoding="utf-8")
     assert "单一 Compose 文件 + 三个互斥 profile service" in guide
     assert "COMPOSE_PROFILES" in guide
-    assert "version               = 2.6.610" in manifest
+    assert "version               = 2.6.611" in manifest
     assert compose.count("profiles:") == 3
     assert "angevoice-cpu:" in compose and "angevoice-gpu:" in compose and "angevoice-legacy-gpu:" in compose
     assert "maxblack777/angevoice-gpu:latest" in compose

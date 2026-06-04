@@ -54,6 +54,17 @@ def test_runtime_templates_use_latest_images_and_fnos_uses_verified_profile_rout
     assert not (ROOT / "packaging/fnos/AngeVoice/app/docker/.env").exists()
 
 
+def test_update_repository_stays_on_github_project_while_images_use_dockerhub_namespace():
+    env_files = [
+        ROOT / "docker/angevoice.env",
+        ROOT / "packaging/fnos/AngeVoice/app/docker/angevoice.env",
+    ]
+    for path in env_files:
+        text = path.read_text(encoding="utf-8")
+        assert "ANGEVOICE_UPDATE_REPOSITORY=ang77712829/AngeVoice" in text
+        assert "ANGEVOICE_UPDATE_REPOSITORY=maxblack777/AngeVoice" not in text
+
+
 def test_fnos_upgrade_cleans_only_legacy_routing_files():
     cleanup_files = [
         "${TRIM_PKGVAR}/docker-compose.yaml",

@@ -174,7 +174,7 @@ def test_update_checker_reports_new_release_without_auto_update():
     class Response:
         def read(self):
             return json.dumps({
-                "tag_name": "v9.9.9", "name": "Future release", "html_url": "https://github.com/ang77712829/kokoro-tts-zh/releases/tag/v9.9.9", "body": "notes"
+                "tag_name": "v9.9.9", "name": "Future release", "html_url": "https://github.com/ang77712829/AngeVoice/releases/tag/v9.9.9", "body": "notes"
             }).encode("utf-8")
 
     checker = UpdateChecker(TTSConfig(), opener=lambda *_args, **_kwargs: Response())
@@ -184,9 +184,9 @@ def test_update_checker_reports_new_release_without_auto_update():
     assert status["auto_update"] is False
 
 
-def test_v26601_version_and_fnos_wizards_expose_verified_profile_modes_and_safe_default_warning():
+def test_version_and_fnos_wizards_expose_verified_profile_modes_and_safe_default_warning():
     from kokoro_tts import __version__
-    assert __version__ == "2.6.610"
+    assert __version__ == "2.6.611"
     root = Path(__file__).resolve().parents[1]
     install = json.loads((root / "packaging/fnos/AngeVoice/wizard/install").read_text(encoding="utf-8"))
     text = json.dumps(install, ensure_ascii=False)
@@ -202,7 +202,7 @@ def test_v26601_version_and_fnos_wizards_expose_verified_profile_modes_and_safe_
     assert compose.count("${TRIM_PKGVAR}/prompts:/app/prompts") == 3
 
 
-def test_v26601_fnos_uses_verified_compose_profiles_and_release_workflow_uploads_fpk():
+def test_fnos_uses_verified_compose_profiles_and_release_workflow_uploads_fpk():
     root = Path(__file__).resolve().parents[1]
     compose = (root / "packaging/fnos/AngeVoice/app/docker/docker-compose.yaml").read_text(encoding="utf-8")
     install = (root / "packaging/fnos/AngeVoice/wizard/install").read_text(encoding="utf-8")

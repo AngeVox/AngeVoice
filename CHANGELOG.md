@@ -1,5 +1,17 @@
 # 更新日志
 
+## [2.6.611] - 2026-06-04
+
+### 🐛 修复
+
+- 修复正式 Docker 与 fnOS 环境模板中的 `ANGEVOICE_UPDATE_REPOSITORY` 被误改为 Docker Hub 命名空间的问题；版本检查现在重新指向 GitHub 仓库 `ang77712829/AngeVoice`，避免后台“检查更新”返回 404。
+- 修复 ZipVoice 隔离 worker 在 CUDA 成功加载时把“支持 CPU 回退”的能力字段误当作“已经回退”的状态字段，导致后台显示 `CUDA · 已回退 CPU` 的问题；现在仅在实际切到 `cpu_onnx_int8` 时展示回退状态和原因。
+
+### 📝 文档与质量
+
+- 保留 Docker Hub 镜像仓库为 `maxblack777/angevoice-*`，并新增发布模板测试，防止更新检查 GitHub 仓库与 Docker Hub 镜像仓库再次混淆。
+- 更新版本号、fnOS manifest、CHANGELOG 与相关回归测试到 `2.6.611`。
+
 ## [2.6.610] - 2026-06-03
 
 ### 🐛 MOSS 稳定性修复
@@ -24,7 +36,7 @@
 - OpenAI 兼容 `/v1/audio/speech` 在 JSON 解析前执行请求体大小限制，避免超大请求提前占用内存。
 - `/health` 在懒加载可唤醒状态下返回 `idle`，不再把未预加载但可用的服务误报为 `loading`。
 - 新增 `ANGEVOICE_WEBSOCKET_STREAM_IDLE_TIMEOUT_SECONDS`、`ANGEVOICE_ENGINE_PROCESS_STREAM_DRAIN_SECONDS`、`ANGEVOICE_ENGINE_PROCESS_STREAM_IDLE_TIMEOUT_SECONDS`，用于长文本流式等待和取消排空。
-- Docker Compose 与 fnOS 默认镜像切换为 Docker Hub `ang77712829/angevoice-*:latest`，GitHub Actions 仍同步发布 GHCR 作为备用仓库。
+- Docker Compose 与 fnOS 默认镜像切换为 Docker Hub `maxblack777/angevoice-*:latest`，GitHub Actions 仍同步发布 GHCR 作为备用仓库。
 - MOSS 未加载或刚切换时也会公开完整预设音色目录，避免 Web 端只显示 `Junhao`。
 - 小智新安装脚本、示例和智控台预设统一使用公开模型 ID `moss`，并补齐 ZipVoice 克隆流式/非流式预设；旧 `moss-nano-cpu` / `moss-nano-cuda` 仍作为兼容输入保留。
 - fnOS 升级流程会清理旧版临时 profile/compose 路由文件，同时保留模型、音色、输出、凭据和后台运行配置目录。

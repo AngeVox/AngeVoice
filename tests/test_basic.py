@@ -7,7 +7,7 @@ from unittest.mock import MagicMock, patch
 import pytest
 
 sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
-EXPECTED_VERSION = "2.6.610"
+EXPECTED_VERSION = "2.6.611"
 
 
 def _has_module(name: str) -> bool:
@@ -83,6 +83,7 @@ class TestConfig:
         assert config.cache_max_bytes == 512 * 1024 * 1024
         assert config.text_single_newline_policy == "auto"
         assert config.model_source == "auto"
+        assert config.update_repository == "ang77712829/AngeVoice"
 
     def test_env_override(self, monkeypatch):
         monkeypatch.setenv("KOKORO_PORT", "9000")

@@ -53,6 +53,38 @@ def test_zipvoice_cuda_load_failure_falls_back_to_frozen_cpu_runtime(tmp_path, m
     assert metadata["provider_fallback"] is True
 
 
+def test_zipvoice_isolated_cuda_metadata_does_not_treat_fallback_capability_as_active_fallback(tmp_path, monkeypatch):
+    engine = ZipVoiceEngine(_cfg(tmp_path), requested_provider="cuda", process_isolation=True)
+
+    class DummyWorker:
+        is_loaded = True
+        is_healthy = True
+        alive = True
+        pid = 1234
+        last_exit_reason = ""
+        last_metadata = {}
+
+        def load(self, *, timeout):
+            self.last_metadata = {
+                "actual_provider": "cuda_pytorch",
+                "provider_fallback": True,
+                "fallback": False,
+                "fallback_reason": "",
+            }
+            return self.last_metadata
+
+    engine._worker = DummyWorker()
+    monkeypatch.setattr(engine.assets, "status", lambda: {"ready": True, "status_file": "status.json"})
+
+    engine.load()
+    metadata = engine.metadata()
+    assert metadata["requested_provider"] == "cuda"
+    assert metadata["actual_provider"] == "cuda_pytorch"
+    assert metadata["fallback"] is False
+    assert metadata["fallback_reason"] == ""
+    assert metadata["provider_fallback"] is True
+
+
 def test_zipvoice_cuda_asset_manifest_adds_checkpoint_without_altering_cpu_manifest():
     root = Path(__file__).resolve().parents[1] / "src/kokoro_tts/zipvoice"
     cpu = (root / "assets_manifest.json").read_text(encoding="utf-8")
