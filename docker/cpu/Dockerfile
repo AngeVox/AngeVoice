@@ -27,8 +27,8 @@ COPY constraints.txt ./
 # CPU 版 PyTorch。官方 CPU index 的安装命令使用不带 +cpu 后缀的版本约束；
 # 这样同一 Dockerfile 可同时解析 linux/amd64 与 linux/arm64 wheel。
 # AngeVoice/MOSS 推理不需要 torchvision，保持镜像更轻。
+# 注意：不使用 -c constraints.txt，因为 PyTorch 专用 index 无法解析其中的 jinja2 等非 torch 依赖。
 RUN python3 -m pip install --no-cache-dir \
-    -c /app/constraints.txt \
     "torch==${PYTORCH_VERSION}" \
     "torchaudio==${PYTORCH_VERSION}" \
     --index-url https://download.pytorch.org/whl/cpu

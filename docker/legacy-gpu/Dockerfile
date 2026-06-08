@@ -28,8 +28,8 @@ COPY docker/constraints-legacy-gpu.lock /app/docker/constraints-legacy-gpu.lock
 
 # CUDA 11.8 版 PyTorch 比 CUDA 12.x 更保守，适合旧 GPU 环境。
 # AngeVoice/MOSS 推理不需要 torchvision，保持镜像更轻。
+# 注意：不使用 -c constraints-legacy-gpu.lock，因为 CUDA index 无法解析其中的非 torch 依赖。
 RUN python3 -m pip install --no-cache-dir \
-    -c /app/docker/constraints-legacy-gpu.lock \
     "torch==${PYTORCH_VERSION}+cu118" \
     "torchaudio==${PYTORCH_VERSION}+cu118" \
     --index-url https://download.pytorch.org/whl/cu118

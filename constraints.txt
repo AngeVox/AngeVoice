@@ -1,31 +1,23 @@
 # AngeVoice — pinned dependency constraints for source/CPU Docker builds.
-# Regenerate when pyproject.toml or Docker base torch version changes.
+# Only packages prone to uncontrolled upgrade are pinned here.
+# torch/torchaudio are installed separately via ARGs with专用 index，不在此约束。
 # Usage: pip install -c constraints.txt -e ".[zipvoice]"
 
-# ── core ──────────────────────────────────────────────
+# ── core (drift-sensitive) ──────────────────────────
 kokoro==0.8.2
 misaki==0.8.2
 jieba==0.42.1
 pypinyin==0.50.0
-torch==2.5.1
-torchaudio==2.5.1
 transformers==4.46.3
 tokenizers==0.20.3
 huggingface_hub==0.26.5
-numpy==1.24.0
-soundfile==0.12.0
-fastapi==0.100.0
-uvicorn==0.23.0
-python-multipart==0.0.6
-jinja2==3.1.0
-websockets==12.0
 
-# ── optional[moss] ───────────────────────────────────
+# ── optional[moss] ─────────────────────────────────
 sentencepiece==0.1.99
 modelscope==1.20.0
 onnxruntime==1.20.0
 
-# ── optional[zipvoice] ───────────────────────────────
+# ── optional[zipvoice] ─────────────────────────────
 lhotse==1.24.0
 vocos==0.1.0
 pydub==0.25.1
@@ -34,13 +26,3 @@ inflect==7.0.0
 piper_phonemize==1.1.0
 safetensors==0.4.5
 setuptools<81
-
-# ── optional[moss-gpu] ───────────────────────────────
-onnxruntime-gpu==1.20.2
-nvidia-cudnn-cu12==9.1.0.70
-
-# ── optional[dev] ─────────────────────────────────────
-pytest==7.0
-pytest-asyncio==0.23.0
-pytest-cov==4.0
-httpx==0.24.0

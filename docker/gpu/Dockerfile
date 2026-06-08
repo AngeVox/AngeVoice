@@ -32,8 +32,8 @@ ARG PYTORCH_VERSION=2.5.1
 COPY docker/constraints-gpu.lock /app/docker/constraints-gpu.lock
 
 # GPU 版 PyTorch。AngeVoice/MOSS 推理不需要 torchvision，保持镜像更轻。
+# 注意：不使用 -c constraints-gpu.lock，因为 CUDA index 无法解析其中的非 torch 依赖。
 RUN python3 -m pip install --no-cache-dir \
-    -c /app/docker/constraints-gpu.lock \
     "torch==${PYTORCH_VERSION}+cu121" \
     "torchaudio==${PYTORCH_VERSION}+cu121" \
     --index-url https://download.pytorch.org/whl/cu121
