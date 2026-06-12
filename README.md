@@ -222,34 +222,7 @@ docker tag docker.1ms.run/maxblack777/angevoice-gpu:latest maxblack777/angevoice
 
 > 常用镜像站：`docker.1ms.run`、`docker.xuanyuan.me`、`dockerpull.org`。镜像站可用性可能变化，如遇问题请更换其他镜像站。
 
-### pip 开发安装
 
-> **要求 Python 3.10 – 3.12**（不支持 3.13+，PyTorch 尚未适配）。
-
-```bash
-git clone https://github.com/ang77712829/AngeVoice.git
-cd AngeVoice
-pip install -e .
-```
-
-启动服务：
-
-```bash
-python -m kokoro_tts.main serve --port 8000
-# 旧命令仍可用
-kokoro-tts serve --port 8000
-```
-
-启动后在浏览器或 curl 测试：
-
-```bash
-# 替换为你的实际 IP（局域网或 127.0.0.1）
-curl http://192.168.1.10:8000/health
-curl -X POST http://192.168.1.10:8000/v1/audio/speech \
-  -H "Content-Type: application/json" \
-  -d '{"model":"kokoro","input":"你好世界","voice":"zm_010","response_format":"wav"}' \
-  --output hello.wav
-```
 
 
 ### `/health` 状态语义
@@ -281,7 +254,6 @@ Docker 健康检查把 `ok` 和 `idle` 都视为 healthy。
 
 | 部署方式 | HTTP / Web UI | WebSocket |
 |---|---|---|
-| pip / 开发运行 | `http://localhost:8000` | `ws://localhost:8000/ws/v1/tts` |
 | Docker CPU | `http://localhost:8100` | `ws://localhost:8100/ws/v1/tts` |
 | Docker GPU | `http://localhost:8101` | `ws://localhost:8101/ws/v1/tts` |
 | Docker 老架构 GPU | `http://localhost:8102` | `ws://localhost:8102/ws/v1/tts` |
@@ -369,7 +341,7 @@ WebSocket 流式克隆时，参考音频放在首个 JSON 的 `prompt_audio.data
 首次运行时，如果本地没有完整模型文件，服务会按 `ANGEVOICE_MODEL_SOURCE` 自动选择下载源。`auto` 不再只依赖 `ipapi.co`：它会先短超时探测 Hugging Face 与 ModelScope 可达性；若 HF 不可达而 ModelScope 可达会直接走 ModelScope；两者都可达时再用国家/地区判断；国家判断失败时按可达性兜底。也可在管理后台或环境变量中强制设为 `modelscope` / `huggingface`；离线部署可设为 `offline`，此时不会联网下载，需提前准备完整模型。想提升冷启动速度，建议手动准备：
 
 ```bash
-pip install huggingface_hub
+pipx install huggingface_hub
 mkdir -p models/models--hexgrad--Kokoro-82M-v1.1-zh
 huggingface-cli download hexgrad/Kokoro-82M-v1.1-zh \
   --local-dir models/models--hexgrad--Kokoro-82M-v1.1-zh \
@@ -517,7 +489,7 @@ environment:
 ## 测试
 
 ```bash
-pip install -e '.[dev]'
+uv pip install -e '.[dev]'
 pytest -q --cov=kokoro_tts --cov-report=term-missing
 ```
 

@@ -159,33 +159,7 @@ docker tag docker.1ms.run/maxblack777/angevoice-gpu:latest maxblack777/angevoice
 
 > Common mirrors: `docker.1ms.run`, `docker.xuanyuan.me`, `dockerpull.org`. Mirror availability may vary; try an alternative if one is down.
 
-### pip development install
 
-> **Requires Python 3.10 – 3.12**（3.13+ not yet supported by PyTorch）.
-
-```bash
-git clone https://github.com/ang77712829/AngeVoice.git
-cd AngeVoice
-pip install -e .
-```
-
-Start the server:
-
-```bash
-python -m kokoro_tts.main serve --port 8000
-# Legacy command still works
-kokoro-tts serve --port 8000
-```
-
-Test with browser or curl（replace with your actual IP）:
-
-```bash
-curl http://192.168.1.10:8000/health
-curl -X POST http://192.168.1.10:8000/v1/audio/speech \
-  -H "Content-Type: application/json" \
-  -d '{"model":"kokoro","input":"Hello world","voice":"zm_010","response_format":"wav"}' \
-  --output hello.wav
-```
 
 
 ### `/health` status semantics
@@ -215,7 +189,6 @@ Docker health checks treat both `ok` and `idle` as healthy.
 
 | Profile | HTTP / Web UI | WebSocket |
 |---|---|---|
-| pip / development | `http://localhost:8000` | `ws://localhost:8000/ws/v1/tts` |
 | Docker CPU | `http://localhost:8100` | `ws://localhost:8100/ws/v1/tts` |
 | Docker GPU | `http://localhost:8101` | `ws://localhost:8101/ws/v1/tts` |
 | Docker Legacy GPU | `http://localhost:8102` | `ws://localhost:8102/ws/v1/tts` |
@@ -292,7 +265,7 @@ Full browser FileReader, Python websockets, and Docker default-reference-audio e
 If local model files are not found, the service falls back to Hugging Face download. For offline deployments or faster cold starts, set `ANGEVOICE_MODEL_SOURCE=offline` only after preparing complete local model assets:
 
 ```bash
-pip install huggingface_hub
+pipx install huggingface_hub
 mkdir -p models/models--hexgrad--Kokoro-82M-v1.1-zh
 huggingface-cli download hexgrad/Kokoro-82M-v1.1-zh \
   --local-dir models/models--hexgrad--Kokoro-82M-v1.1-zh \
@@ -432,7 +405,7 @@ See [`docs/SECURITY.md`](docs/SECURITY.md).
 ## Testing
 
 ```bash
-pip install -e '.[dev]'
+uv pip install -e '.[dev]'
 pytest -q --cov=kokoro_tts --cov-report=term-missing
 ```
 
