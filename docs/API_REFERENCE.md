@@ -6,7 +6,6 @@
 
 | 部署方式 | HTTP / Web UI | WebSocket |
 |---|---|---|
-| pip / 开发环境 | `http://localhost:8000` | `ws://localhost:8000/ws/v1/tts` |
 | Docker CPU | `http://localhost:8100` | `ws://localhost:8100/ws/v1/tts` |
 | Docker GPU | `http://localhost:8101` | `ws://localhost:8101/ws/v1/tts` |
 | Docker 旧架构 GPU | `http://localhost:8102` | `ws://localhost:8102/ws/v1/tts` |

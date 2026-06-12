@@ -6,7 +6,7 @@
 http://localhost:8000/api-docs
 ```
 
-Docker 端口按部署画像替换：CPU 默认 `8100`，GPU 默认 `8101`，老架构 GPU 默认 `8102`，pip 开发默认 `8000`。
+Docker 端口按部署画像替换：CPU 默认 `8100`，GPU 默认 `8101`，老架构 GPU 默认 `8102`。
 
 ## 1. 服务启动后一直下载模型
 
@@ -25,7 +25,7 @@ head -5 models/models--hexgrad--Kokoro-82M-v1.1-zh/kokoro-v1_1-zh.pth
 修复：
 
 ```bash
-pip install huggingface_hub
+pipx install huggingface_hub
 mkdir -p models/models--hexgrad--Kokoro-82M-v1.1-zh
 huggingface-cli download hexgrad/Kokoro-82M-v1.1-zh \
   --local-dir models/models--hexgrad--Kokoro-82M-v1.1-zh \
