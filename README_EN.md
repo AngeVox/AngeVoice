@@ -100,7 +100,7 @@ Good fits:
 | Batch synthesis | `POST /v1/audio/batch` returns a ZIP and `manifest.json` |
 | Service controls | Request IDs, `/health`, `/stats`, `/requests`, timeout, concurrency guard, LRU cache |
 | Docker profiles | CPU, GPU, and Legacy GPU Compose profiles |
-| CLI | Recommended command: `angevoice`; legacy `kokoro-tts` remains supported |
+| CLI | `kokoro-tts serve`（also supports `python -m kokoro_tts.main serve`） |
 | Idle resource release | Defaults to unloading all loaded models after 10 minutes of inactivity; an optional admin switch can exit after idle unload so Docker/service managers restart the container and reclaim low-level runtime leftovers |
 
 ## Quick start
@@ -159,18 +159,32 @@ docker tag docker.1ms.run/maxblack777/angevoice-gpu:latest maxblack777/angevoice
 
 > Common mirrors: `docker.1ms.run`, `docker.xuanyuan.me`, `dockerpull.org`. Mirror availability may vary; try an alternative if one is down.
 
-### Editable pip install
+### pip development install
+
+> **Requires Python 3.10 – 3.12**（3.13+ not yet supported by PyTorch）.
 
 ```bash
 git clone https://github.com/ang77712829/AngeVoice.git
 cd AngeVoice
 pip install -e .
+```
 
-angevoice serve --port 8000
-angevoice synth "Hello world" -o hello.wav -v zm_010
+Start the server:
 
+```bash
+python -m kokoro_tts.main serve --port 8000
 # Legacy command still works
 kokoro-tts serve --port 8000
+```
+
+Test with browser or curl（replace with your actual IP）:
+
+```bash
+curl http://192.168.1.10:8000/health
+curl -X POST http://192.168.1.10:8000/v1/audio/speech \
+  -H "Content-Type: application/json" \
+  -d '{"model":"kokoro","input":"Hello world","voice":"zm_010","response_format":"wav"}' \
+  --output hello.wav
 ```
 
 
