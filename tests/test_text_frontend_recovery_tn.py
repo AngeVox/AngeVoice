@@ -31,7 +31,11 @@ def _install_fake_wetext(monkeypatch, normalizer_cls):
 def test_tn_extra_does_not_reference_pynini_or_wetextprocessing():
     """Ensure [tn] extra has no pynini / WeTextProcessing transitive deps."""
     from pathlib import Path
-    import configparser, tomllib
+
+    try:
+        import tomllib
+    except ModuleNotFoundError:
+        import tomli as tomllib  # Python 3.10
 
     pyproject = Path(__file__).resolve().parents[1] / "pyproject.toml"
     with open(pyproject, "rb") as fh:
