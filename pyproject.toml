@@ -65,7 +65,7 @@ zipvoice = [
     "setuptools<81",
 ]
 tn = [
-    "WeTextProcessing>=1.0.4",
+    "wetext>=0.1.4",
 ]
 moss-gpu = [
     "torchaudio>=2.0.0",

@@ -28,6 +28,4 @@ safetensors==0.4.5
 setuptools<81
 
 # ── optional[tn] ───────────────────────────────────
-WeTextProcessing==1.2.0
-pynini==2.1.7
-importlib_resources==7.1.0
+wetext==0.1.4

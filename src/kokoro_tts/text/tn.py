@@ -2,7 +2,10 @@
 
 from __future__ import annotations
 
+import logging
 from functools import lru_cache
+
+logger = logging.getLogger(__name__)
 
 
 class TextNormalizerUnavailable(RuntimeError):
@@ -12,7 +15,7 @@ class TextNormalizerUnavailable(RuntimeError):
 @lru_cache(maxsize=1)
 def _wetext_normalizer():
     try:
-        from tn.chinese.normalizer import Normalizer
+        from wetext import Normalizer
     except Exception as exc:  # pragma: no cover - exercised through fallback
         raise TextNormalizerUnavailable(str(exc)) from exc
     try:

@@ -132,11 +132,11 @@ _field(
     "choice",
     "wetext",
     choices=(
-        ("wetext", "标准：WeTextProcessing"),
+        ("wetext", "标准：文本规范化"),
         ("legacy", "保守：AngeVoice 2.6.613"),
         ("off", "关闭：仅基础清理"),
     ),
-    help="Studio 可按单次请求覆盖此默认值。当前只处理数字、日期、金额等文本规范化，不启用用户词典或品牌改写。",
+    help="使用 wetext runtime 进行数字、日期、时间等文本规范化；技术字符串会先做保护。Studio 可按单次请求覆盖此默认值。",
 )
 _field(
     "default_speed",
