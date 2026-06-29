@@ -20,7 +20,7 @@ def test_all_compose_profiles_share_persistent_state_contract_and_zipvoice_provi
     expected_mounts = ["/app/models", "/app/prompts", "/app/outputs", "/app/credentials", "/app/config", "/app/logs"]
     for profile in ("cpu", "gpu", "legacy-gpu"):
         compose = (root / f"docker/{profile}/docker-compose.yml").read_text(encoding="utf-8")
-        assert f"angevoice-{profile}:2.6.614" in compose
+        assert f"angevoice-{profile}:v2.6.614" in compose
         assert f"ANGEVOICE_DEPLOYMENT_PROFILE: {profile}" in compose
         assert "zipvoice" in compose
         for mount in expected_mounts:

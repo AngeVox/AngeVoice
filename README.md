@@ -207,12 +207,12 @@ cd docker/legacy-gpu && sudo docker compose up -d
 
 ### 国内镜像加速
 
-Docker Compose 默认使用 Docker Hub（`maxblack777/angevoice-*:2.6.614`）拉取当前版本镜像。国内网络访问 Docker Hub 较慢时，可通过 Docker 镜像站加速：
+Docker Compose 默认使用 Docker Hub（`maxblack777/angevoice-*:v2.6.614`）拉取当前版本镜像。国内网络访问 Docker Hub 较慢时，可通过 Docker 镜像站加速：
 
 ```bash
 # 方案 1：临时使用镜像站拉取（替换 registry-1.docker.io 为镜像站地址）
-docker pull docker.1ms.run/maxblack777/angevoice-gpu:2.6.614
-docker tag docker.1ms.run/maxblack777/angevoice-gpu:2.6.614 maxblack777/angevoice-gpu:2.6.614
+docker pull docker.1ms.run/maxblack777/angevoice-gpu:v2.6.614
+docker tag docker.1ms.run/maxblack777/angevoice-gpu:v2.6.614 maxblack777/angevoice-gpu:v2.6.614
 
 # 方案 2：配置 Docker daemon 全局镜像加速（推荐）
 # 编辑 /etc/docker/daemon.json，添加：

@@ -207,7 +207,7 @@ def test_version_and_fnos_wizards_expose_verified_profile_modes_and_safe_default
     compose = (root / "packaging/fnos/AngeVoice/app/docker/docker-compose.yaml").read_text(encoding="utf-8")
     assert compose.count("profiles:") == 3
     assert 'profiles: ["cpu"]' in compose and 'profiles: ["gpu"]' in compose and 'profiles: ["legacy-gpu"]' in compose
-    assert "angevoice-cpu:2.6.614" in compose and "angevoice-gpu:2.6.614" in compose and "angevoice-legacy-gpu:2.6.614" in compose
+    assert "angevoice-cpu:v2.6.614" in compose and "angevoice-gpu:v2.6.614" in compose and "angevoice-legacy-gpu:v2.6.614" in compose
     assert "${wizard_admin_password:-admin123}" in compose
     assert compose.count("${TRIM_PKGVAR}/credentials:/app/credentials") == 3
     assert compose.count("${TRIM_PKGVAR}/prompts:/app/prompts") == 3
@@ -220,7 +220,7 @@ def test_fnos_uses_verified_compose_profiles_and_release_workflow_uploads_fpk():
     callback = (root / "packaging/fnos/AngeVoice/cmd/install_callback").read_text(encoding="utf-8")
     workflow = (root / ".github/workflows/container.yml").read_text(encoding="utf-8")
     assert compose.count("profiles:") == 3
-    assert "angevoice-cpu:2.6.614" in compose and "angevoice-gpu:2.6.614" in compose and "angevoice-legacy-gpu:2.6.614" in compose
+    assert "angevoice-cpu:v2.6.614" in compose and "angevoice-gpu:v2.6.614" in compose and "angevoice-legacy-gpu:v2.6.614" in compose
     assert "COMPOSE_PROFILES" in install and "wizard_run_mode" not in install
     assert "COMPOSE_PROFILES" in callback and "wizard_run_mode" not in callback
     assert not (root / "packaging/fnos/AngeVoice/cmd/_mode_env.sh").exists()
