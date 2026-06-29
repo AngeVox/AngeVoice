@@ -95,3 +95,13 @@ def test_2615_status_auth_boundary_distinguishes_public_read_from_control(tmp_pa
     assert client.post("/v1/models/switch", headers=api_headers, json={"model": "kokoro"}).status_code == 200
     assert client.post("/v1/diagnostics/resources/release", headers=api_headers).status_code == 401
 
+
+def test_2615_status_parts_do_not_depend_on_status_facade():
+    import kokoro_tts.routes.status_parts.control as control
+    import kokoro_tts.routes.status_parts.diagnostics as diagnostics
+    import kokoro_tts.routes.status_parts.health as health
+    import kokoro_tts.routes.status_parts.models as models
+    import kokoro_tts.routes.status_parts.runtime as runtime
+
+    for module in (control, diagnostics, health, models, runtime):
+        assert "status" not in module.__dict__
