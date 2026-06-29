@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import base64
+import ast
 from pathlib import Path
 from unittest.mock import MagicMock
 
@@ -147,13 +148,48 @@ def test_parameter_schema_endpoint_exposes_engine_driven_controls(tmp_path):
 
 
 def test_routes_depend_on_services_not_zipvoice_private_or_signature_branches():
-    root = Path(__file__).resolve().parents[1] / "src" / "kokoro_tts" / "routes"
-    ws_source = (root / "ws.py").read_text(encoding="utf-8")
-    audio_source = (root / "audio.py").read_text(encoding="utf-8")
-    assert "_zipvoice_prompt_context" not in ws_source
-    assert "inspect.signature" not in ws_source
+    root = Path(__file__).resolve().parents[1] / "src" / "kokoro_tts"
+    ws_route_source = (root / "routes" / "ws.py").read_text(encoding="utf-8")
+    audio_source = (root / "routes" / "audio.py").read_text(encoding="utf-8")
+    assert "_zipvoice_prompt_context" not in ws_route_source
+    assert "inspect.signature" not in ws_route_source
     assert "_zipvoice_generation_params" not in audio_source
-    assert "state.streaming" in ws_source
+    assert "state.synthesis" in audio_source
+
+    from kokoro_tts.routes.ws import TtsWebSocketSession, WsSessionState, create_ws_router
+    from kokoro_tts.ws.streaming import StreamingLoopMixin
+
+    router = create_ws_router(MagicMock())
+    assert [(getattr(route, "path", None), getattr(route, "name", None)) for route in router.routes] == [
+        ("/ws/v1/tts", "ws_tts")
+    ]
+    assert TtsWebSocketSession.__name__ == "TtsWebSocketSession"
+    assert WsSessionState.CREATED.value == "created"
+    assert StreamingLoopMixin in TtsWebSocketSession.__mro__
+    assert callable(getattr(StreamingLoopMixin, "_producer"))
+    assert callable(getattr(StreamingLoopMixin, "_send_loop"))
+
+    ws_package = root / "ws"
+    for module_path in ws_package.glob("*.py"):
+        tree = ast.parse(module_path.read_text(encoding="utf-8"))
+        imported_modules = []
+        for node in ast.walk(tree):
+            if isinstance(node, ast.Import):
+                imported_modules.extend(alias.name for alias in node.names)
+            elif isinstance(node, ast.ImportFrom):
+                imported_modules.append("." * node.level + (node.module or ""))
+        assert not any("routes.ws" in module or "routes.status" in module for module in imported_modules)
+        assert not any(module.startswith("..routes") or module.startswith(".routes") for module in imported_modules)
+
+    service_state_source = (root / "service_state.py").read_text(encoding="utf-8")
+    assert "kokoro_tts.ws" not in service_state_source
+    assert "from .ws" not in service_state_source
+
+
+def test_audio_route_depends_on_synthesis_service_not_zipvoice_private_helpers():
+    root = Path(__file__).resolve().parents[1] / "src" / "kokoro_tts" / "routes"
+    audio_source = (root / "audio.py").read_text(encoding="utf-8")
+    assert "_zipvoice_generation_params" not in audio_source
     assert "state.synthesis" in audio_source
 
 
