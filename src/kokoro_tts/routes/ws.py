@@ -1,7 +1,4 @@
-"""WebSocket 流式合成路由。
-
-The session implementation still consumes state.streaming through the ws package.
-"""
+"""WebSocket 流式合成路由。"""
 
 from __future__ import annotations
 
