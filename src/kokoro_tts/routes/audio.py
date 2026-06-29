@@ -161,8 +161,6 @@ async def _run_tts_call(callable_, request_id: str):
             headers={"X-Request-ID": request_id},
         )
 
-
-
 async def _save_prompt_audio_upload(upload, request_id: str, max_bytes: int) -> tuple[str | None, str]:
     if not upload or not getattr(upload, "filename", "") or not callable(getattr(upload, "read", None)):
         return None, ""

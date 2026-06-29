@@ -81,7 +81,6 @@ def cleanup_stale_prompt_audio_files(temp_dir: Path, *, now: float | None = None
     return removed
 
 
-
 def _prompt_suffix(filename: str) -> str:
     suffix = Path(filename or "prompt.wav").suffix.lower() or ".wav"
     if suffix not in PROMPT_AUDIO_SUFFIXES:

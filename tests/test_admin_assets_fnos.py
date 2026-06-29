@@ -129,8 +129,6 @@ def test_admin_can_persist_new_credentials_and_download_redacted_diagnostics(mon
         app.state.angevoice.model_manager.stop_idle_timer()
 
 
-
-
 def test_fnos_package_uses_verified_compose_profile_template_for_v26601():
     root = Path(__file__).resolve().parents[1]
     guide = (root / "docs/FNOS_FPK.md").read_text(encoding="utf-8")

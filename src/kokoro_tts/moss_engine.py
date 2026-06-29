@@ -6,17 +6,14 @@ AngeVoice 的引擎接口。纯逻辑已拆到 ``kokoro_tts.moss`` 子包。
 
 from __future__ import annotations
 
-import base64
 import concurrent.futures
 import gc
 import logging
-import queue
 import time
 import threading
 from collections import OrderedDict
-from typing import Callable, Optional
 
-from .audio import encode_audio_segment, write_wav_bytes
+from .audio import write_wav_bytes
 from .config import TTSConfig
 from .config_ids import moss_voice_catalog
 from .moss_engine_streaming import MossStreamingMixin
@@ -39,7 +36,6 @@ from .moss_runtime.audio import (
     concat_waveforms,
     normalize_waveform,
     silence_array,
-    split_waveform_for_stream,
     trim_silence_edges,
 )
 from .moss_runtime.prompt import prompt_audio_cache_key
