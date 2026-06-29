@@ -142,7 +142,7 @@ def test_fnos_package_uses_verified_compose_profile_template_for_v26601():
     assert "version               = 2.6.614" in manifest
     assert compose.count("profiles:") == 3
     assert "angevoice-cpu:" in compose and "angevoice-gpu:" in compose and "angevoice-legacy-gpu:" in compose
-    assert "maxblack777/angevoice-gpu:2.6.614" in compose
+    assert "maxblack777/angevoice-gpu:v2.6.614" in compose
     assert "${wizard_admin_password:-admin123}" in compose
     assert "ZIPVOICE_PROCESS_ISOLATION_ENABLED" in compose
     assert "ANGEVOICE_STARTUP_PRELOAD_ENABLED" in compose

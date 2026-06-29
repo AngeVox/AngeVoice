@@ -8,9 +8,9 @@ AngeVoice 的 fnOS 包采用经过真实安装验证的 **单一 Compose 文件 
 
 | 向导选项 | Profile / service | 镜像 | Provider 策略 |
 |---|---|---|---|
-| CPU | `cpu` / `angevoice-cpu` | `maxblack777/angevoice-cpu:2.6.614` | Kokoro、MOSS-TTS-Nano、ZipVoice 均走 CPU |
-| NVIDIA GPU | `gpu` / `angevoice-gpu` | `maxblack777/angevoice-gpu:2.6.614` | NVIDIA 主路径；Kokoro、MOSS、ZipVoice 请求 CUDA，ZipVoice/MOSS 可按策略回退 CPU |
-| Legacy GPU | `legacy-gpu` / `angevoice-legacy-gpu` | `maxblack777/angevoice-legacy-gpu:2.6.614` | 仅标准 GPU 无法可靠运行时回退；Kokoro CUDA，MOSS/ZipVoice 默认 CPU 稳定路径 |
+| CPU | `cpu` / `angevoice-cpu` | `maxblack777/angevoice-cpu:v2.6.614` | Kokoro、MOSS-TTS-Nano、ZipVoice 均走 CPU |
+| NVIDIA GPU | `gpu` / `angevoice-gpu` | `maxblack777/angevoice-gpu:v2.6.614` | NVIDIA 主路径；Kokoro、MOSS、ZipVoice 请求 CUDA，ZipVoice/MOSS 可按策略回退 CPU |
+| Legacy GPU | `legacy-gpu` / `angevoice-legacy-gpu` | `maxblack777/angevoice-legacy-gpu:v2.6.614` | 仅标准 GPU 无法可靠运行时回退；Kokoro CUDA，MOSS/ZipVoice 默认 CPU 稳定路径 |
 
 有 NVIDIA GPU 时优先选择 **NVIDIA GPU**；`legacy-gpu` 不是默认推荐路线，仅作为旧驱动或兼容问题的保底。
 
@@ -53,7 +53,7 @@ ANGEVOICE_AUDIO_OPUS_BITRATE=32k
 ANGEVOICE_AUDIO_AAC_BITRATE=96k
 ```
 
-默认关闭，避免普通用户在不了解转码依赖时误用。需要 Telegram voice / OGG Opus、MP3 或 M4A 输出时，可以在 fnOS 向导或 AngeVoice 管理后台开启。Compose 镜像固定拉取 `maxblack777/angevoice-*:2.6.614`。
+默认关闭，避免普通用户在不了解转码依赖时误用。需要 Telegram voice / OGG Opus、MP3 或 M4A 输出时，可以在 fnOS 向导或 AngeVoice 管理后台开启。Compose 镜像固定拉取 `maxblack777/angevoice-*:v2.6.614`。
 
 ## 持久化目录
 

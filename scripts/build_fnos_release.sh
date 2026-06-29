@@ -11,17 +11,24 @@ root = Path(os.environ['ROOT_PATH'])
 print(tomllib.loads((root / 'pyproject.toml').read_text(encoding='utf-8'))['project']['version'])
 PYV
 )"
+RELEASE_TAG="${GITHUB_REF_NAME:-v${VERSION}}"
+if [[ "$RELEASE_TAG" =~ ^v[0-9]+[.][0-9]+[.][0-9]+([-.].*)?$ ]]; then
+  IMAGE_TAG="$RELEASE_TAG"
+else
+  IMAGE_TAG="v${VERSION}"
+fi
 OUT="${1:-$ROOT/dist/AngeVoice_v${VERSION}.fpk}"
 mkdir -p "$(dirname "$OUT")"
 [[ -f "$PKG/manifest" && -f "$PKG/LICENSE" && -f "$PKG/NOTICE" && -f "$PKG/app/docker/docker-compose.yaml" && -f "$PKG/app/docker/angevoice.env" ]] || {
   echo "fnOS 打包目录不完整" >&2
   exit 1
 }
-VERSION="$VERSION" python3 - "$PKG" <<'PYVALIDATE'
+VERSION="$VERSION" IMAGE_TAG="$IMAGE_TAG" python3 - "$PKG" <<'PYVALIDATE'
 import json, os, sys
 from pathlib import Path
 p = Path(sys.argv[1])
 version = os.environ['VERSION']
+image_tag = os.environ['IMAGE_TAG']
 for name in ('install', 'config', 'upgrade', 'uninstall'):
     data = json.loads((p / 'wizard' / name).read_text(encoding='utf-8'))
     text = json.dumps(data, ensure_ascii=False)
@@ -33,9 +40,9 @@ json.loads((p / 'config/resource').read_text(encoding='utf-8'))
 json.loads((p / 'config/privilege').read_text(encoding='utf-8'))
 compose = (p / 'app/docker/docker-compose.yaml').read_text(encoding='utf-8')
 for profile, service, image in (
-    ('cpu', 'angevoice-cpu', f'maxblack777/angevoice-cpu:{version}'),
-    ('gpu', 'angevoice-gpu', f'maxblack777/angevoice-gpu:{version}'),
-    ('legacy-gpu', 'angevoice-legacy-gpu', f'maxblack777/angevoice-legacy-gpu:{version}'),
+    ('cpu', 'angevoice-cpu', 'maxblack777/angevoice-cpu:'),
+    ('gpu', 'angevoice-gpu', 'maxblack777/angevoice-gpu:'),
+    ('legacy-gpu', 'angevoice-legacy-gpu', 'maxblack777/angevoice-legacy-gpu:'),
 ):
     assert f'  {service}:' in compose
     assert f'profiles: ["{profile}"]' in compose
@@ -65,7 +72,23 @@ PYVALIDATE
 STAGE="$(mktemp -d)"
 trap 'rm -rf "$STAGE"' EXIT
 mkdir -p "$STAGE/root"
-tar --sort=name --mtime='@0' --owner=0 --group=0 --numeric-owner -czf "$STAGE/root/app.tgz" -C "$PKG/app" .
+cp -a "$PKG/app" "$STAGE/app"
+IMAGE_TAG="$IMAGE_TAG" python3 - "$STAGE/app/docker/docker-compose.yaml" <<'PYCOMPOSE'
+import os, re, sys
+from pathlib import Path
+compose = Path(sys.argv[1])
+image_tag = os.environ['IMAGE_TAG']
+text = compose.read_text(encoding='utf-8')
+text, count = re.subn(
+    r'(maxblack777/angevoice-(?:cpu|gpu|legacy-gpu):)[^\s"\']+',
+    rf'\1{image_tag}',
+    text,
+)
+if count != 3:
+    raise SystemExit(f'expected to normalize 3 AngeVoice images, got {count}')
+compose.write_text(text, encoding='utf-8')
+PYCOMPOSE
+tar --sort=name --mtime='@0' --owner=0 --group=0 --numeric-owner -czf "$STAGE/root/app.tgz" -C "$STAGE/app" .
 APP_MD5="$(md5sum "$STAGE/root/app.tgz" | awk '{print $1}')"
 python3 - "$PKG/manifest" "$STAGE/root/manifest" "$VERSION" "$APP_MD5" <<'PYMANIFEST'
 from pathlib import Path
@@ -82,5 +105,6 @@ done
 tar --sort=name --mtime='@0' --owner=0 --group=0 --numeric-owner -czf "$OUT" -C "$STAGE/root" .
 tar -tzf "$OUT" > "$OUT.contents.txt"
 sha256sum "$OUT" > "$OUT.sha256"
+python3 "$ROOT/scripts/validate_fnos_package_images.py" "$OUT" --no-remote >/dev/null
 echo "已构建 AngeVoice v${VERSION} fnOS/FPK 包：$OUT"
-echo "打包约束：单一 Compose 文件 + COMPOSE_PROFILES 路由 cpu/gpu/legacy-gpu 服务，镜像固定到 v${VERSION} 标签。"
+echo "打包约束：单一 Compose 文件 + COMPOSE_PROFILES 路由 cpu/gpu/legacy-gpu 服务，镜像固定到 ${IMAGE_TAG} 标签。"
