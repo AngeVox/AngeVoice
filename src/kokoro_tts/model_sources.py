@@ -283,7 +283,7 @@ def _modelscope_snapshot_download(repo_id: str, target_dir: Path, *, logger: log
     except Exception:
         logger.warning(
             "ModelScope package is not installed, so ModelScope downloads cannot be used for %s. "
-            "Run `pip install modelscope>=1.20.0` or use the official Docker image; falling back to Hugging Face.",
+            "Run `pip install modelscope>=1.27.0` or use the official Docker image; falling back to Hugging Face.",
             repo_id,
         )
         return None
