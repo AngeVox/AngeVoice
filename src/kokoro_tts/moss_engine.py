@@ -21,30 +21,28 @@ from .config import TTSConfig
 from .config_ids import moss_voice_catalog
 from .moss_engine_streaming import MossStreamingMixin
 from .moss import (
-    StreamBudgetThresholds,
-    analyze_silence,
     analyze_waveform,
     clean_text as moss_clean_text,
-    clamp_pause_seconds,
-    compress_long_silence,
-    concat_waveforms,
     create_runtime as create_moss_runtime,
     ensure_import_path,
-    merge_codec_audio,
-    normalize_waveform,
-    prompt_audio_cache_key,
     prepare_prompt_audio,
     get_cuda_vram_snapshot,
     is_memory_allocation_error,
     resolve_prompt_audio_codes_cached,
-    resolve_stream_decode_frame_budget,
-    runtime_supports_frame_streaming,
     segment_text as moss_segment_text,
+    temp_output_path,
+)
+from .moss_runtime.audio import (
+    analyze_silence,
+    clamp_pause_seconds,
+    compress_long_silence,
+    concat_waveforms,
+    normalize_waveform,
     silence_array,
     split_waveform_for_stream,
     trim_silence_edges,
-    temp_output_path,
 )
+from .moss_runtime.prompt import prompt_audio_cache_key
 # MOSS 现在统一使用通用 EngineProcessClient，与 Kokoro/ZipVoice 一致。
 from .workers.process_worker import EngineProcessClient, EngineProcessTimeoutError
 

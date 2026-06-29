@@ -13,6 +13,12 @@ from kokoro_tts.moss.streaming import (
     resolve_stream_decode_frame_budget,
     runtime_supports_frame_streaming,
 )
+from kokoro_tts.moss_runtime import prompt_audio_cache_key as runtime_prompt_audio_cache_key
+from kokoro_tts.moss_runtime.audio import normalize_waveform as runtime_normalize_waveform
+from kokoro_tts.moss_runtime.streaming import (
+    merge_codec_audio as runtime_merge_codec_audio,
+    resolve_stream_decode_frame_budget as runtime_resolve_stream_decode_frame_budget,
+)
 
 
 def test_2615_moss_prompt_cache_key_contract_for_voice_and_prompt_file(tmp_path):
@@ -94,3 +100,51 @@ def test_2615_moss_streaming_codec_audio_merge_contract():
     expanded = merge_codec_audio(np.array([[[1.0, 2.0, 3.0]]], dtype=np.float32), 2, channels=2)
     assert expanded.tolist() == [[1.0, 1.0], [2.0, 2.0]]
 
+
+def test_2615_moss_runtime_facade_stays_pure_and_equivalent(tmp_path):
+    import sys
+
+    forbidden_imports = [
+        "onnx_tts_runtime",
+        "ort_cpu_runtime",
+        "kokoro_tts.service_state",
+        "kokoro_tts.routes.ws",
+        "kokoro_tts.routes.status",
+        "kokoro_tts.admin_config_schema",
+    ]
+    before = {name for name in forbidden_imports if name in sys.modules}
+
+    import kokoro_tts.moss_runtime.audio  # noqa: F401
+    import kokoro_tts.moss_runtime.prompt  # noqa: F401
+    import kokoro_tts.moss_runtime.streaming  # noqa: F401
+
+    after = {name for name in forbidden_imports if name in sys.modules}
+    assert after == before
+
+    prompt = tmp_path / "prompt.wav"
+    prompt.write_bytes(b"prompt-audio")
+    assert runtime_prompt_audio_cache_key(
+        voice="Custom",
+        default_voice="Junhao",
+        prompt_audio_path=str(prompt),
+        max_seconds=8,
+        sample_rate=48000,
+        channels=2,
+    ) == prompt_audio_cache_key(
+        voice="Custom",
+        default_voice="Junhao",
+        prompt_audio_path=str(prompt),
+        max_seconds=8,
+        sample_rate=48000,
+        channels=2,
+    )
+
+    assert runtime_resolve_stream_decode_frame_budget(0, 24000, None) == resolve_stream_decode_frame_budget(0, 24000, None)
+    raw = np.array([[[1.0, 2.0], [3.0, 4.0]]], dtype=np.float32)
+    assert np.array_equal(runtime_merge_codec_audio(raw, 2, channels=2), merge_codec_audio(raw, 2, channels=2))
+
+    waveform = np.array([[0.0], [2.0], [-2.0]], dtype=np.float32)
+    expected, expected_quality = normalize_waveform(waveform, channels=1, target_peak=0.8)
+    actual, actual_quality = runtime_normalize_waveform(waveform, channels=1, target_peak=0.8)
+    assert np.array_equal(actual, expected)
+    assert actual_quality.as_dict() == expected_quality.as_dict()
