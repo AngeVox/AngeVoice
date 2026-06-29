@@ -46,9 +46,9 @@ gpu = [
 ]
 moss = [
     "torchaudio>=2.0.0",
-    "sentencepiece>=0.1.99",
+    "sentencepiece>=0.2.1",
     "huggingface_hub>=0.26.5",
-    "modelscope>=1.20.0",
+    "modelscope>=1.27.0",
     "onnxruntime>=1.20.0",
 ]
 zipvoice = [
@@ -69,9 +69,9 @@ tn = [
 ]
 moss-gpu = [
     "torchaudio>=2.0.0",
-    "sentencepiece>=0.1.99",
+    "sentencepiece>=0.2.1",
     "huggingface_hub>=0.26.5",
-    "modelscope>=1.20.0",
+    "modelscope>=1.27.0",
     "onnxruntime-gpu==1.20.2",
     "nvidia-cudnn-cu12==9.1.0.70",
 ]

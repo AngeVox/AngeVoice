@@ -13,8 +13,8 @@ tokenizers==0.20.3
 huggingface_hub==0.26.5
 
 # ── optional[moss] ─────────────────────────────────
-sentencepiece==0.1.99
-modelscope==1.20.0
+sentencepiece==0.2.1
+modelscope==1.27.0
 onnxruntime==1.20.0
 
 # ── optional[zipvoice] ─────────────────────────────
