@@ -17,6 +17,7 @@ def legacy_cfg() -> TTSConfig:
     "source,expected",
     [
         ("AngeVoice 2.6.614 版本", "AngeVoice 2.6.614 版本"),
+        ("AngeVoice 2.6.615 版本", "AngeVoice 2.6.615 版本"),
         ("Python 3.10", "Python 3.10"),
         ("CUDA 12.1", "CUDA 12.1"),
         ("3.5 版本", "3.5 版本"),
