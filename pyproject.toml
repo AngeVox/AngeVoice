@@ -29,7 +29,7 @@ dependencies = [
     "jieba>=0.42.1",
     "pypinyin>=0.50.0",
     "torch>=2.0.0",
-    "transformers>=4.46.3,<4.47",
+    "transformers>=4.53.0,<4.54",
     "numpy>=1.24.0",
     "soundfile>=0.12.0",
     "fastapi>=0.100.0",
@@ -42,19 +42,19 @@ dependencies = [
 [project.optional-dependencies]
 gpu = [
     "torch>=2.0.0",
-    "transformers>=4.46.3,<4.47",
+    "transformers>=4.53.0,<4.54",
 ]
 moss = [
     "torchaudio>=2.0.0",
     "sentencepiece>=0.2.1",
-    "huggingface_hub>=0.26.5",
+    "huggingface_hub>=0.30.0",
     "modelscope>=1.27.0",
     "onnxruntime>=1.20.0",
 ]
 zipvoice = [
     "torchaudio>=2.0.0",
     "onnxruntime>=1.20.0",
-    "huggingface_hub>=0.26.5",
+    "huggingface_hub>=0.30.0",
     "lhotse>=1.24.0",
     "vocos>=0.1.0",
     "pydub>=0.25.1",
@@ -84,7 +84,7 @@ tn = [
 moss-gpu = [
     "torchaudio>=2.0.0",
     "sentencepiece>=0.2.1",
-    "huggingface_hub>=0.26.5",
+    "huggingface_hub>=0.30.0",
     "modelscope>=1.27.0",
     "onnxruntime-gpu==1.20.2",
     "nvidia-cudnn-cu12==9.1.0.70",
