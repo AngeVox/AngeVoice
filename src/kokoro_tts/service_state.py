@@ -1,44 +1,33 @@
 """AngeVoice 运行状态与共用服务工具。"""
 
 import asyncio
-import hashlib
-import json
-import logging
 import os
-import re
 import threading
 import time
-import uuid
 from collections import OrderedDict
-from pathlib import Path
 from typing import Callable
-
-from .latency_tracker import LatencyTracker
-from .audio_formats import normalize_response_format as normalize_public_audio_format, supported_response_formats
-
-from fastapi import HTTPException
 
 from .config import TTSConfig
 from .engine import TTSEngine
 from .engine_manager import EngineManager
 from .engines.parameters import EngineParameterSchema
+from .latency_tracker import LatencyTracker
 from .resources import RuntimeResourceService
 from .services import StreamingService, SynthesisService, VoiceProfileService
-
-logger = logging.getLogger(__name__)
-
-_CLIENT_REQUEST_ID_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.:-]{5,63}$")
-_ACTIVE_REQUEST_STATUSES = {"queued", "running", "streaming", "loading", "processing", "cancelling"}
-
-
-def normalize_client_request_id(value) -> str | None:
-    """Return a safe caller-supplied request id, or None when invalid."""
-
-    text = str(value or "").strip()
-    return text if _CLIENT_REQUEST_ID_RE.fullmatch(text) else None
+from .services.state_parts.cache_state import CacheStateMixin
+from .services.state_parts.model_registry import ModelRegistryMixin
+from .services.state_parts.request_registry import RequestRegistryMixin, normalize_client_request_id
+from .services.state_parts.resource_state import ResourceStateMixin
+from .services.state_parts.stats_state import StatsStateMixin
 
 
-class ServiceState:
+class ServiceState(
+    StatsStateMixin,
+    RequestRegistryMixin,
+    CacheStateMixin,
+    ModelRegistryMixin,
+    ResourceStateMixin,
+):
     """单个 AngeVoice FastAPI 应用的可变运行状态。"""
 
     def __init__(self, cfg: TTSConfig, eng: TTSEngine | None = None, model_manager: EngineManager | None = None):
@@ -58,6 +47,7 @@ class ServiceState:
         self._idle_restart_reason = ""
         self._idle_restart_models: list[str] = []
         self._process_exit = os._exit
+        self._timer_factory = threading.Timer
         self.tts_cache: OrderedDict[str, tuple[bytes, str]] = OrderedDict()
         self._cache_bytes = 0
         self.cache_lock = threading.Lock()
@@ -87,422 +77,6 @@ class ServiceState:
         self.synthesis = SynthesisService(self)
         self.streaming = StreamingService(self)
         self.model_manager.set_idle_unload_callback(self.handle_idle_unload_completed)
-
-
-    def idle_restart_snapshot(self) -> dict:
-        """返回空闲卸载后彻底清理的运行状态。"""
-        with self._idle_restart_lock:
-            return {
-                "enabled": bool(getattr(self.cfg, "restart_after_idle_unload_enabled", False)),
-                "scheduled": bool(self._idle_restart_scheduled),
-                "last_plan_at": self._last_idle_restart_plan_at or None,
-                "delay_seconds": float(getattr(self.cfg, "restart_after_idle_unload_delay_seconds", 3.0) or 0.0),
-                "cooldown_seconds": float(getattr(self.cfg, "restart_after_idle_unload_cooldown_seconds", 1800.0) or 0.0),
-                "exit_code": int(getattr(self.cfg, "restart_after_idle_unload_exit_code", 75) or 0),
-                "reason": self._idle_restart_reason,
-                "models": list(self._idle_restart_models),
-            }
-
-    def handle_idle_unload_completed(self, unloaded_models: list[str]) -> None:
-        """模型因空闲卸载完成后，按配置安排一次彻底清理。"""
-        self.handle_model_unload_completed(unloaded_models, reason="idle")
-
-    def handle_model_unload_completed(self, unloaded_models: list[str], *, reason: str = "manual") -> dict:
-        """模型卸载完成后，在服务真正空闲时安排容器级重启。"""
-        if not unloaded_models or not bool(getattr(self.cfg, "restart_after_idle_unload_enabled", False)):
-            return self.idle_restart_snapshot()
-        if not self._idle_restart_safe():
-            logger.info("模型释放后暂不彻底清理：服务仍有活跃请求、连接或已加载模型")
-            return self.idle_restart_snapshot()
-        self._schedule_idle_restart(unloaded_models, reason=reason)
-        return self.idle_restart_snapshot()
-
-    def _idle_restart_safe(self) -> bool:
-        """确认当前没有用户请求、WebSocket 连接或已加载模型。"""
-        if self.active_websocket_connections > 0:
-            return False
-        with self.request_lock:
-            active_statuses = {"queued", "running", "streaming", "loading", "processing", "cancelling"}
-            if any(str(item.get("status", "")).lower() in active_statuses for item in self.active_requests.values()):
-                return False
-        try:
-            models = self.model_manager.list_models()
-        except Exception:
-            logger.debug("读取模型快照失败，取消本次空闲彻底清理", exc_info=True)
-            return False
-        return not any(bool(model.get("loaded")) for model in models)
-
-    def _schedule_idle_restart(self, unloaded_models: list[str], *, reason: str) -> None:
-        delay = max(0.0, float(getattr(self.cfg, "restart_after_idle_unload_delay_seconds", 3.0) or 0.0))
-        cooldown = max(0.0, float(getattr(self.cfg, "restart_after_idle_unload_cooldown_seconds", 1800.0) or 0.0))
-        now = time.monotonic()
-        with self._idle_restart_lock:
-            if self._idle_restart_scheduled:
-                return
-            if cooldown > 0 and self._last_idle_restart_plan_at and now - self._last_idle_restart_plan_at < cooldown:
-                logger.info("空闲彻底清理仍在冷却期，跳过本次退出计划")
-                return
-            self._idle_restart_scheduled = True
-            self._last_idle_restart_plan_at = now
-            self._idle_restart_reason = str(reason or "manual")
-            self._idle_restart_models = list(unloaded_models)
-        logger.warning(
-            "模型 %s 已释放（原因：%s），%.1fs 后将退出进程以彻底释放运行时资源",
-            ", ".join(unloaded_models),
-            self._idle_restart_reason,
-            delay,
-        )
-        timer = threading.Timer(delay, self._perform_idle_restart, args=(list(unloaded_models), self._idle_restart_reason))
-        timer.daemon = True
-        timer.start()
-
-    def _perform_idle_restart(self, unloaded_models: list[str], reason: str) -> None:
-        if not self._idle_restart_safe():
-            with self._idle_restart_lock:
-                self._idle_restart_scheduled = False
-                self._idle_restart_reason = ""
-                self._idle_restart_models = []
-            logger.info("空闲彻底清理已取消：退出前检测到新请求、连接或已加载模型")
-            return
-        exit_code = int(getattr(self.cfg, "restart_after_idle_unload_exit_code", 75) or 0)
-        logger.warning(
-            "模型 %s 释放后服务仍为空闲（原因：%s），正在退出进程以交给容器或服务管理器自动拉起（exit_code=%d）",
-            ", ".join(unloaded_models),
-            reason,
-            exit_code,
-        )
-        self._process_exit(exit_code)
-
-    def inc_stat(self, name: str, delta=1) -> None:
-        with self.stats_lock:
-            self.stats[name] = self.stats.get(name, 0) + delta
-
-    def snapshot_stats(self) -> dict:
-        with self.stats_lock:
-            snapshot = dict(self.stats)
-        snapshot["ws_connections_active"] = self._websocket_connections
-        return snapshot
-
-    def new_request_id(self) -> str:
-        return uuid.uuid4().hex[:12]
-
-    def request_id_from_client(self, value) -> str:
-        return normalize_client_request_id(value) or self.new_request_id()
-
-    async def try_acquire_websocket_connection(self) -> bool:
-        """在接受握手前预留一个 WebSocket 会话槽位。"""
-        limit = max(0, int(getattr(self.cfg, "websocket_max_connections", 0) or 0))
-        async with self._websocket_connection_lock:
-            if limit and self._websocket_connections >= limit:
-                self.inc_stat("ws_connections_rejected_total")
-                return False
-            self._websocket_connections += 1
-            with self.stats_lock:
-                self.stats["ws_connections_peak"] = max(self.stats.get("ws_connections_peak", 0), self._websocket_connections)
-            return True
-
-    async def release_websocket_connection(self) -> None:
-        async with self._websocket_connection_lock:
-            self._websocket_connections = max(0, self._websocket_connections - 1)
-
-    @property
-    def active_websocket_connections(self) -> int:
-        return self._websocket_connections
-
-    def cache_key(
-        self,
-        model_id: str,
-        text: str,
-        voice: str,
-        speed: float,
-        fmt: str,
-        prompt_audio_id: str = "",
-        prompt_text: str = "",
-        profile_revision: str = "",
-        generation_params: dict | None = None,
-    ) -> str:
-        controls = json.dumps(generation_params or {}, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
-        prompt_text_digest = hashlib.sha256(str(prompt_text or "").encode("utf-8")).hexdigest() if prompt_text else ""
-        payload = "\0".join([model_id, voice, f"{float(speed):.3f}", fmt, prompt_audio_id, prompt_text_digest, profile_revision, controls, text]).encode("utf-8")
-        return hashlib.sha256(payload).hexdigest()
-
-    def prompt_audio_cache_id(self, model_id: str, prompt_audio_id: str = "") -> str:
-        if prompt_audio_id:
-            return str(prompt_audio_id)
-        if not str(model_id or "").startswith("moss") or not self.cfg.moss_prompt_audio_path:
-            return ""
-        path = Path(self.cfg.moss_prompt_audio_path).expanduser()
-        try:
-            stat = path.stat()
-            return f"path:{path.resolve()}:{stat.st_mtime_ns}:{stat.st_size}"
-        except OSError:
-            return f"path:{path}"
-
-    def engine_supports_voice_clone(self, eng) -> bool:
-        metadata = getattr(eng, "metadata", None)
-        if not callable(metadata):
-            return False
-        try:
-            data = metadata()
-        except Exception:
-            logger.debug("读取引擎克隆能力元数据失败", exc_info=True)
-            return False
-        modes = data.get("modes") if isinstance(data, dict) else []
-        return bool(data.get("voice_clone_supported")) or (isinstance(modes, list) and "voice_clone" in modes)
-
-    def cache_get(self, key: str):
-        if not self.cfg.cache_enabled or self.cfg.cache_max_items <= 0:
-            return None
-        with self.cache_lock:
-            item = self.tts_cache.get(key)
-            if item is not None:
-                self.tts_cache.move_to_end(key)
-        self.inc_stat("cache_hits" if item is not None else "cache_misses")
-        return item
-
-    def _cache_item_size(self, value: tuple[bytes, str]) -> int:
-        try:
-            return len(value[0])
-        except Exception:
-            return 0
-
-    def _should_cache_result(self, *, text: str, value: tuple[bytes, str]) -> bool:
-        if not self.cfg.cache_enabled or self.cfg.cache_max_items <= 0:
-            return False
-        text_limit = int(getattr(self.cfg, "cache_skip_text_over_chars", 0) or 0)
-        if text_limit > 0 and len(text or "") > text_limit:
-            self.inc_stat("cache_skips")
-            return False
-        audio_limit = int(getattr(self.cfg, "cache_skip_audio_over_bytes", 0) or 0)
-        if audio_limit > 0 and self._cache_item_size(value) > audio_limit:
-            self.inc_stat("cache_skips")
-            return False
-        return True
-
-    def cache_set(self, key: str, value: tuple[bytes, str], *, text: str = "") -> None:
-        if not self._should_cache_result(text=text, value=value):
-            return
-        item_size = self._cache_item_size(value)
-        max_bytes = int(getattr(self.cfg, "cache_max_bytes", 0) or 0)
-        with self.cache_lock:
-            old = self.tts_cache.pop(key, None)
-            if old is not None:
-                self._cache_bytes = max(0, self._cache_bytes - self._cache_item_size(old))
-            self.tts_cache[key] = value
-            self._cache_bytes += item_size
-            self.tts_cache.move_to_end(key)
-            while len(self.tts_cache) > self.cfg.cache_max_items:
-                _, removed = self.tts_cache.popitem(last=False)
-                self._cache_bytes = max(0, self._cache_bytes - self._cache_item_size(removed))
-            while max_bytes > 0 and self._cache_bytes > max_bytes and self.tts_cache:
-                _, removed = self.tts_cache.popitem(last=False)
-                self._cache_bytes = max(0, self._cache_bytes - self._cache_item_size(removed))
-
-    def cache_size(self) -> int:
-        with self.cache_lock:
-            return len(self.tts_cache)
-
-    def cache_bytes(self) -> int:
-        with self.cache_lock:
-            return int(self._cache_bytes)
-
-    def cache_clear(self) -> int:
-        with self.cache_lock:
-            size = len(self.tts_cache)
-            self.tts_cache.clear()
-            self._cache_bytes = 0
-            return size
-
-    def rss_bytes(self) -> int | None:
-        return self.runtime_resources.rss_bytes()
-
-    def resource_snapshot(self) -> dict:
-        return self.runtime_resources.snapshot()
-
-    def release_resources(self, *, clear_cache: bool = True, unload_models: bool = False, include_current: bool = True) -> dict:
-        return self.runtime_resources.release(clear_cache=clear_cache, unload_models=unload_models, include_current=include_current)
-
-    def _zipvoice_prompt_context(self, model_id: str, voice: str, prompt_audio_path: str | None, prompt_audio_id: str, prompt_text: str) -> tuple[str | None, str, str, str]:
-        """兼容旧测试和旧版内部调用者的代理。"""
-        condition = self.voice_profiles.resolve_condition(
-            model_id, voice, prompt_audio_path=prompt_audio_path, prompt_audio_id=prompt_audio_id, prompt_text=prompt_text
-        )
-        return condition.prompt_audio_path, condition.prompt_audio_id, condition.prompt_text, condition.revision
-
-    def mark_request(self, request_id: str, status: str, **extra) -> None:
-        if not self.cfg.queue_status_enabled:
-            return
-        with self.request_lock:
-            item = self.active_requests.setdefault(
-                request_id,
-                {"id": request_id, "created_at": time.time(), "status": status},
-            )
-            item.update({"status": status, "updated_at": time.time(), **extra})
-
-    def request_snapshot(self, *, limit: int | None = None, recent_first: bool = True) -> list[dict]:
-        """返回稳定请求快照，不暴露实时共享映射。"""
-        with self.request_lock:
-            values = [dict(item) for item in self.active_requests.values()]
-        values.sort(key=lambda item: float(item.get("updated_at", 0) or 0), reverse=recent_first)
-        return values[:limit] if limit is not None else values
-
-    def request_info(self, request_id: str) -> dict | None:
-        with self.request_lock:
-            item = self.active_requests.get(request_id)
-            return dict(item) if item is not None else None
-
-    def request_is_active(self, request_id: str) -> bool:
-        item = self.request_info(request_id)
-        return bool(item and str(item.get("status", "")).lower() in _ACTIVE_REQUEST_STATUSES)
-
-    def _prune_request_history(self, *, maximum: int = 100, remove_count: int = 20) -> None:
-        """清理已完成的历史记录条目，不移除正在运行的请求。
-
-        该映射小且有界，因此在同一锁下选择和删除条目
-        优于可能与并发合成请求状态更新竞争的两阶段扫描。
-        """
-        terminal = {"done", "error", "timeout", "cancelled"}
-        with self.request_lock:
-            if not self.cfg.queue_status_enabled or len(self.active_requests) <= maximum:
-                return
-            candidates = [
-                (key, float(item.get("updated_at", 0) or 0))
-                for key, item in self.active_requests.items()
-                if item.get("status") in terminal
-            ]
-            for key, _updated_at in sorted(candidates, key=lambda pair: pair[1])[:remove_count]:
-                self.active_requests.pop(key, None)
-
-    def finish_request(self, request_id: str, status: str, **extra) -> None:
-        self.mark_request(request_id, status, **extra)
-        if status in {"done", "error", "timeout", "cancelled"}:
-            with self.request_lock:
-                self.cancelled_requests.discard(request_id)
-        self._prune_request_history()
-
-    def is_cancelled(self, request_id: str) -> bool:
-        with self.request_lock:
-            return request_id in self.cancelled_requests
-
-    def request_cancel(self, request_id: str) -> bool:
-        with self.request_lock:
-            known = request_id in self.active_requests
-            self.cancelled_requests.add(request_id)
-        self.inc_stat("ws_cancelled_total")
-        self.mark_request(request_id, "cancelling")
-        return known
-
-    def normalize_response_format(self, fmt: str) -> str:
-        return normalize_public_audio_format(fmt, self.cfg)
-
-    def _safe_filename_part(self, value: str, fallback: str = "item") -> str:
-        value = re.sub(r"[^A-Za-z0-9_.-]+", "_", str(value or "").strip()).strip("._")
-        return value[:80] or fallback
-
-    def save_generated_output(
-        self,
-        *,
-        request_id: str,
-        audio_bytes: bytes,
-        response_format: str,
-        media_type: str,
-        model_id: str,
-        voice: str,
-    ) -> Path | None:
-        if not self.cfg.save_outputs:
-            return None
-        if not audio_bytes:
-            return None
-        fmt = self.normalize_response_format(response_format)
-        if media_type == "audio/mpeg":
-            ext = "mp3"
-        elif media_type == "audio/ogg" or fmt == "ogg_opus":
-            ext = "ogg"
-        elif media_type == "audio/mp4" or fmt == "m4a":
-            ext = "m4a"
-        elif fmt == "pcm" or media_type == "audio/pcm":
-            ext = "pcm_s16le"
-        else:
-            ext = "wav"
-        day = time.strftime("%Y%m%d")
-        output_dir = Path(self.cfg.output_dir).expanduser() / day
-        timestamp = time.strftime("%H%M%S")
-        filename = "_".join(
-            [
-                timestamp,
-                self._safe_filename_part(request_id, "request"),
-                self._safe_filename_part(model_id, "model"),
-                self._safe_filename_part(voice, "voice"),
-            ]
-        )
-        target = output_dir / f"{filename}.{ext}"
-        with self.output_lock:
-            output_dir.mkdir(parents=True, exist_ok=True)
-            target.write_bytes(audio_bytes)
-            self._prune_outputs_locked()
-        self.inc_stat("outputs_saved_total")
-        return target
-
-    def _prune_outputs_locked(self) -> None:
-        max_files = int(getattr(self.cfg, "output_max_files", 0) or 0)
-        if max_files <= 0:
-            return
-        root = Path(self.cfg.output_dir).expanduser()
-        if not root.exists():
-            return
-        files = [
-            item
-            for item in root.rglob("*")
-            if item.is_file() and item.suffix.lower() in {".wav", ".mp3", ".ogg", ".m4a", ".pcm_s16le"}
-        ]
-        overflow = len(files) - max_files
-        if overflow <= 0:
-            return
-        files.sort(key=lambda item: item.stat().st_mtime)
-        for item in files[:overflow]:
-            try:
-                item.unlink()
-            except OSError:
-                logger.debug("清理过期输出文件失败：%s", item, exc_info=True)
-
-    def synthesize_response_bytes(
-        self,
-        text: str,
-        voice: str,
-        speed: float,
-        fmt: str,
-        model_id: str | None = None,
-        prompt_audio_path: str | None = None,
-        prompt_audio_id: str = "",
-        prompt_text: str = "",
-        generation_params: dict | None = None,
-    ) -> tuple[bytes, str]:
-        request = self.synthesis.build_request(
-            text=text, voice=voice, speed=speed, response_format=fmt, model_id=model_id,
-            prompt_audio_path=prompt_audio_path, prompt_audio_id=prompt_audio_id, prompt_text=prompt_text,
-            engine_params=generation_params,
-        )
-        return self.synthesis.response_bytes(request)
-
-    async def synthesize_response_threaded(
-        self,
-        text: str,
-        voice: str,
-        speed: float,
-        fmt: str,
-        request_id: str,
-        model_id: str | None = None,
-        prompt_audio_path: str | None = None,
-        prompt_audio_id: str = "",
-        prompt_text: str = "",
-        generation_params: dict | None = None,
-    ):
-        request = self.synthesis.build_request(
-            text=text, voice=voice, speed=speed, response_format=fmt, model_id=model_id,
-            prompt_audio_path=prompt_audio_path, prompt_audio_id=prompt_audio_id, prompt_text=prompt_text,
-            engine_params=generation_params, request_id=request_id,
-        )
-        return await self.synthesis.response_threaded(request)
 
     def as_service_extras_kwargs(self) -> dict[str, Callable | object]:
         return {

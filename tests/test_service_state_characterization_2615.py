@@ -91,3 +91,14 @@ def test_2615_service_state_output_save_contract(tmp_path):
     assert saved.name.endswith(".wav")
     assert "/" not in saved.name and "\\" not in saved.name
     assert saved.read_bytes() == b"RIFFdata"
+
+
+def test_2615_service_state_parts_do_not_import_routes():
+    import kokoro_tts.services.state_parts.cache_state as cache_state
+    import kokoro_tts.services.state_parts.model_registry as model_registry
+    import kokoro_tts.services.state_parts.request_registry as request_registry
+    import kokoro_tts.services.state_parts.resource_state as resource_state
+    import kokoro_tts.services.state_parts.stats_state as stats_state
+
+    for module in (cache_state, model_registry, request_registry, resource_state, stats_state):
+        assert "routes" not in module.__dict__
