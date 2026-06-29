@@ -93,3 +93,22 @@ def test_2615_admin_schema_byte_fields_store_bytes_but_explain_mib_ui():
         for snapshot_key, snapshot_value in snapshot.items():
             assert field[snapshot_key] == snapshot_value
 
+
+def test_2615_admin_config_package_matches_legacy_facade():
+    from kokoro_tts.admin_config import schema_payload as package_schema_payload
+
+    assert package_schema_payload() == schema_payload()
+
+
+def test_2615_admin_config_groups_do_not_import_legacy_facade():
+    import kokoro_tts.admin_config.groups.cache as cache
+    import kokoro_tts.admin_config.groups.core as core
+    import kokoro_tts.admin_config.groups.moss as moss
+    import kokoro_tts.admin_config.groups.security as security
+    import kokoro_tts.admin_config.groups.streaming as streaming
+    import kokoro_tts.admin_config.groups.text as text
+    import kokoro_tts.admin_config.groups.zipvoice as zipvoice
+
+    modules = (cache, core, moss, security, streaming, text, zipvoice)
+    for module in modules:
+        assert "admin_config_schema" not in module.__dict__

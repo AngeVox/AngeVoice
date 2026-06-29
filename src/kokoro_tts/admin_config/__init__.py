@@ -1,24 +1,6 @@
-"""Compatibility facade for admin runtime configuration schema.
+"""Admin runtime configuration schema package."""
 
-New code should import from :mod:`kokoro_tts.admin_config`; this module keeps
-the historical import path stable for routes, tests, and third-party tooling.
-"""
-
-from __future__ import annotations
-
-import json
-import logging
-import os
-import tempfile
-import threading
-import time
-from collections import OrderedDict
-from contextlib import contextmanager
-from dataclasses import dataclass
-from pathlib import Path
-from typing import Any
-
-from .admin_config.schema import (
+from .schema import (
     ADMIN_CONFIG_FIELDS,
     ADMIN_CONFIG_GROUPS,
     ADMIN_CONFIG_PROFILES,
@@ -37,13 +19,6 @@ from .admin_config.schema import (
     schema_payload,
     validate_admin_config_values,
 )
-
-logger = logging.getLogger(__name__)
-
-try:
-    import fcntl
-except ImportError:  # pragma: no cover - Docker/fnOS deployments provide fcntl.
-    fcntl = None
 
 __all__ = [
     "ADMIN_CONFIG_FIELDS",
