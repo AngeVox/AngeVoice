@@ -6,14 +6,13 @@ import json
 import logging
 from contextlib import suppress
 from io import BytesIO
-from pathlib import Path
 
 from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import JSONResponse, StreamingResponse
 from pydantic import ValidationError
 
 from ..api_models import TTSRequest
-from ..prompt_audio import save_prompt_audio_upload, validate_reference_audio_duration
+from ..prompt_audio import delete_prompt_audio_path, save_prompt_audio_upload, validate_reference_audio_duration
 from ..validation import is_no_synthesizable_text_error, no_synthesizable_text_detail
 from ..service_state import ServiceState
 
@@ -213,8 +212,7 @@ async def _parse_form_tts_parameters(request: Request, state: ServiceState, requ
                 prompt_audio_path, max_seconds=state.voice_profiles.reference_max_seconds(upload_model)
             )
         except HTTPException:
-            with suppress(OSError):
-                Path(prompt_audio_path).unlink()
+            delete_prompt_audio_path(prompt_audio_path)
             prompt_audio_path = None
             raise
     return {
@@ -298,8 +296,7 @@ def create_audio_router(state: ServiceState, verify_api_key) -> APIRouter:
             )
         finally:
             if prompt_audio_path:
-                with suppress(OSError):
-                    Path(prompt_audio_path).unlink()
+                delete_prompt_audio_path(prompt_audio_path)
         if response_encoding == "base64":
             return _audio_json_response(
                 audio_bytes=audio_bytes,

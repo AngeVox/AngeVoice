@@ -5,6 +5,7 @@ from __future__ import annotations
 import base64
 import hashlib
 import os
+import re
 import tempfile
 import time
 from pathlib import Path
@@ -13,6 +14,52 @@ from fastapi import HTTPException
 
 PROMPT_AUDIO_SUFFIXES = {".wav", ".mp3", ".flac", ".ogg", ".m4a", ".aac"}
 PROMPT_AUDIO_STALE_SECONDS = 24 * 60 * 60
+_PROMPT_AUDIO_NAME_RE = re.compile(r"^[A-Za-z0-9_-]{1,128}_[0-9a-f]{16}\.(?:wav|mp3|flac|ogg|m4a|aac)$")
+
+
+def prompt_audio_temp_dir() -> Path:
+    """Return the private root for short-lived prompt/reference audio uploads."""
+
+    return Path(tempfile.gettempdir()) / "angevoice_prompt_audio"
+
+
+def _is_relative_to(path: Path, root: Path) -> bool:
+    try:
+        path.relative_to(root)
+    except ValueError:
+        return False
+    return True
+
+
+def delete_prompt_audio_path(path: str | Path) -> bool:
+    """Delete an internally generated prompt-audio temp file if it is safe.
+
+    User-influenced paths must never be unlinked directly.  Only files under the
+    prompt temp root with AngeVoice's generated ``requestid_digest.ext`` naming
+    shape are eligible for deletion; symlinks and traversal attempts are ignored.
+    """
+
+    try:
+        candidate = Path(path)
+        root = prompt_audio_temp_dir().resolve(strict=False)
+        resolved = candidate.resolve(strict=False)
+    except (OSError, RuntimeError, ValueError):
+        return False
+    if not _is_relative_to(resolved, root):
+        return False
+    if not _PROMPT_AUDIO_NAME_RE.fullmatch(candidate.name):
+        return False
+    try:
+        if candidate.is_symlink():
+            return False
+        if not candidate.exists():
+            return False
+        if not candidate.is_file():
+            return False
+        candidate.unlink()
+        return True
+    except OSError:
+        return False
 
 
 def cleanup_stale_prompt_audio_files(temp_dir: Path, *, now: float | None = None) -> int:
@@ -52,7 +99,7 @@ async def save_prompt_audio_upload(
 ) -> tuple[str | None, str]:
     """Persist a multipart reference upload incrementally with a hard byte cap."""
     suffix = _prompt_suffix(filename)
-    temp_dir = Path(tempfile.gettempdir()) / "angevoice_prompt_audio"
+    temp_dir = prompt_audio_temp_dir()
     temp_dir.mkdir(parents=True, exist_ok=True)
     cleanup_stale_prompt_audio_files(temp_dir)
     digest = hashlib.sha256()
@@ -99,7 +146,7 @@ def save_prompt_audio_bytes(
     suffix = _prompt_suffix(filename)
 
     digest = hashlib.sha256(content).hexdigest()
-    temp_dir = Path(tempfile.gettempdir()) / "angevoice_prompt_audio"
+    temp_dir = prompt_audio_temp_dir()
     temp_dir.mkdir(parents=True, exist_ok=True)
     cleanup_stale_prompt_audio_files(temp_dir)
     target = temp_dir / f"{request_id}_{digest[:16]}{suffix}"

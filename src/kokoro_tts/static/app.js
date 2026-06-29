@@ -17,7 +17,7 @@ const state = {
   voices: Array.isArray(bootstrap.voices) ? bootstrap.voices : [],
   selectedVoice: bootstrap.defaultVoice || '',
   activeFilter: 'all',
-  token: localStorage.getItem('angevoice.apiToken.v1') || '',
+  token: '',
   theme: document.documentElement.dataset.theme || 'light',
   metricsCollapsed: localStorage.getItem('angevoice.metricsCollapsed.v1') === 'true',
   favorites: readList('angevoice.favoriteVoices.v2'),
@@ -50,6 +50,7 @@ const state = {
   zipvoiceExpanded: false,
   textNormalization: localStorage.getItem('angevoice.textNormalization.v1') || 'default'
 };
+localStorage.removeItem('angevoice.apiToken.v1');
 
 const els = {
   form: document.getElementById('tts-form'),
@@ -116,6 +117,20 @@ const els = {
 
 function t(key, params) {
   return window.AngeVoiceI18n?.t?.(key, params) || key;
+}
+
+function applyTokenSessionNotice() {
+  const hint = document.querySelector('[data-i18n-html="settings.hint"]');
+  if (!hint) return;
+  hint.querySelector('[data-token-session-notice]')?.remove();
+  const locale = String(document.documentElement.dataset.locale || 'zh-CN').toLowerCase();
+  const message = locale.startsWith('en')
+    ? ' For safety, Studio keeps the API Key only in the current page session; re-enter it after refreshing.'
+    : ' 出于安全考虑，Studio 仅在当前页面会话中保存 API Key，刷新后需要重新输入。';
+  const notice = document.createElement('span');
+  notice.dataset.tokenSessionNotice = 'true';
+  notice.textContent = message;
+  hint.appendChild(notice);
 }
 
 const groups = [
@@ -1844,16 +1859,13 @@ function bindEvents() {
   });
   els.settingsBtn.addEventListener('click', () => {
     els.tokenInput.value = state.token;
+    applyTokenSessionNotice();
     els.settingsDialog.showModal();
   });
   els.saveTokenBtn.addEventListener('click', () => {
     state.token = els.tokenInput.value.trim();
     state.authRejected = false;
-    if (state.token) {
-      localStorage.setItem('angevoice.apiToken.v1', state.token);
-    } else {
-      localStorage.removeItem('angevoice.apiToken.v1');
-    }
+    localStorage.removeItem('angevoice.apiToken.v1');
     els.settingsDialog.close();
     refreshServiceState();
   });
@@ -1870,6 +1882,7 @@ function bindEvents() {
     renderVoiceTabs();
     renderFavorite();
     updateButtons();
+    applyTokenSessionNotice();
   });
 }
 
@@ -1886,6 +1899,7 @@ function init() {
   }
   applyStreamToggleState();
   applyTheme(state.theme);
+  applyTokenSessionNotice();
   setMetricsCollapsed(state.metricsCollapsed);
   renderModelSelect();
   renderVoiceSelect();

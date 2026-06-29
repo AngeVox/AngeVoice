@@ -13,6 +13,7 @@ Environment variables (all read via ``TTSConfig``):
 from __future__ import annotations
 
 import asyncio
+import hashlib
 import logging
 import threading
 import time
@@ -108,7 +109,7 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
             return await call_next(request)
 
         retry = bucket.retry_after
-        logger.warning("Rate limit exceeded for %s (retry-after=%.1fs)", _mask_client_key(client_key), retry)
+        logger.warning("Rate limit exceeded for %s (retry-after=%.1fs)", _safe_client_log_label(client_key), retry)
         return JSONResponse(
             status_code=429,
             content={
@@ -203,11 +204,10 @@ def _extract_client_key(request: Request, *, trust_proxy_headers: bool = False) 
     return "ip:unknown"
 
 
-def _mask_client_key(client_key: str) -> str:
-    """Mask sensitive API keys before writing client identifiers to logs."""
+def _safe_client_log_label(client_key: str) -> str:
+    """Return a non-secret client label for logs."""
     if not client_key.startswith("key:"):
         return client_key
     token = client_key[4:]
-    if len(token) <= 12:
-        return "key:" + token[:2] + "***"
-    return "key:" + token[:6] + "..." + token[-4:]
+    digest = hashlib.sha256(token.encode("utf-8", "ignore")).hexdigest()[:12]
+    return f"key_hash:{digest}"
