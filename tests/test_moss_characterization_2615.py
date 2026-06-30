@@ -55,7 +55,7 @@ def test_2615_moss_prompt_cache_key_contract_for_voice_and_prompt_file(tmp_path)
 
 
 def test_2615_moss_stream_budget_and_runtime_capability_contract(monkeypatch):
-    monkeypatch.setattr("kokoro_tts.moss.streaming.time.perf_counter", lambda: 100.0)
+    monkeypatch.setattr("kokoro_tts.moss_runtime.streaming.time.perf_counter", lambda: 100.0)
     thresholds = StreamBudgetThresholds(low=0.25, mid=0.65, high=1.20)
 
     assert resolve_stream_decode_frame_budget(0, 24000, None, thresholds) == 1
@@ -148,3 +148,21 @@ def test_2615_moss_runtime_facade_stays_pure_and_equivalent(tmp_path):
     actual, actual_quality = runtime_normalize_waveform(waveform, channels=1, target_peak=0.8)
     assert np.array_equal(actual, expected)
     assert actual_quality.as_dict() == expected_quality.as_dict()
+
+
+def test_2615_moss_legacy_helpers_reexport_runtime_sources():
+    import kokoro_tts.moss.postprocess as legacy_postprocess
+    import kokoro_tts.moss.prompt as legacy_prompt
+    import kokoro_tts.moss.streaming as legacy_streaming
+    import kokoro_tts.moss_runtime.audio as runtime_audio
+    import kokoro_tts.moss_runtime.prompt as runtime_prompt
+    import kokoro_tts.moss_runtime.streaming as runtime_streaming
+
+    assert legacy_postprocess.MossAudioQuality is runtime_audio.MossAudioQuality
+    assert legacy_postprocess.ensure_audio_shape is runtime_audio.ensure_audio_shape
+    assert legacy_postprocess.normalize_waveform is runtime_audio.normalize_waveform
+    assert legacy_postprocess.split_waveform_for_stream is runtime_audio.split_waveform_for_stream
+    assert legacy_prompt.prompt_audio_cache_key is runtime_prompt.prompt_audio_cache_key
+    assert legacy_streaming.StreamBudgetThresholds is runtime_streaming.StreamBudgetThresholds
+    assert legacy_streaming.merge_codec_audio is runtime_streaming.merge_codec_audio
+    assert legacy_streaming.resolve_stream_decode_frame_budget is runtime_streaming.resolve_stream_decode_frame_budget
