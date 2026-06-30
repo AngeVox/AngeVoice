@@ -142,4 +142,5 @@ def test_2615_studio_token_is_session_only_and_legacy_storage_is_cleared():
     assert ("localStorage." + "setItem('angevoice.apiToken.v1'") not in app_js
     assert "localStorage.removeItem('angevoice.apiToken.v1')" in app_js
     assert "token: ''," in app_js
-    assert "current page session" in app_js
+    assert "HttpOnly" in app_js
+    assert "/v1/auth/session" in app_js

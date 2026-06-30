@@ -15,7 +15,14 @@ from .config import TTSConfig, load_config
 from .banner import format_startup_banner
 from .engine import TTSEngine
 from .engine_manager import EngineManager
-from .routes import create_admin_router, create_audio_router, create_status_router, create_ws_router, create_zipvoice_router
+from .routes import (
+    create_admin_router,
+    create_auth_router,
+    create_audio_router,
+    create_status_router,
+    create_ws_router,
+    create_zipvoice_router,
+)
 from .security import make_verify_api_key
 from .service_state import ServiceState
 from .rate_limit import GlobalQueueMiddleware, RateLimitMiddleware
@@ -290,6 +297,7 @@ def create_app(config: Optional[TTSConfig] = None, engine: Optional[TTSEngine] =
         logger.debug("Jinja2 templates are unavailable", exc_info=True)
 
     state.templates = templates
+    app.include_router(create_auth_router(cfg))
     app.include_router(create_status_router(state, verify_api_key, templates=templates))
     app.include_router(create_admin_router(state))
     app.include_router(create_audio_router(state, verify_api_key))

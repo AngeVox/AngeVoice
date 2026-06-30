@@ -125,8 +125,8 @@ function applyTokenSessionNotice() {
   hint.querySelector('[data-token-session-notice]')?.remove();
   const locale = String(document.documentElement.dataset.locale || 'zh-CN').toLowerCase();
   const message = locale.startsWith('en')
-    ? ' For safety, Studio keeps the API Key only in the current page session; re-enter it after refreshing.'
-    : ' 出于安全考虑，Studio 仅在当前页面会话中保存 API Key，刷新后需要重新输入。';
+    ? ' Studio remembers this browser with a secure HttpOnly session cookie; clear access here or rotate the API Key to revoke it.'
+    : ' Studio 会用安全的 HttpOnly 会话 Cookie 记住此浏览器；可在这里移除访问，或轮换 API Key 让旧会话失效。';
   const notice = document.createElement('span');
   notice.dataset.tokenSessionNotice = 'true';
   notice.textContent = message;
@@ -311,7 +311,23 @@ function authHeaders(extra = {}) {
 
 async function apiFetch(url, options = {}) {
   const headers = authHeaders(options.headers || {});
-  return fetch(url, { ...options, headers });
+  return fetch(url, { ...options, headers, credentials: 'same-origin' });
+}
+
+async function createApiSession(token) {
+  const response = await fetch('/v1/auth/session', {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${token}` },
+    credentials: 'same-origin'
+  });
+  if (!response.ok) {
+    throw new Error(response.status === 401 ? 'API Key 无效或已失效' : `会话保存失败 (${response.status})`);
+  }
+  return response.json().catch(() => ({ ok: true }));
+}
+
+async function clearApiSession() {
+  await fetch('/v1/auth/session', { method: 'DELETE', credentials: 'same-origin' });
 }
 
 function setHealth(kind, label) {
@@ -1862,18 +1878,36 @@ function bindEvents() {
     applyTokenSessionNotice();
     els.settingsDialog.showModal();
   });
-  els.saveTokenBtn.addEventListener('click', () => {
-    state.token = els.tokenInput.value.trim();
-    state.authRejected = false;
-    localStorage.removeItem('angevoice.apiToken.v1');
-    els.settingsDialog.close();
-    refreshServiceState();
+  els.saveTokenBtn.addEventListener('click', async () => {
+    const token = els.tokenInput.value.trim();
+    if (!token) {
+      setProgress('请输入 API Key 后再保存。', true);
+      return;
+    }
+    try {
+      await createApiSession(token);
+      state.token = '';
+      state.authRejected = false;
+      els.tokenInput.value = '';
+      localStorage.removeItem('angevoice.apiToken.v1');
+      els.settingsDialog.close();
+      setProgress('已在此浏览器保存访问会话。');
+      refreshServiceState();
+    } catch (err) {
+      setProgress(err.message || '会话保存失败，请检查 API Key。', true);
+    }
   });
-  els.clearTokenBtn.addEventListener('click', () => {
+  els.clearTokenBtn.addEventListener('click', async () => {
     state.token = '';
     state.authRejected = false;
     els.tokenInput.value = '';
     localStorage.removeItem('angevoice.apiToken.v1');
+    try {
+      await clearApiSession();
+    } catch (_) {
+      // Local state should still be cleared even if the server is unavailable.
+    }
+    setProgress('已移除此浏览器的访问会话。');
     refreshServiceState();
   });
   document.addEventListener('angevoice:locale-changed', () => {
