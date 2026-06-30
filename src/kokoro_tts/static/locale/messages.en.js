@@ -62,7 +62,7 @@
     'settings.title': 'API Key',
     'settings.close': 'Close',
     'settings.token': 'API Key (Bearer Token)',
-    'settings.hint': 'Production templates can use <code>KOKORO_API_KEY=auto</code> to generate a key on first start. If Admin is enabled, view or rotate it in <a href="/admin">Admin</a>; otherwise check the startup log or <code>ANGEVOICE_API_KEY_FILE</code>.',
+    'settings.hint': 'Production templates can use <code>KOKORO_API_KEY=auto</code> to generate a key on first start. If Admin is enabled, view or rotate it in <a href="/admin">Admin</a>. After saving, Studio remembers this browser with an HttpOnly cookie so refreshes and new tabs do not require re-entry.',
     'settings.save': 'Save',
     'settings.remove': 'Remove',
     'security.eyebrow': 'Security',

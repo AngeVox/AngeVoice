@@ -152,7 +152,7 @@
     <form method="dialog" class="settings-card">
       <div class="section-head"><div><p class="eyebrow" data-i18n="settings.eyebrow">Access</p><h2 data-i18n="settings.title">API Key</h2></div><button type="submit" class="icon-button" data-i18n-title="settings.close">×</button></div>
       <label class="field"><span data-i18n="settings.token">API Key（Bearer Token）</span><input type="password" id="api-token" autocomplete="off" placeholder="KOKORO_API_KEY" /></label>
-      <p class="hint" data-i18n-html="settings.hint">生产模板可使用 <code>KOKORO_API_KEY=auto</code> 自动生成；如果已开启管理后台，可在 <a href="/admin">管理后台</a> 查看或轮换；未开启时请查看启动日志或 <code>ANGEVOICE_API_KEY_FILE</code>。</p>
+      <p class="hint" data-i18n-html="settings.hint">生产模板可使用 <code>KOKORO_API_KEY=auto</code> 自动生成；如果已开启管理后台，可在 <a href="/admin">管理后台</a> 查看或轮换。保存后 Studio 会用 HttpOnly Cookie 记住此浏览器，刷新或重新打开页面无需重复输入。</p>
       <div class="button-row"><button type="button" class="primary-button" id="save-token-btn" data-i18n="settings.save">保存</button><button type="button" class="ghost-button" id="clear-token-btn" data-i18n="settings.remove">移除</button></div>
     </form>
   </dialog>

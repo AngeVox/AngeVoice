@@ -62,7 +62,7 @@
     'settings.title': 'API Key',
     'settings.close': '关闭',
     'settings.token': 'API Key（Bearer Token）',
-    'settings.hint': '生产模板可使用 <code>KOKORO_API_KEY=auto</code> 自动生成；如果已开启管理后台，可在 <a href="/admin">管理后台</a> 查看或轮换；未开启时请查看启动日志或 <code>ANGEVOICE_API_KEY_FILE</code>。',
+    'settings.hint': '生产模板可使用 <code>KOKORO_API_KEY=auto</code> 自动生成；如果已开启管理后台，可在 <a href="/admin">管理后台</a> 查看或轮换。保存后 Studio 会用 HttpOnly Cookie 记住此浏览器，刷新或重新打开页面无需重复输入。',
     'settings.save': '保存',
     'settings.remove': '移除',
     'security.eyebrow': '安全提醒',

@@ -471,6 +471,25 @@ def test_status_auth_flags_use_persisted_api_key(tmp_path):
     assert client.get("/v1/models", headers={"Authorization": "Bearer persisted-token"}).status_code == 200
 
 
+def test_studio_api_session_cookie_allows_refresh_without_resubmitting_token(tmp_path):
+    cfg = TTSConfig(api_key="persisted-token", public_status_endpoints=False)
+    app = create_app(config=cfg, engine=_fake_engine())
+    client = TestClient(app)
+
+    assert client.get("/v1/models").status_code == 401
+    login = client.post("/v1/auth/session", headers={"Authorization": "Bearer persisted-token"})
+    assert login.status_code == 200
+    cookie = login.headers.get("set-cookie", "")
+    assert "angevoice_api_session=" in cookie
+    assert "HttpOnly" in cookie
+    assert "persisted-token" not in cookie
+    assert client.get("/v1/models").status_code == 200
+
+    clear = client.delete("/v1/auth/session")
+    assert clear.status_code == 200
+    assert client.get("/v1/models").status_code == 401
+
+
 def test_health_reports_idle_for_lazy_wakeable_model_without_idle_timer():
     """懒加载且可唤醒的模型不应被健康检查误报为 loading。"""
     engine = _fake_engine()
