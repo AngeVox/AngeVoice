@@ -50,8 +50,8 @@ def test_current_compose_files_use_v_prefixed_release_image_tags():
         images = validator.extract_image_references(path.read_text(encoding="utf-8"))
         assert images
         assert not validator.validate_images(images), path
-        assert all(":v2.6.614" in image for image in images if "maxblack777/angevoice-" in image)
-        assert all(":2.6.614" not in image for image in images)
+        assert all(":v2.6.615" in image for image in images if "maxblack777/angevoice-" in image)
+        assert all(":2.6.615" not in image for image in images)
 
 
 def test_validate_script_cli_reports_current_fnos_images():
@@ -61,9 +61,9 @@ def test_validate_script_cli_reports_current_fnos_images():
         capture_output=True,
         check=True,
     )
-    assert "maxblack777/angevoice-cpu:v2.6.614" in result.stdout
-    assert "maxblack777/angevoice-gpu:v2.6.614" in result.stdout
-    assert "maxblack777/angevoice-legacy-gpu:v2.6.614" in result.stdout
+    assert "maxblack777/angevoice-cpu:v2.6.615" in result.stdout
+    assert "maxblack777/angevoice-gpu:v2.6.615" in result.stdout
+    assert "maxblack777/angevoice-legacy-gpu:v2.6.615" in result.stdout
 
 
 def test_validate_script_reads_nested_fpk_app_tgz(tmp_path):

@@ -23,7 +23,7 @@ cd docker/gpu && docker compose up -d
 cd docker/legacy-gpu && docker compose up -d
 ```
 
-默认 Compose 从 Docker Hub 的 `maxblack777/angevoice-*` 仓库拉取当前版本镜像标签，例如 `v2.6.614`。需要更严格的供应链固定时，可在本地 Compose 或 fnOS 环境变量中将镜像替换为 digest。
+默认 Compose 从 Docker Hub 的 `maxblack777/angevoice-*` 仓库拉取当前版本镜像标签，例如 `v2.6.615`。需要更严格的供应链固定时，可在本地 Compose 或 fnOS 环境变量中将镜像替换为 digest。
 
 正式 Docker 画像默认启用 Kokoro、MOSS-TTS-Nano 与 ZipVoice 的可销毁进程隔离，并将启动预载关闭：Studio 仍默认选择 Kokoro，首次生成时自动唤醒模型。管理后台可开启启动预载、关闭单模型隔离，或开启“空闲后彻底清理”。彻底清理默认关闭，只在模型因空闲卸载成功后且服务完全空闲时退出进程，适合需要清理 CUDA/ONNX Runtime 底层残留的 NAS/GPU 环境；关闭隔离后，主机 RAM 不保证在模型释放时完整回落。
 

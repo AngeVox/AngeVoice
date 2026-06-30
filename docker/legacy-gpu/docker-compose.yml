@@ -2,7 +2,7 @@ name: angevoice-legacy-gpu
 
 services:
   angevoice-legacy-gpu:
-    image: maxblack777/angevoice-legacy-gpu:v2.6.614
+    image: maxblack777/angevoice-legacy-gpu:v2.6.615
     container_name: angevoice-legacy-gpu
 
     build:

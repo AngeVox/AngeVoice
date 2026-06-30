@@ -1,6 +1,6 @@
 # AngeVoice 文档
 
-AngeVoice 提供三个稳定产品模型入口：`Kokoro v1.1 Chinese`、`MOSS-TTS-Nano` 与 `ZipVoice`。CPU、CUDA 与自动回退等运行信息在状态与诊断中单独展示。2.6.614 基于 2.6.613 稳定线做体验修复：恢复 Stop 后快速再次合成体验，新增轻量文本预处理、首页中英切换、版本化 Docker/fnOS 镜像与低噪日志默认配置。
+AngeVoice 提供三个稳定产品模型入口：`Kokoro v1.1 Chinese`、`MOSS-TTS-Nano` 与 `ZipVoice`。CPU、CUDA 与自动回退等运行信息在状态与诊断中单独展示。2.6.615 聚焦安全、依赖与可维护性：强化 API Key 处理、提示音频临时文件清理、Docker/fnOS 版本化镜像，以及核心服务模块边界。
 
 ## 使用与部署
 

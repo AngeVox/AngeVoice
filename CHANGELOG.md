@@ -1,3 +1,23 @@
+## [2.6.615] - 2026-06-30
+
+### 安全与依赖
+
+- 强化提示音频临时文件清理，只允许删除 AngeVoice 内部生成目录中的安全文件，避免路径穿越或符号链接误删。
+- 限流日志不再输出 API Key 或 Bearer Token 片段；Studio 默认只在当前页面会话中保存 API Key，刷新后需要重新输入。
+- 更新安全相关依赖约束：`sentencepiece >=0.2.1`、`modelscope >=1.27.0`、`transformers` 4.53 稳定线，并修正 ZipVoice 可编辑安装中的 `piper_phonemize` 解析路径。
+
+### 可维护性
+
+- 拆分 Admin 配置 schema、状态路由、ServiceState、WebSocket 会话、legacy 文本规则与 MOSS 轻量 helper，保留原有外部 API、WebSocket payload、Admin schema 与文本 golden 行为。
+- WebSocket 停止、取消、断开和异常清理路径增加行为锁定，降低 Stop 后旧请求残留影响下一次合成的风险。
+- MOSS runtime helper 在 2.6.615 中刻意保留少量重复实现，以维持轻量 import 边界；后续可在专门的 import 验证后再反转旧 helper 导出方向。
+
+### 发布与部署
+
+- Docker 与 fnOS 模板统一使用 `v2.6.615` 镜像标签，不回退 `latest`，避免安装时拉到不匹配镜像。
+- fnOS manifest、README、部署文档与版本测试同步到 2.6.615。
+- Studio / Admin 顶栏状态区增加换行与宽度约束，避免状态 pill 与按钮在中小宽度下拥挤或遮挡。
+
 ## [2.6.614] - 2026-06-29
 
 ### 🔧 修复与体验

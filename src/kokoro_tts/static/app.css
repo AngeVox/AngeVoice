@@ -288,7 +288,7 @@ button {
   position: relative;
   z-index: 60;
   display: grid;
-  grid-template-columns: auto 1fr auto;
+  grid-template-columns: auto minmax(0, 1fr) minmax(0, max-content);
   gap: 14px;
   align-items: center;
   margin-bottom: 18px;
@@ -353,6 +353,15 @@ button {
   align-items: center;
 }
 
+.topbar-actions {
+  min-width: 0;
+  justify-content: flex-end;
+}
+
+.topbar-actions > .status-pill {
+  flex: 0 1 260px;
+}
+
 .topbar-link {
   display: inline-flex;
   align-items: center;
@@ -370,13 +379,22 @@ button {
   background: var(--control-soft);
   color: var(--muted);
   font-size: 13px;
+  min-width: 0;
 }
 
 .status-pill span {
+  flex: 0 0 auto;
   width: 9px;
   height: 9px;
   border-radius: 50%;
   background: var(--warning);
+}
+
+.status-pill b {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .status-pill.ok span {
@@ -996,6 +1014,15 @@ audio {
 }
 
 @media (max-width: 980px) {
+  .topbar {
+    grid-template-columns: auto minmax(0, 1fr);
+  }
+
+  .topbar-actions {
+    grid-column: 1 / -1;
+    justify-content: flex-start;
+  }
+
   .workspace,
   .controls-grid,
   .text-tools-card,

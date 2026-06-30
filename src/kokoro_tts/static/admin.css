@@ -6,6 +6,14 @@
   text-decoration: none;
 }
 
+.admin-topbar .topbar-actions {
+  row-gap: 8px;
+}
+
+.admin-topbar .topbar-actions > * {
+  flex: 0 0 auto;
+}
+
 .admin-layout {
   display: grid;
   grid-template-columns: 1fr;
@@ -486,6 +494,10 @@
 }
 
 @media (max-width: 720px) {
+  .admin-topbar .topbar-actions {
+    justify-content: flex-start;
+  }
+
   .admin-toast {
     top: 10px;
     right: 10px;
