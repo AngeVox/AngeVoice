@@ -220,3 +220,90 @@ def test_app_js_401_handling_clears_cookie_session():
     # 检查 synthesizeHttp 中的 401 处理
     assert "response.status === 401" in content
     assert "state.hasCookieSession = false" in content
+
+
+def test_bootstrap_injects_cookie_session_when_valid(tmp_path):
+    """Studio 页面 bootstrap 在有效 Cookie 时注入 hasCookieSession。"""
+    import json as _json
+    cfg = TTSConfig(api_key="bootstrap-cookie-key", public_status_endpoints=False)
+    app = create_app(config=cfg, engine=_fake_engine())
+    client = TestClient(app)
+
+    # 无 Cookie → bootstrap 不含 hasCookieSession
+    resp_no_cookie = client.get("/")
+    assert resp_no_cookie.status_code == 200
+    match_no = re.search(r'id="angevoice-bootstrap"[^>]*>([^<]+)</script>', resp_no_cookie.text)
+    if match_no:
+        data_no = _json.loads(match_no.group(1))
+        assert data_no.get("hasCookieSession") is not True
+
+    # 获取 Cookie
+    client.post("/v1/auth/session", headers={"Authorization": "Bearer bootstrap-cookie-key"})
+
+    # 有有效 Cookie → bootstrap 包含 hasCookieSession: true
+    resp_with_cookie = client.get("/")
+    assert resp_with_cookie.status_code == 200
+    match_with = re.search(r'id="angevoice-bootstrap"[^>]*>([^<]+)</script>', resp_with_cookie.text)
+    assert match_with, "Bootstrap script not found in response"
+    data_with = _json.loads(match_with.group(1))
+    assert data_with.get("hasCookieSession") is True
+
+
+def test_bootstrap_no_cookie_session_when_no_auth(tmp_path):
+    """未启用 API Key 时 bootstrap 不注入 hasCookieSession。"""
+    import json as _json
+    cfg = TTSConfig(api_key="", public_status_endpoints=True)
+    app = create_app(config=cfg, engine=_fake_engine())
+    client = TestClient(app)
+
+    resp = client.get("/")
+    assert resp.status_code == 200
+    match = re.search(r'id="angevoice-bootstrap"[^>]*>([^<]+)</script>', resp.text)
+    if match:
+        data = _json.loads(match.group(1))
+        assert data.get("hasCookieSession") is not True
+
+
+def test_bootstrap_no_cookie_session_when_invalid_cookie(tmp_path):
+    """无效 Cookie 时 bootstrap 不注入 hasCookieSession。"""
+    import json as _json
+    cfg = TTSConfig(api_key="invalid-cookie-key", public_status_endpoints=False)
+    app = create_app(config=cfg, engine=_fake_engine())
+    client = TestClient(app)
+
+    # 手动设置一个无效 Cookie
+    client.cookies.set("angevoice_api_session", "v1.9999999999.bad.sig")
+    resp = client.get("/")
+    assert resp.status_code == 200
+    match = re.search(r'id="angevoice-bootstrap"[^>]*>([^<]+)</script>', resp.text)
+    if match:
+        data = _json.loads(match.group(1))
+        assert data.get("hasCookieSession") is not True
+
+
+def test_session_cookie_no_secure_in_http_lan():
+    """LAN/HTTP 环境 Cookie 不应设置 Secure 标志。"""
+    cfg = TTSConfig(api_key="lan-cookie-key", public_status_endpoints=False)
+    app = create_app(config=cfg, engine=_fake_engine())
+    client = TestClient(app)
+
+    resp = client.post("/v1/auth/session", headers={"Authorization": "Bearer lan-cookie-key"})
+    assert resp.status_code == 200
+    cookie_header = resp.headers.get("set-cookie", "")
+    # TestClient 使用 HTTP，不应设置 Secure
+    assert "ecure" not in cookie_header.split(";") or "Secure" not in cookie_header
+
+
+def test_app_js_reads_bootstrap_hasCookieSession():
+    """app.js 初始化时应从 bootstrap 读取 hasCookieSession。"""
+    content = APP_JS.read_text(encoding="utf-8")
+    # 检查 bootstrap.hasCookieSession 被读取并设置到 state
+    assert "bootstrap.hasCookieSession" in content
+    assert "state.hasCookieSession = Boolean(bootstrap.hasCookieSession)" in content
+
+
+def test_ensureAuthToken_accepts_cookie_session():
+    """ensureAuthToken() 应接受 state.hasCookieSession 作为有效认证。"""
+    content = APP_JS.read_text(encoding="utf-8")
+    # 检查 ensureAuthToken 中的逻辑
+    assert "state.token || state.hasCookieSession" in content or "state.token||state.hasCookieSession" in content

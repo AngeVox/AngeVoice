@@ -122,6 +122,13 @@ def attach_health_routes(router: APIRouter, ctx: StatusRouteContext) -> None:
             else:
                 bootstrap = _minimal_bootstrap(current_model)
                 voices = []
+            # --- Cookie session discovery: tell frontend if a valid session cookie exists ---
+            expected_key = effective_api_key(cfg)
+            if expected_key:
+                from ...security import API_SESSION_COOKIE, verify_api_session_cookie
+                cookies = getattr(request, "cookies", {}) or {}
+                if verify_api_session_cookie(cookies.get(API_SESSION_COOKIE, ""), expected_key):
+                    bootstrap["hasCookieSession"] = True
             return templates.TemplateResponse(
                 request,
                 "index.html",

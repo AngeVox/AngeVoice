@@ -52,6 +52,8 @@ const state = {
   textNormalization: localStorage.getItem('angevoice.textNormalization.v1') || 'default'
 };
 localStorage.removeItem('angevoice.apiToken.v1');
+// Restore cookie session awareness from server-injected bootstrap (survives page refresh)
+state.hasCookieSession = Boolean(bootstrap.hasCookieSession);
 
 const els = {
   form: document.getElementById('tts-form'),
