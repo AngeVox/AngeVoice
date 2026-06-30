@@ -7,14 +7,18 @@ import logging
 import threading
 import time
 from contextlib import suppress
-from pathlib import Path
 from typing import Any
 
 from fastapi import WebSocket
 from starlette.websockets import WebSocketDisconnect
 
 from ..contracts import StreamingRequest
-from ..prompt_audio import decode_prompt_audio_base64, save_prompt_audio_bytes, validate_reference_audio_duration
+from ..prompt_audio import (
+    decode_prompt_audio_base64,
+    delete_prompt_audio_path,
+    save_prompt_audio_bytes,
+    validate_reference_audio_duration,
+)
 from ..security import _extract_bearer_token, verify_ws_key
 from ..service_state import ServiceState
 from ..validation import websocket_error_frame_from_http
@@ -118,8 +122,7 @@ class TtsWebSocketSession(MessageParsingMixin, StreamingLoopMixin, CancelLifecyc
                 await self.websocket.send_json({"type": "error", "message": "流式合成失败", "request_id": self.request_id})
         finally:
             if self.prompt_audio_path:
-                with suppress(OSError):
-                    Path(self.prompt_audio_path).unlink()
+                delete_prompt_audio_path(self.prompt_audio_path)
             with suppress(Exception):
                 await self.websocket.close()
 

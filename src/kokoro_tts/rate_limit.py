@@ -13,7 +13,6 @@ Environment variables (all read via ``TTSConfig``):
 from __future__ import annotations
 
 import asyncio
-import hashlib
 import logging
 import threading
 import time
@@ -190,7 +189,7 @@ def _extract_client_key(request: Request, *, trust_proxy_headers: bool = False) 
         if auth.lower().startswith("bearer "):
             api_key = auth[7:].strip()
     if api_key:
-        return f"key:{api_key}"
+        return "key:present"
 
     if trust_proxy_headers:
         forwarded = request.headers.get("x-forwarded-for")
@@ -206,8 +205,4 @@ def _extract_client_key(request: Request, *, trust_proxy_headers: bool = False) 
 
 def _safe_client_log_label(client_key: str) -> str:
     """Return a non-secret client label for logs."""
-    if not client_key.startswith("key:"):
-        return client_key
-    token = client_key[4:]
-    digest = hashlib.sha256(token.encode("utf-8", "ignore")).hexdigest()[:12]
-    return f"key_hash:{digest}"
+    return "key:present" if client_key.startswith("key:") else client_key

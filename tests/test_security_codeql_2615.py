@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import hashlib
 import logging
 import os
 import time
@@ -101,7 +100,7 @@ def _rate_limited_client() -> TestClient:
     return TestClient(app)
 
 
-def test_2615_rate_limit_logs_hash_not_x_api_key_or_token_fragments(caplog):
+def test_2615_rate_limit_logs_key_presence_not_x_api_key_or_token_fragments(caplog):
     token = "av_secret_token_abcdefghijklmnopqrstuvwxyz"
     caplog.set_level(logging.WARNING, logger="kokoro_tts.rate_limit")
     client = _rate_limited_client()
@@ -113,10 +112,11 @@ def test_2615_rate_limit_logs_hash_not_x_api_key_or_token_fragments(caplog):
     assert token not in log_text
     assert token[:6] not in log_text
     assert token[-4:] not in log_text
-    assert f"key_hash:{hashlib.sha256(token.encode()).hexdigest()[:12]}" in log_text
+    assert "key:present" in log_text
+    assert ("key_" + "hash:") not in log_text
 
 
-def test_2615_rate_limit_logs_hash_not_bearer_token_or_token_fragments(caplog):
+def test_2615_rate_limit_logs_key_presence_not_bearer_token_or_token_fragments(caplog):
     token = "bearer_secret_token_1234567890"
     caplog.set_level(logging.WARNING, logger="kokoro_tts.rate_limit")
     client = _rate_limited_client()
@@ -129,7 +129,8 @@ def test_2615_rate_limit_logs_hash_not_bearer_token_or_token_fragments(caplog):
     assert token[:6] not in log_text
     assert token[-4:] not in log_text
     assert "Bearer" not in log_text
-    assert "key_hash:" in log_text
+    assert "key:present" in log_text
+    assert ("key_" + "hash:") not in log_text
 
 
 def test_2615_studio_token_is_session_only_and_legacy_storage_is_cleared():

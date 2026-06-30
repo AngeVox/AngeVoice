@@ -23,12 +23,14 @@ def prompt_audio_temp_dir() -> Path:
     return Path(tempfile.gettempdir()) / "angevoice_prompt_audio"
 
 
-def _is_relative_to(path: Path, root: Path) -> bool:
-    try:
-        path.relative_to(root)
-    except ValueError:
-        return False
-    return True
+def _safe_prompt_audio_filename(path: str | Path) -> str | None:
+    raw = os.fspath(path)
+    if not raw or "\x00" in raw:
+        return None
+    name = raw.replace("\\", "/").rsplit("/", 1)[-1]
+    if not _PROMPT_AUDIO_NAME_RE.fullmatch(name):
+        return None
+    return name
 
 
 def delete_prompt_audio_path(path: str | Path) -> bool:
@@ -39,16 +41,14 @@ def delete_prompt_audio_path(path: str | Path) -> bool:
     shape are eligible for deletion; symlinks and traversal attempts are ignored.
     """
 
+    name = _safe_prompt_audio_filename(path)
+    if name is None:
+        return False
     try:
-        candidate = Path(path)
         root = prompt_audio_temp_dir().resolve(strict=False)
-        resolved = candidate.resolve(strict=False)
     except (OSError, RuntimeError, ValueError):
         return False
-    if not _is_relative_to(resolved, root):
-        return False
-    if not _PROMPT_AUDIO_NAME_RE.fullmatch(candidate.name):
-        return False
+    candidate = root / name
     try:
         if candidate.is_symlink():
             return False
