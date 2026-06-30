@@ -87,7 +87,7 @@ def test_fnos_keeps_verified_profiles_and_versioned_image_contract():
     assert compose.count("profiles:") == 3
     for name in ("cpu", "gpu", "legacy-gpu"):
         assert f'profiles: ["{name}"]' in compose
-        assert f"angevoice-{name}:v2.6.615" in compose
+        assert f"angevoice-{name}:v2.6.616" in compose
     assert "COMPOSE_PROFILES" in wizard
     assert "wizard_run_mode" not in wizard
 

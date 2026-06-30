@@ -1,5 +1,5 @@
 appname               = AngeVoice
-version               = 2.6.615
+version               = 2.6.616
 display_name          = AngeVoice
 desc                  = 本地中文 TTS 与音色克隆服务，支持 Kokoro、MOSS-TTS-Nano、ZipVoice；提供 Studio、管理后台、OpenAI 兼容 API 与 WebSocket 分句流式输出。推荐 4 核 CPU 与 8GB 内存起步；资源较低的设备可优先使用 Kokoro、降低并发或关闭预载。
 platform              = all
@@ -15,5 +15,5 @@ desktop_uidir         = ui
 desktop_applaunchname = AngeVoice.Application
 service_port          = 8101
 checkport             = false
-changelog             = v2.6.615：安全与可维护性更新，强化提示音频清理、API Key 脱敏、依赖版本与 Docker/fnOS 镜像标签，并整理核心服务模块边界。
+changelog             = v2.6.616：热修复，修复 Web Studio API Key Cookie 会话认证死循环。
 checksum                   = generated_at_package_build

@@ -1,4 +1,4 @@
-"""Release closeout contracts for AngeVoice 2.6.615."""
+"""Release closeout contracts for AngeVoice 2.6.616."""
 
 from __future__ import annotations
 
@@ -13,7 +13,7 @@ except ModuleNotFoundError:  # Python 3.10
 
 
 ROOT = Path(__file__).resolve().parents[1]
-VERSION = "2.6.615"
+VERSION = "2.6.616"
 IMAGE_TAG = f"v{VERSION}"
 
 
@@ -61,7 +61,7 @@ def test_public_release_docs_do_not_contain_internal_coordination_terms():
         ROOT / "README_EN.md",
         ROOT / "CHANGELOG.md",
         ROOT / "docs/README.md",
-        ROOT / "docs/RELEASE_NOTES_2.6.615.md",
+        ROOT / "docs/RELEASE_NOTES_2.6.616.md",
         ROOT / "packaging/fnos/AngeVoice/manifest",
     ]
     disallowed = re.compile(
@@ -73,17 +73,13 @@ def test_public_release_docs_do_not_contain_internal_coordination_terms():
 
 
 def test_release_notes_are_copy_ready_and_scope_bounded():
-    notes = (ROOT / "docs/RELEASE_NOTES_2.6.615.md").read_text(encoding="utf-8")
+    notes = (ROOT / "docs/RELEASE_NOTES_2.6.616.md").read_text(encoding="utf-8")
     for required in (
-        "prompt-audio",
+        "cookie",
         "API key",
-        "sentencepiece",
-        "modelscope",
-        "transformers",
-        "piper_phonemize",
-        "v2.6.615",
-        "Python 3.10",
+        "HttpOnly",
+        "v2.6.616",
     ):
         assert required.lower() in notes.lower()
-    assert "does not add user dictionary CRUD" in notes
-    assert "does not change the public synthesis API" in notes
+    # Hotfix release notes should not claim new features
+    assert "does not restore localStorage" in notes or "not restore localStorage" in notes.lower() or "not restore" in notes.lower()

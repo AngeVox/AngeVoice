@@ -42,6 +42,7 @@ const state = {
   zipvoiceProfilesSignature: '',
   lastAppliedModelId: '',
   authRejected: false,
+  hasCookieSession: false,
   totalSegments: 0,
   totalAudioChunks: 0,
   engineParams: {},
@@ -437,7 +438,7 @@ function warnReferenceDuration(seconds) {
 }
 
 function ensureAuthToken() {
-  if (!bootstrap.authRequired || state.token) {
+  if (!bootstrap.authRequired || state.token || state.hasCookieSession) {
     return true;
   }
   const adminTip = bootstrap.adminEnabled
@@ -675,7 +676,7 @@ async function responseAudioWavBlob(response) {
 
 async function normalizeUploadedZipVoicePreview(file, { force = false } = {}) {
   if (!modelSupportsProfiles() || !file || !els.zipvoiceReferencePreview || state.selectedVoice) return;
-  if (bootstrap.authRequired && !state.token) return;
+  if (bootstrap.authRequired && !state.token && !state.hasCookieSession) return;
   const sourceKey = zipVoiceUploadKey(file);
   if (!force && (state.zipvoicePreviewKey === sourceKey || state.zipvoicePreviewLoadingKey === sourceKey)) return;
   state.zipvoicePreviewLoadingKey = sourceKey;
@@ -1363,7 +1364,8 @@ async function refreshServiceState() {
   try {
     const health = await fetch('/health').then(resp => resp.json());
     updateModelData(health.models || [], health.current_model || health.model?.id || '');
-    const healthLabel = health.auth_required && !state.token ? '需要 Key' : `${health.status}${health.current_model ? ` · ${health.current_model}` : ''}`;
+    const hasAuth = state.token || state.hasCookieSession;
+    const healthLabel = health.auth_required && !hasAuth ? '需要 Key' : `${health.status}${health.current_model ? ` · ${health.current_model}` : ''}`;
     setHealth(['ok', 'idle'].includes(health.status) ? 'ok' : '', healthLabel);
     if (!modelSupportsProfiles() && Array.isArray(health.voices) && health.voices.join('|') !== state.voices.join('|')) {
       state.voices = health.voices;
@@ -1377,7 +1379,7 @@ async function refreshServiceState() {
     return;
   }
 
-  if (bootstrap.authRequired && (!state.token || state.authRejected)) {
+  if (bootstrap.authRequired && ((!state.token && !state.hasCookieSession) || state.authRejected)) {
     return;
   }
 
@@ -1385,6 +1387,7 @@ async function refreshServiceState() {
     const statsResp = await apiFetch('/stats');
     if (statsResp.status === 401) {
       state.authRejected = true;
+      state.hasCookieSession = false;
       setProgress('API Key 无效或已轮换，请在设置中重新填写后再操作音色与试听。', true);
       return;
     }
@@ -1444,6 +1447,13 @@ async function synthesizeHttp(text, voice, speed, autoplay = true) {
       signal: state.currentAbort.signal
     });
     state.currentRequestId = response.headers.get('X-Request-ID') || state.currentRequestId;
+    if (response.status === 401) {
+      state.hasCookieSession = false;
+      state.authRejected = true;
+      setProgress('访问会话已失效，请在设置中重新输入 API Key。', true);
+      els.settingsDialog.showModal();
+      return;
+    }
     if (!response.ok) {
       throw new Error(await readError(response));
     }
@@ -1615,8 +1625,16 @@ async function synthesizeStream(text, voice, speed) {
     cleanupWs(ws, true);
   };
 
-  ws.onclose = () => {
+  ws.onclose = (event) => {
     if (ws !== state.currentWs) return;
+    if (event.code === 1008) {
+      state.hasCookieSession = false;
+      state.authRejected = true;
+      setProgress('访问会话已失效，请在设置中重新输入 API Key。', true);
+      els.settingsDialog.showModal();
+      cleanupWs(ws, true);
+      return;
+    }
     if (!state.streamTerminalReceived && state.currentPlayer?.pcmChunks.length) {
       state.lastBlob = state.currentPlayer.buildWavBlob();
       if (state.lastBlob) {
@@ -1888,6 +1906,7 @@ function bindEvents() {
       await createApiSession(token);
       state.token = '';
       state.authRejected = false;
+      state.hasCookieSession = true;
       els.tokenInput.value = '';
       localStorage.removeItem('angevoice.apiToken.v1');
       els.settingsDialog.close();
@@ -1900,6 +1919,7 @@ function bindEvents() {
   els.clearTokenBtn.addEventListener('click', async () => {
     state.token = '';
     state.authRejected = false;
+    state.hasCookieSession = false;
     els.tokenInput.value = '';
     localStorage.removeItem('angevoice.apiToken.v1');
     try {

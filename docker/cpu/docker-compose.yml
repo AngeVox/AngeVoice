@@ -2,7 +2,7 @@ name: angevoice-cpu
 
 services:
   angevoice-cpu:
-    image: maxblack777/angevoice-cpu:v2.6.615
+    image: maxblack777/angevoice-cpu:v2.6.616
     container_name: angevoice-cpu
     build:
       context: ../..
