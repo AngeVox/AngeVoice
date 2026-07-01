@@ -151,7 +151,7 @@ class TTSConfig:
     output_max_files: int = 1000
     runtime_config_file: Path = field(default_factory=lambda: Path("/app/config/runtime-config.json"))
     update_check_enabled: bool = True
-    update_repository: str = "ang77712829/AngeVoice"
+    update_repository: str = "angevox/AngeVoice"
     update_check_timeout_seconds: float = 3.0
     update_check_cache_seconds: float = 21600.0
 

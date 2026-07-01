@@ -185,7 +185,7 @@ def test_update_checker_reports_new_release_without_auto_update():
     class Response:
         def read(self):
             return json.dumps({
-                "tag_name": "v9.9.9", "name": "Future release", "html_url": "https://github.com/ang77712829/AngeVoice/releases/tag/v9.9.9", "body": "notes"
+                "tag_name": "v9.9.9", "name": "Future release", "html_url": "https://github.com/angevox/AngeVoice/releases/tag/v9.9.9", "body": "notes"
             }).encode("utf-8")
 
     checker = UpdateChecker(TTSConfig(), opener=lambda *_args, **_kwargs: Response())

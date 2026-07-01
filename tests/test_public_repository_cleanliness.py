@@ -61,7 +61,7 @@ def test_update_repository_stays_on_github_project_while_images_use_dockerhub_na
     ]
     for path in env_files:
         text = path.read_text(encoding="utf-8")
-        assert "ANGEVOICE_UPDATE_REPOSITORY=ang77712829/AngeVoice" in text
+        assert "ANGEVOICE_UPDATE_REPOSITORY=angevox/AngeVoice" in text
         assert "ANGEVOICE_UPDATE_REPOSITORY=maxblack777/AngeVoice" not in text
 
 

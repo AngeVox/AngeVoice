@@ -4,7 +4,7 @@
 
 set -euo pipefail
 
-REPO_URL_DEFAULT="https://github.com/ang77712829/AngeVoice.git"
+REPO_URL_DEFAULT="https://github.com/angevox/AngeVoice.git"
 FALLBACK_INSTALL_DIR="/opt/angevoice"
 SHORTCUT_NAME="AngeVoice"
 PROFILE="auto"

@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -Eeuo pipefail
 
-REPO_RAW="https://raw.githubusercontent.com/ang77712829/AngeVoice/main/xiaozhi"
+REPO_RAW="https://raw.githubusercontent.com/angevox/AngeVoice/main/xiaozhi"
 
 XIAOZHI_DIR=""
 ANGEVOICE_HTTP=""
@@ -30,7 +30,7 @@ usage() {
 AngeVoice 小智后端适配器安装脚本
 
 交互式安装：
-  bash <(curl -fsSL https://raw.githubusercontent.com/ang77712829/AngeVoice/main/xiaozhi/scripts/install-xiaozhi-adapter.sh)
+  bash <(curl -fsSL https://raw.githubusercontent.com/angevox/AngeVoice/main/xiaozhi/scripts/install-xiaozhi-adapter.sh)
 
 常用参数：
   --xiaozhi-dir DIR       小智 compose 文件所在目录
@@ -732,7 +732,7 @@ zipvoice_prompt_text = os.environ.get("PROMPT_TEXT", "") or "请改成参考音�
 selected_id = os.environ.get("SELECTED_ID", "TTS_AngeVoiceKokoroStream")
 make_default = os.environ.get("MAKE_DEFAULT", "false") == "true"
 
-doc = "https://github.com/ang77712829/AngeVoice/tree/main/xiaozhi"
+doc = "https://github.com/angevox/AngeVoice/tree/main/xiaozhi"
 
 def q(value) -> str:
     if value is None:

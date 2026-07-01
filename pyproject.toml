@@ -10,7 +10,7 @@ readme = "README.md"
 license = {text = "Apache-2.0"}
 requires-python = ">=3.10,<3.13"
 authors = [
-    {name = "安歌", email = "ang77712829@users.noreply.github.com"},
+    {name = "安歌", email = "angevox@users.noreply.github.com"},
 ]
 keywords = ["tts", "chinese", "kokoro", "moss-tts-nano", "zipvoice", "speech-synthesis", "ai", "openai-compatible", "angevoice"]
 classifiers = [
@@ -102,11 +102,11 @@ angevoice = "kokoro_tts.cli:main"
 kokoro-tts = "kokoro_tts.cli:main"
 
 [project.urls]
-Homepage = "https://github.com/ang77712829/AngeVoice"
-Repository = "https://github.com/ang77712829/AngeVoice"
-Documentation = "https://github.com/ang77712829/AngeVoice#readme"
-Issues = "https://github.com/ang77712829/AngeVoice/issues"
-Changelog = "https://github.com/ang77712829/AngeVoice/releases"
+Homepage = "https://github.com/angevox/AngeVoice"
+Repository = "https://github.com/angevox/AngeVoice"
+Documentation = "https://github.com/angevox/AngeVoice#readme"
+Issues = "https://github.com/angevox/AngeVoice/issues"
+Changelog = "https://github.com/angevox/AngeVoice/releases"
 
 [tool.setuptools.packages.find]
 where = ["src"]

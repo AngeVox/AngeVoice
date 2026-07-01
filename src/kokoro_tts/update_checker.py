@@ -66,7 +66,7 @@ class UpdateChecker:
         self._opener = opener or urlopen
         self._snapshot = UpdateSnapshot(
             enabled=bool(getattr(cfg, "update_check_enabled", True)),
-            repository=str(getattr(cfg, "update_repository", "ang77712829/AngeVoice") or "").strip(),
+            repository=str(getattr(cfg, "update_repository", "angevox/AngeVoice") or "").strip(),
             current_version=__version__,
         )
         self._cache_seconds = float(getattr(cfg, "update_check_cache_seconds", 21600.0))

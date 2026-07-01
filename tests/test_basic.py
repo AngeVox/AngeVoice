@@ -83,7 +83,7 @@ class TestConfig:
         assert config.cache_max_bytes == 512 * 1024 * 1024
         assert config.text_single_newline_policy == "auto"
         assert config.model_source == "auto"
-        assert config.update_repository == "ang77712829/AngeVoice"
+        assert config.update_repository == "angevox/AngeVoice"
 
     def test_env_override(self, monkeypatch):
         monkeypatch.setenv("KOKORO_PORT", "9000")

@@ -31,7 +31,7 @@ xiaozhi-server/
 2. 已启动 AngeVoice，例如：
 
 ```bash
-bash <(curl -fsSL https://raw.githubusercontent.com/ang77712829/AngeVoice/main/scripts/install.sh)
+bash <(curl -fsSL https://raw.githubusercontent.com/angevox/AngeVoice/main/scripts/install.sh)
 ```
 
 3. 小智容器能访问 AngeVoice。Docker 场景下推荐使用：
@@ -54,7 +54,7 @@ ws://192.168.1.3:8101/ws/v1/tts
 
 ```bash
 cd /path/to/xiaozhi-server
-bash <(curl -fsSL https://raw.githubusercontent.com/ang77712829/AngeVoice/main/xiaozhi/scripts/install-xiaozhi-adapter.sh)
+bash <(curl -fsSL https://raw.githubusercontent.com/angevox/AngeVoice/main/xiaozhi/scripts/install-xiaozhi-adapter.sh)
 ```
 
 默认安装 Kokoro 流式模式。
@@ -62,7 +62,7 @@ bash <(curl -fsSL https://raw.githubusercontent.com/ang77712829/AngeVoice/main/x
 指定 MOSS 克隆流式：
 
 ```bash
-bash <(curl -fsSL https://raw.githubusercontent.com/ang77712829/AngeVoice/main/xiaozhi/scripts/install-xiaozhi-adapter.sh) \
+bash <(curl -fsSL https://raw.githubusercontent.com/angevox/AngeVoice/main/xiaozhi/scripts/install-xiaozhi-adapter.sh) \
   --mode moss-clone-stream \
   --prompt-audio ./reference.wav
 ```
@@ -70,7 +70,7 @@ bash <(curl -fsSL https://raw.githubusercontent.com/ang77712829/AngeVoice/main/x
 指定 ZipVoice 克隆流式：
 
 ```bash
-bash <(curl -fsSL https://raw.githubusercontent.com/ang77712829/AngeVoice/main/xiaozhi/scripts/install-xiaozhi-adapter.sh) \
+bash <(curl -fsSL https://raw.githubusercontent.com/angevox/AngeVoice/main/xiaozhi/scripts/install-xiaozhi-adapter.sh) \
   --mode zipvoice-stream \
   --prompt-audio ./reference.wav \
   --prompt-text "参考音频实际朗读文本"
@@ -79,7 +79,7 @@ bash <(curl -fsSL https://raw.githubusercontent.com/ang77712829/AngeVoice/main/x
 指定小智目录和 AngeVoice 地址：
 
 ```bash
-bash <(curl -fsSL https://raw.githubusercontent.com/ang77712829/AngeVoice/main/xiaozhi/scripts/install-xiaozhi-adapter.sh) \
+bash <(curl -fsSL https://raw.githubusercontent.com/angevox/AngeVoice/main/xiaozhi/scripts/install-xiaozhi-adapter.sh) \
   --xiaozhi-dir /root/xiaozhi-server \
   --angevoice-url http://192.168.1.3:8101 \
   --angevoice-ws ws://192.168.1.3:8101/ws/v1/tts \

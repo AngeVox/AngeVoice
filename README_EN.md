@@ -4,7 +4,7 @@
 
 English | [中文](README.md) | [Documentation index](docs/README.md)
 
-[![CI](https://github.com/ang77712829/AngeVoice/actions/workflows/ci.yml/badge.svg)](https://github.com/ang77712829/AngeVoice/actions/workflows/ci.yml)
+[![CI](https://github.com/angevox/AngeVoice/actions/workflows/ci.yml/badge.svg)](https://github.com/angevox/AngeVoice/actions/workflows/ci.yml)
 [![Python 3.10+](https://img.shields.io/badge/python-3.10+-blue.svg)](https://www.python.org/downloads/)
 [![License: Apache-2.0](https://img.shields.io/badge/License-Apache--2.0-green.svg)](LICENSE)
 
@@ -13,13 +13,13 @@ English | [中文](README.md) | [Documentation index](docs/README.md)
 After Docker and Docker Compose V2 are installed, run the interactive installer. It detects CPU/GPU, Docker/Compose, GitHub, Docker Hub, and local Docker registry mirrors. When an NVIDIA GPU is found, it recommends the standard `gpu` profile first; `legacy-gpu` is a compatibility profile for hosts where `gpu` cannot start or CUDA/cuDNN is incompatible.
 
 ```bash
-bash <(curl -fsSL https://raw.githubusercontent.com/ang77712829/AngeVoice/main/scripts/install.sh)
+bash <(curl -fsSL https://raw.githubusercontent.com/angevox/AngeVoice/main/scripts/install.sh)
 ```
 
 For restricted networks, clone the repository first and run the local installer:
 
 ```bash
-git clone https://github.com/ang77712829/AngeVoice.git
+git clone https://github.com/angevox/AngeVoice.git
 cd AngeVoice
 bash scripts/install.sh
 ```
@@ -60,7 +60,7 @@ Quick install from a xiaozhi server directory:
 
 ```bash
 cd /path/to/xiaozhi-server
-bash <(curl -fsSL https://raw.githubusercontent.com/ang77712829/AngeVoice/main/xiaozhi/scripts/install-xiaozhi-adapter.sh)
+bash <(curl -fsSL https://raw.githubusercontent.com/angevox/AngeVoice/main/xiaozhi/scripts/install-xiaozhi-adapter.sh)
 ```
 
 See [`xiaozhi/README.md`](xiaozhi/README.md) for the full Chinese guide.
@@ -108,7 +108,7 @@ Good fits:
 ### Docker GPU
 
 ```bash
-git clone https://github.com/ang77712829/AngeVoice.git
+git clone https://github.com/angevox/AngeVoice.git
 cd AngeVoice/docker/gpu
 sudo docker compose up -d
 ```

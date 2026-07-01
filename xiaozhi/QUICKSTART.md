@@ -3,7 +3,7 @@
 ## 1. 启动 AngeVoice
 
 ```bash
-bash <(curl -fsSL https://raw.githubusercontent.com/ang77712829/AngeVoice/main/scripts/install.sh)
+bash <(curl -fsSL https://raw.githubusercontent.com/angevox/AngeVoice/main/scripts/install.sh)
 ```
 
 确认能访问：
@@ -16,7 +16,7 @@ curl http://127.0.0.1:8101/health
 
 ```bash
 cd /path/to/xiaozhi-server
-bash <(curl -fsSL https://raw.githubusercontent.com/ang77712829/AngeVoice/main/xiaozhi/scripts/install-xiaozhi-adapter.sh)
+bash <(curl -fsSL https://raw.githubusercontent.com/angevox/AngeVoice/main/xiaozhi/scripts/install-xiaozhi-adapter.sh)
 ```
 
 ## 3. 测试小智容器访问 AngeVoice
@@ -30,7 +30,7 @@ docker exec -it xiaozhi-esp32-server curl -fsS http://host.docker.internal:8101/
 默认是 Kokoro 流式。MOSS 克隆模式：
 
 ```bash
-bash <(curl -fsSL https://raw.githubusercontent.com/ang77712829/AngeVoice/main/xiaozhi/scripts/install-xiaozhi-adapter.sh) \
+bash <(curl -fsSL https://raw.githubusercontent.com/angevox/AngeVoice/main/xiaozhi/scripts/install-xiaozhi-adapter.sh) \
   --mode moss-clone-stream \
   --prompt-audio ./reference.wav
 ```
@@ -38,7 +38,7 @@ bash <(curl -fsSL https://raw.githubusercontent.com/ang77712829/AngeVoice/main/x
 ZipVoice 克隆模式：
 
 ```bash
-bash <(curl -fsSL https://raw.githubusercontent.com/ang77712829/AngeVoice/main/xiaozhi/scripts/install-xiaozhi-adapter.sh) \
+bash <(curl -fsSL https://raw.githubusercontent.com/angevox/AngeVoice/main/xiaozhi/scripts/install-xiaozhi-adapter.sh) \
   --mode zipvoice-stream \
   --prompt-audio ./reference.wav \
   --prompt-text "参考音频实际朗读文本"
