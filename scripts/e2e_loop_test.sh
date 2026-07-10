@@ -10,6 +10,7 @@ set -euo pipefail
 BASE_URL="${1:-http://localhost:8101}"
 API_KEY="${2:-}"
 LOOPS="${3:-30}"
+ZIPVOICE_SMOKE_VOICE="${ZIPVOICE_SMOKE_VOICE:-}"
 PASS=0
 FAIL=0
 SKIP=0
@@ -100,13 +101,25 @@ else
     skip "MOSS audio" "moss is not enabled/available"
 fi
 
-section "6. Cancel / Abort Recovery"
+section "6. Optional ZipVoice Saved-Profile Audio"
+if echo "$MODELS_JSON" | jq -e '.models[]? | select(.id == "zipvoice" and .available == true)' >/dev/null 2>&1; then
+    if [[ -n "$ZIPVOICE_SMOKE_VOICE" ]]; then
+        ZIPVOICE_WAV="/tmp/av_e2e_zipvoice.wav"
+        check_audio_file "ZipVoice saved profile" "$(speech_request "zipvoice" "ZipVoice合成测试。" "$ZIPVOICE_SMOKE_VOICE" "$ZIPVOICE_WAV")" "$ZIPVOICE_WAV" || true
+    else
+        skip "ZipVoice audio" "set ZIPVOICE_SMOKE_VOICE to an existing saved Voice Profile ID"
+    fi
+else
+    skip "ZipVoice audio" "zipvoice is not enabled/available"
+fi
+
+section "7. Cancel / Abort Recovery"
 timeout 2 curl -s -o /tmp/av_e2e_cancel.wav --max-time 10 "${BASE_URL}/v1/audio/speech" -H "Content-Type: application/json" "${AUTH_ARGS[@]}" -d '{"model":"kokoro","input":"这段文字很长需要大量计算，我们会在中途取消它以测试取消功能是否正常工作。让我们继续添加更多文字来确保合成时间足够长以便能够成功取消。再来一些中文内容填充。","voice":"af_xiaobei","speed":0.3}' >/dev/null 2>&1 || true
 sleep 1
 HEALTH_AFTER=$(curl -s -w '%{http_code}' -o /dev/null "${AUTH_ARGS[@]}" "${BASE_URL}/health" --max-time 5)
 [[ "$HEALTH_AFTER" == "200" ]] && pass "Cancel/abort did not break health endpoint" || fail "Cancel recovery" "Health after cancel: HTTP $HEALTH_AFTER"
 
-section "7. Optional Idle Unload + Reload"
+section "8. Optional Idle Unload + Reload"
 IDLE_TIMEOUT=$(jq -r '.model.idle_timeout_seconds // .model.model_idle_timeout_seconds // .model_idle_timeout_seconds // 0' /tmp/av_health.json 2>/dev/null || echo "0")
 CHECK_INTERVAL=$(jq -r '.model.idle_check_interval // .model.model_idle_check_interval // .model_idle_check_interval // 30' /tmp/av_health.json 2>/dev/null || echo "30")
 if [[ "$IDLE_TIMEOUT" =~ ^[0-9]+(\.[0-9]+)?$ ]] && awk "BEGIN {exit !($IDLE_TIMEOUT > 0 && $IDLE_TIMEOUT <= 60)}"; then
@@ -122,7 +135,7 @@ else
     skip "Idle unload + reload" "timeout disabled or too long for e2e; set ANGEVOICE_IDLE_TIMEOUT_SECONDS<=60 in test env"
 fi
 
-section "8. Loop Stress Test ($LOOPS iterations)"
+section "9. Loop Stress Test ($LOOPS iterations)"
 STRESS_PASS=0; STRESS_FAIL=0
 for i in $(seq 1 "$LOOPS"); do
     OUT="/tmp/av_e2e_stress_${i}.wav"

@@ -10,8 +10,33 @@ permissions:
   contents: read
 
 jobs:
+  quality:
+    name: Architecture and i18n quality gates
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Install locked lightweight test dependencies
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install --require-hashes -r requirements/test.lock
+          python -m pip check
+          python -m pip install -e . --no-deps
+
+      - name: Run quality gates
+        run: pytest -q tests/quality
+
   test:
     name: Python tests (${{ matrix.python-version }})
+    needs: quality
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
@@ -36,14 +61,15 @@ jobs:
       - name: Install lightweight test dependencies
         run: |
           python -m pip install --upgrade pip
-          # CI 单元测试避免加载真实 Kokoro/MOSS 模型。
+          # CI 单元/合同测试避免加载真实模型；依赖必须来自已提交锁文件。
+          python -m pip install --require-hashes -r requirements/test.lock
+          python -m pip install --require-hashes -r requirements/test-torch-cpu.lock
+          python -m pip check
           python -m pip install -e . --no-deps
-          python -m pip install pytest pytest-asyncio pytest-cov httpx fastapi uvicorn python-multipart jinja2 websockets numpy soundfile
-          python -m pip install torch --index-url https://download.pytorch.org/whl/cpu
 
       - name: Run tests
         run: |
-          pytest -q --cov=kokoro_tts --cov-report=term-missing
+          pytest -q --cov=kokoro_tts --cov-report=term-missing --cov-fail-under=70
 
       - name: Import and CLI smoke check
         run: |

@@ -43,10 +43,12 @@ docker/*/.env
 
 # Coverage / type-check / lint caches
 .coverage
+coverage-*.json
 htmlcov/
 .mypy_cache/
 .ruff_cache/
 .pyright/
+.playwright-cli/
 
 # Tracked public configuration templates; never place real secrets in these files.
 # .env.dev, .env.staging, .env.prod and .env.example are intentionally included.

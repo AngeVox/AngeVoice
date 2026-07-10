@@ -113,3 +113,12 @@ where = ["src"]
 
 [tool.setuptools.package-data]
 kokoro_tts = ["templates/*.html", "static/*", "static/locale/*.js", "zipvoice/*.json"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+markers = [
+    "quality: architecture, dependency-direction, repository and i18n quality gates",
+    "contract: stable behavior or payload contracts required before refactoring",
+    "integration: multi-component tests that use the FastAPI application or process boundaries",
+    "model_smoke: opt-in tests that require real model assets or deployment hardware",
+]

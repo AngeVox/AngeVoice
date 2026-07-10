@@ -1,0 +1,16 @@
+# Lightweight unit/contract test environment used by local development and CI.
+# Keep production/model dependencies out of this file; real model smokes use
+# their deployment profile and constraints lock.
+pytest>=7.0
+pytest-asyncio>=0.23.0
+pytest-cov>=4.0
+httpx>=0.24.0
+fastapi>=0.100.0
+uvicorn>=0.23.0
+python-multipart>=0.0.6
+jinja2>=3.1.0
+websockets>=12.0
+numpy>=1.24.0,<3
+soundfile>=0.12.0
+# Align the lightweight lock with the Docker-matched Torch CPU lock.
+typing-extensions==4.15.0

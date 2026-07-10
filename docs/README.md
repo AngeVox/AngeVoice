@@ -20,6 +20,8 @@ AngeVoice 提供三个稳定产品模型入口：`Kokoro v1.1 Chinese`、`MOSS-T
 | 文档 | 内容 |
 | --- | --- |
 | [架构说明](ARCHITECTURE.md) | 服务结构、统一请求契约与资源管理 |
+| [测试与质量门禁](TESTING.md) | 可复现测试环境、测试分层、覆盖率和当前行为保护映射 |
+| [兼容层台账](COMPATIBILITY_LEDGER.md) | 旧入口、替代接口、维护域和移除门槛 |
 | [新增模型 Adapter 指南](NEW_MODEL_ADAPTER_GUIDE.md) | 新模型接入的扩展接口与能力注册 |
 | [阅读器后端接入](ANGE_READER_BACKEND_ADAPTER.md) | 面向阅读器/第三方客户端的调用方式 |
 | [许可证合规](LICENSE_COMPLIANCE.md) | 模型与第三方组件许可证说明 |
