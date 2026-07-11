@@ -248,22 +248,28 @@ class TTSEngine:
                     ) from exc
                 raise
 
-            self._en_pipeline = KPipeline(lang_code="a", repo_id=repo_id, model=False)
-
             def en_callable(text):
-                if text == "Kokoro":
-                    return "kˈOkəɹO"
-                elif text == "Sol":
-                    return "sˈOl"
-                try:
-                    return next(self._en_pipeline(text)).phonemes
-                except Exception:
-                    return text
+                return self._english_phonemes(text, repo_id=repo_id)
 
             self._zh_pipeline = KPipeline(lang_code="z", repo_id=repo_id, model=self._model, en_callable=en_callable)
             self._loaded = True
             logger.info("模型加载完成 (device=%s)", self._device)
             return self
+
+    def _english_phonemes(self, text, *, repo_id):
+        if text == "Kokoro":
+            return "kˈOkəɹO"
+        elif text == "Sol":
+            return "sˈOl"
+        with self._runtime_lock:
+            if self._en_pipeline is None:
+                from kokoro import KPipeline
+
+                self._en_pipeline = KPipeline(lang_code="a", repo_id=repo_id, model=False)
+            try:
+                return next(self._en_pipeline(text)).phonemes
+            except Exception:
+                return text
 
     def synthesize(self, text: str, voice: str = "zm_010", speed: float = 1.0) -> bytes:
         wav = self.synthesize_array(text=text, voice=voice, speed=speed)
