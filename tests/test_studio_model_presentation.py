@@ -16,6 +16,12 @@ MODULE = PACKAGE_ROOT / "static" / "studio" / "model-presentation.js"
 INDEX = PACKAGE_ROOT / "templates" / "index.html"
 
 
+def _portable_source_hash(path: Path) -> str:
+    text = path.read_text(encoding="utf-8")
+    normalized = text.replace("\r\n", "\n").replace("\r", "\n")
+    return hashlib.sha256(normalized.encode("utf-8")).hexdigest()[:12]
+
+
 def _node(script: str) -> subprocess.CompletedProcess[str]:
     return subprocess.run(
         ["node", "--input-type=module", "--eval", script],
@@ -107,10 +113,19 @@ def test_index_has_one_module_entry_in_dependency_order() -> None:
 def test_two_layer_cache_queries_match_real_sha256() -> None:
     app_source = APP.read_text(encoding="utf-8")
     html = INDEX.read_text(encoding="utf-8")
-    module_hash = hashlib.sha256(MODULE.read_bytes()).hexdigest()[:12]
-    app_hash = hashlib.sha256(APP.read_bytes()).hexdigest()[:12]
+    module_hash = _portable_source_hash(MODULE)
+    app_hash = _portable_source_hash(APP)
     assert f"model-presentation.js?h={module_hash}" in app_source
     assert f"/static/app.js?h={app_hash}" in html
+
+
+def test_portable_source_hash_is_independent_of_line_endings(tmp_path: Path) -> None:
+    lf_source = tmp_path / "lf.js"
+    crlf_source = tmp_path / "crlf.js"
+    logical_source = "export const first = 1;\nexport const second = 2;\n"
+    lf_source.write_bytes(logical_source.encode("utf-8"))
+    crlf_source.write_bytes(logical_source.replace("\n", "\r\n").encode("utf-8"))
+    assert _portable_source_hash(lf_source) == _portable_source_hash(crlf_source)
 
 
 def _temporary_source_tree(tmp_path: Path, javascript: str) -> Path:
