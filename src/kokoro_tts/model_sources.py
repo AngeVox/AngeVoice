@@ -10,12 +10,18 @@ from pathlib import Path
 
 from .kokoro_assets import (
     KOKORO_MODEL_FILENAME,
+    KokoroAssetIntegrityError,
     default_kokoro_model_dir,
     default_moss_audio_tokenizer_dir,
     default_moss_model_dir,
     has_valid_kokoro_local_assets,
+    is_managed_kokoro_mode,
     is_valid_kokoro_voice_file,
     kokoro_voice_dir_candidates,
+    managed_kokoro_provider_revision,
+    verify_managed_kokoro_core_assets,
+    verify_managed_kokoro_present_core_assets,
+    verify_managed_kokoro_present_voices,
 )
 
 logger = logging.getLogger(__name__)
@@ -277,7 +283,9 @@ def resolve_model_source(config) -> str:
     return source
 
 
-def _modelscope_snapshot_download(repo_id: str, target_dir: Path, *, logger: logging.Logger) -> Path | None:
+def _modelscope_snapshot_download(
+    repo_id: str, target_dir: Path, *, logger: logging.Logger, revision: str | None = None
+) -> Path | None:
     try:
         from modelscope.hub.snapshot_download import snapshot_download
     except Exception:
@@ -289,7 +297,10 @@ def _modelscope_snapshot_download(repo_id: str, target_dir: Path, *, logger: log
         return None
     target_dir.mkdir(parents=True, exist_ok=True)
     logger.info("Downloading model from ModelScope: %s -> %s", repo_id, target_dir)
-    path = snapshot_download(repo_id, local_dir=str(target_dir))
+    kwargs = {"local_dir": str(target_dir)}
+    if revision:
+        kwargs["revision"] = revision
+    path = snapshot_download(repo_id, **kwargs)
     return Path(path)
 
 
@@ -299,6 +310,7 @@ def _huggingface_snapshot_download(
     *,
     logger: logging.Logger,
     allow_patterns: tuple[str, ...] | list[str] | None = None,
+    revision: str | None = None,
 ) -> Path | None:
     try:
         from huggingface_hub import snapshot_download
@@ -317,6 +329,8 @@ def _huggingface_snapshot_download(
         }
         if allow_patterns:
             kwargs["allow_patterns"] = list(allow_patterns)
+        if revision:
+            kwargs["revision"] = revision
         path = snapshot_download(**kwargs)
     except Exception:
         logger.warning("Hugging Face 模型下载失败：%s", repo_id, exc_info=True)
@@ -349,8 +363,12 @@ def _generic_download_plan(config, *, hf_attr: str, ms_attr: str) -> list[tuple[
     return plan
 
 
-def _kokoro_download_plan(config) -> list[tuple[str, str]]:
-    return _generic_download_plan(config, hf_attr="kokoro_hf_repo", ms_attr="kokoro_modelscope_repo")
+def _kokoro_download_plan(config, *, managed: bool) -> list[tuple[str, str, str | None]]:
+    plan: list[tuple[str, str, str | None]] = []
+    for source, repo in _generic_download_plan(config, hf_attr="kokoro_hf_repo", ms_attr="kokoro_modelscope_repo"):
+        revision = managed_kokoro_provider_revision(source, repo) if managed else None
+        plan.append((source, repo, revision))
+    return plan
 
 
 def _moss_download_plan(config) -> list[tuple[str, str]]:
@@ -380,22 +398,93 @@ def _kokoro_voice_count(model_dir: Path) -> int:
     return count
 
 
-def _download_kokoro_assets(config, target: Path, *, logger: logging.Logger) -> Path | None:
+def _kokoro_candidate_ready(path: Path, *, managed: bool, prefetch_voices: bool) -> bool:
+    if not has_valid_kokoro_local_assets(path, log=logger):
+        return False
+    if managed:
+        verify_managed_kokoro_core_assets(path)
+        verify_managed_kokoro_present_voices(path)
+    return not prefetch_voices or _kokoro_voice_count(path) >= _KOKORO_MIN_PREFETCHED_VOICES
+
+
+def _accept_kokoro_candidate(config, candidate: Path, *, managed: bool, prefetch_voices: bool, verified: bool = False) -> Path:
+    if managed and not verified:
+        verify_managed_kokoro_core_assets(candidate)
+        verify_managed_kokoro_present_voices(candidate)
+    if prefetch_voices and _kokoro_voice_count(candidate) < _KOKORO_MIN_PREFETCHED_VOICES:
+        if managed:
+            logger.warning("Kokoro 主模型可用，但受管官方音色预取不完整；缺失官方音色会失败关闭，需执行受控修复。")
+        else:
+            logger.warning("Kokoro 主模型可用，但音色预取不完整；运行时仍可能按需下载缺失音色。")
+    config.model_dir = candidate
+    return candidate
+
+
+def _verify_incomplete_managed_current(path: Path, *, managed: bool, complete: bool) -> None:
+    if managed and not complete:
+        verify_managed_kokoro_present_core_assets(path)
+        verify_managed_kokoro_present_voices(path)
+
+
+def _offline_kokoro_result(config, current_dir: Path, *, current_managed: bool, current_has_assets: bool) -> Path | None:
+    logger.warning(
+        "ANGEVOICE_MODEL_SOURCE=offline，已禁用 Kokoro 自动下载；请预先把 config.json、权重和 voices/*.pt 放入：%s",
+        current_dir,
+    )
+    config.model_dir = current_dir
+    if current_managed:
+        raise KokoroAssetIntegrityError("Kokoro managed official assets are missing in offline mode")
+    return current_dir if current_has_assets else None
+
+
+def _provider_candidate_dirs(target: Path, result: Path | None) -> list[Path]:
+    candidates = [Path(target).expanduser()]
+    if result:
+        candidates.insert(0, Path(result).expanduser())
+    deduped: list[Path] = []
+    seen: set[Path] = set()
+    for candidate in candidates:
+        resolved = candidate.resolve(strict=False)
+        if resolved not in seen:
+            seen.add(resolved)
+            deduped.append(candidate)
+    return deduped
+
+
+def _verify_managed_provider_candidates(candidates: list[Path]) -> None:
+    for candidate in candidates:
+        verify_managed_kokoro_present_core_assets(candidate)
+        verify_managed_kokoro_present_voices(candidate)
+
+
+def _download_kokoro_assets(config, target: Path, *, logger: logging.Logger, managed: bool) -> Path | None:
     """按可用源预取 Kokoro 主模型、config 和全部 voices/*.pt。"""
 
-    for source, repo in _kokoro_download_plan(config):
-        if source == "modelscope":
-            path = _modelscope_snapshot_download(repo, target, logger=logger)
-        else:
-            path = _huggingface_snapshot_download(
-                repo,
-                target,
-                logger=logger,
-                allow_patterns=_KOKORO_HF_ALLOW_PATTERNS,
-            )
-        candidates = [target]
-        if path:
-            candidates.insert(0, Path(path).expanduser())
+    if managed:
+        verify_managed_kokoro_present_core_assets(target)
+        verify_managed_kokoro_present_voices(target)
+    for source, repo, revision in _kokoro_download_plan(config, managed=managed):
+        try:
+            if source == "modelscope":
+                kwargs = {"logger": logger}
+                if revision:
+                    kwargs["revision"] = revision
+                path = _modelscope_snapshot_download(repo, target, **kwargs)
+            else:
+                kwargs = {"logger": logger, "allow_patterns": _KOKORO_HF_ALLOW_PATTERNS}
+                if revision:
+                    kwargs["revision"] = revision
+                path = _huggingface_snapshot_download(repo, target, **kwargs)
+        except Exception as exc:
+            if not managed:
+                raise
+            _verify_managed_provider_candidates(_provider_candidate_dirs(target, None))
+            raise KokoroAssetIntegrityError("Kokoro managed provider download failed") from exc
+        candidates = _provider_candidate_dirs(target, path)
+        if managed:
+            if any(not is_managed_kokoro_mode(config, candidate) for candidate in candidates):
+                raise KokoroAssetIntegrityError("Kokoro managed official download returned a non-managed candidate")
+            _verify_managed_provider_candidates(candidates)
         for candidate in candidates:
             if has_valid_kokoro_local_assets(candidate, log=logger):
                 return candidate
@@ -414,51 +503,43 @@ def ensure_kokoro_model_dir(config, *, logger: logging.Logger) -> Path | None:
 
     current_dir = Path(config.model_dir).expanduser()
     prefetch_voices = bool(getattr(config, "kokoro_prefetch_voices", True))
-
-    def _is_good_enough(path: Path) -> bool:
-        if not has_valid_kokoro_local_assets(path, log=logger):
-            return False
-        if not prefetch_voices:
-            return True
-        return _kokoro_voice_count(path) >= _KOKORO_MIN_PREFETCHED_VOICES
-
+    current_managed = is_managed_kokoro_mode(config, current_dir)
     current_has_assets = has_valid_kokoro_local_assets(current_dir, log=logger)
+    _verify_incomplete_managed_current(current_dir, managed=current_managed, complete=current_has_assets)
     if current_has_assets and (not prefetch_voices or _kokoro_voice_count(current_dir) >= _KOKORO_MIN_PREFETCHED_VOICES):
+        if current_managed:
+            verify_managed_kokoro_core_assets(current_dir)
+            verify_managed_kokoro_present_voices(current_dir)
         return current_dir
 
     target_dir = default_kokoro_model_dir()
-    if not current_has_assets and _is_good_enough(target_dir):
+    target_managed = is_managed_kokoro_mode(config, target_dir)
+    if not current_has_assets and _kokoro_candidate_ready(target_dir, managed=target_managed, prefetch_voices=prefetch_voices):
         config.model_dir = target_dir
         return target_dir
 
     if str(getattr(config, "model_source", "auto") or "auto").strip().lower() == "offline":
-        logger.warning(
-            "ANGEVOICE_MODEL_SOURCE=offline，已禁用 Kokoro 自动下载；请预先把 config.json、权重和 voices/*.pt 放入：%s",
-            current_dir,
-        )
-        config.model_dir = current_dir
-        return current_dir if has_valid_kokoro_local_assets(current_dir, log=logger) else None
+        return _offline_kokoro_result(config, current_dir, current_managed=current_managed, current_has_assets=current_has_assets)
 
     # 若模型已有效但音色不足，仍尝试在同一目录补齐 voices/*.pt。
     download_target = current_dir if current_has_assets else target_dir
-    path = _download_kokoro_assets(config, download_target, logger=logger)
+    download_managed = is_managed_kokoro_mode(config, download_target)
+    path = _download_kokoro_assets(config, download_target, logger=logger, managed=download_managed)
     for candidate in [Path(path).expanduser()] if path else []:
+        candidate_managed = is_managed_kokoro_mode(config, candidate)
+        if candidate_managed and not download_managed:
+            raise KokoroAssetIntegrityError("Kokoro managed official assets cannot be accepted from a custom download target")
         if has_valid_kokoro_local_assets(candidate, log=logger):
-            if prefetch_voices and _kokoro_voice_count(candidate) < _KOKORO_MIN_PREFETCHED_VOICES:
-                logger.warning(
-                    "Kokoro 模型已下载但音色预取不完整 (%d/%d)，"
-                    "运行时仍可能按需下载缺失音色。",
-                    _kokoro_voice_count(candidate),
-                    _KOKORO_MIN_PREFETCHED_VOICES,
-                )
-            config.model_dir = candidate
-            return candidate
+            return _accept_kokoro_candidate(
+                config, candidate, managed=candidate_managed, prefetch_voices=prefetch_voices, verified=download_managed and candidate_managed
+            )
     if has_valid_kokoro_local_assets(download_target, log=logger):
-        config.model_dir = download_target
-        if prefetch_voices and _kokoro_voice_count(download_target) < _KOKORO_MIN_PREFETCHED_VOICES:
-            logger.warning("Kokoro 主模型可用，但音色预取不完整；运行时仍可能按需下载缺失音色。")
-        return download_target
+        return _accept_kokoro_candidate(
+            config, download_target, managed=download_managed, prefetch_voices=prefetch_voices, verified=download_managed
+        )
 
+    if download_managed:
+        raise KokoroAssetIntegrityError("Kokoro managed official assets could not be downloaded and verified")
     logger.warning("下载后仍未找到有效 Kokoro 权重，将回退到上游 repo_id 懒加载路径。")
     config.model_dir = target_dir
     return None

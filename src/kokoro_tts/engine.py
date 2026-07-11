@@ -21,7 +21,17 @@ from .audio import encode_audio_segment, normalize_audio_array, write_wav_bytes
 from .config import TTSConfig, load_config
 from .text.legacy import normalize_text_for_tts
 from .text_segmenter import segment_text_natural
-from .kokoro_assets import has_valid_kokoro_local_assets, is_valid_kokoro_voice_file, kokoro_voice_dir_candidates
+from .kokoro_assets import (
+    KokoroAssetIntegrityError,
+    has_valid_kokoro_local_assets,
+    is_managed_kokoro_asset_id,
+    is_managed_kokoro_mode,
+    is_valid_kokoro_voice_file,
+    kokoro_voice_dir_candidates,
+    log_kokoro_trust_mode,
+    verify_managed_kokoro_asset_file,
+    verify_managed_kokoro_core_assets,
+)
 from .model_sources import ensure_kokoro_model_dir, resolve_model_source
 
 logger = logging.getLogger(__name__)
@@ -181,11 +191,48 @@ class TTSEngine:
             return raw
         name = Path(raw).name
         filename = name if name.endswith(".pt") else f"{name}.pt"
+        asset_id = f"voices/{filename}"
+        managed = is_managed_kokoro_mode(self.config, self.config.model_dir)
+        if managed:
+            if is_managed_kokoro_asset_id(asset_id):
+                for voice_dir in kokoro_voice_dir_candidates(self.config.model_dir):
+                    candidate = voice_dir / filename
+                    if not candidate.is_file():
+                        continue
+                    try:
+                        return str(verify_managed_kokoro_asset_file(candidate, asset_id))
+                    except KokoroAssetIntegrityError:
+                        continue
+                raise KokoroAssetIntegrityError(f"Kokoro managed asset is missing or invalid: {asset_id}")
+            for voice_dir in kokoro_voice_dir_candidates(self.config.model_dir):
+                candidate = voice_dir / filename
+                if is_valid_kokoro_voice_file(candidate, log=logger):
+                    return str(candidate)
+            raise KokoroAssetIntegrityError(f"Kokoro managed local custom voice is missing or invalid: {asset_id}")
         for voice_dir in kokoro_voice_dir_candidates(self.config.model_dir):
             candidate = voice_dir / filename
             if is_valid_kokoro_voice_file(candidate, log=logger):
                 return str(candidate)
         return raw
+
+    def _prepare_kokoro_load(self) -> tuple[Path, Path, bool]:
+        local_model = self.config.model_file
+        local_config = self.config.model_dir / "config.json"
+        use_local = has_valid_kokoro_local_assets(self.config.model_dir, log=logger)
+        if not use_local:
+            resolved_dir = ensure_kokoro_model_dir(self.config, logger=logger)
+            if resolved_dir is not None:
+                self.config.model_dir = Path(resolved_dir)
+                local_model = self.config.model_file
+                local_config = self.config.model_dir / "config.json"
+            use_local = has_valid_kokoro_local_assets(self.config.model_dir, log=logger)
+        managed = is_managed_kokoro_mode(self.config, self.config.model_dir)
+        log_kokoro_trust_mode(managed, log=logger)
+        if managed:
+            if not use_local:
+                raise KokoroAssetIntegrityError("Kokoro managed official assets are unavailable")
+            verify_managed_kokoro_core_assets(self.config.model_dir)
+        return local_model, local_config, use_local
 
     def load(self) -> "TTSEngine":
         with self._runtime_lock:
@@ -196,16 +243,7 @@ class TTSEngine:
             from kokoro import KModel, KPipeline
 
             self._device = self.config.resolve_device()
-            local_model = self.config.model_file
-            local_config = self.config.model_dir / "config.json"
-            use_local = has_valid_kokoro_local_assets(self.config.model_dir, log=logger)
-            if not use_local:
-                resolved_dir = ensure_kokoro_model_dir(self.config, logger=logger)
-                if resolved_dir is not None:
-                    self.config.model_dir = Path(resolved_dir)
-                    local_model = self.config.model_file
-                    local_config = self.config.model_dir / "config.json"
-                use_local = has_valid_kokoro_local_assets(self.config.model_dir, log=logger)
+            local_model, local_config, use_local = self._prepare_kokoro_load()
 
             # Kokoro 的 repo_id 必须始终是合法的 Hugging Face 仓库名。
             # 即使使用 /app/models 这样的本地模型目录，也不能把绝对路径传给 repo_id，

@@ -112,7 +112,7 @@ Changelog = "https://github.com/angevox/AngeVoice/releases"
 where = ["src"]
 
 [tool.setuptools.package-data]
-kokoro_tts = ["templates/*.html", "static/*", "static/locale/*.js", "zipvoice/*.json"]
+kokoro_tts = ["templates/*.html", "static/*", "static/locale/*.js", "zipvoice/*.json", "kokoro_assets_manifest.json"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

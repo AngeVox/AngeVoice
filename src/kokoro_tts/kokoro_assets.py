@@ -9,10 +9,14 @@ Unsupported operand 118``。这里统一做本地文件有效性判断，避免 
 
 from __future__ import annotations
 
+import hashlib
+import hmac
+import json
 import logging
 import os
+from functools import lru_cache
 from pathlib import Path
-from typing import Iterable
+from typing import Any, Iterable
 
 logger = logging.getLogger(__name__)
 
@@ -36,6 +40,172 @@ _TEXT_ERROR_PREFIXES = (
 )
 _TORCH_SIGNATURES = (b"PK\x03\x04", b"\x80")
 _WARNED_INVALID_PATHS: set[str] = set()
+_LOGGED_TRUST_MODES: set[str] = set()
+
+
+class KokoroAssetIntegrityError(RuntimeError):
+    """Raised when a managed Kokoro asset is absent or differs from its manifest."""
+
+
+def _manifest_path() -> Path:
+    return Path(__file__).with_name("kokoro_assets_manifest.json")
+
+
+def _normalized_asset_id(asset_id: str) -> str:
+    value = str(asset_id or "").replace("\\", "/").strip("/")
+    path = Path(value)
+    if not value or path.is_absolute() or ".." in path.parts or value != path.as_posix():
+        raise KokoroAssetIntegrityError("Kokoro managed asset manifest contains an invalid asset ID")
+    return value
+
+
+def _is_lower_hex(value: object, length: int) -> bool:
+    return isinstance(value, str) and len(value) == length and not any(char not in "0123456789abcdef" for char in value)
+
+
+def _validate_managed_providers(providers: object) -> None:
+    if not isinstance(providers, dict):
+        raise KokoroAssetIntegrityError("Kokoro managed asset manifest has an invalid provider")
+    for name in ("huggingface", "modelscope"):
+        provider = providers.get(name)
+        if not isinstance(provider, dict) or not isinstance(provider.get("repo"), str) or not _is_lower_hex(provider.get("revision"), 40):
+            raise KokoroAssetIntegrityError("Kokoro managed asset manifest has an invalid provider")
+
+
+def _validate_managed_assets(assets: object) -> None:
+    if not isinstance(assets, dict) or len(assets) != 105:
+        raise KokoroAssetIntegrityError("Kokoro managed asset manifest is incomplete")
+    for asset_id, digest in assets.items():
+        _normalized_asset_id(asset_id)
+        if not _is_lower_hex(digest, 64):
+            raise KokoroAssetIntegrityError("Kokoro managed asset manifest has an invalid SHA-256")
+    if not {"config.json", KOKORO_MODEL_FILENAME}.issubset(assets) or sum(key.startswith("voices/") and key.endswith(".pt") for key in assets) != 103:
+        raise KokoroAssetIntegrityError("Kokoro managed asset manifest has an invalid asset set")
+
+
+@lru_cache(maxsize=1)
+def managed_kokoro_manifest() -> dict[str, Any]:
+    """Load and validate the bundled, offline managed-Kokoro identity manifest."""
+
+    try:
+        payload = json.loads(_manifest_path().read_text(encoding="utf-8"))
+    except (OSError, ValueError, TypeError) as exc:
+        raise KokoroAssetIntegrityError("Kokoro managed asset manifest is unavailable or invalid") from exc
+    if payload.get("schema_version") != 1:
+        raise KokoroAssetIntegrityError("Kokoro managed asset manifest has an unsupported schema")
+    _validate_managed_providers(payload.get("providers"))
+    _validate_managed_assets(payload.get("assets"))
+    return payload
+
+
+def managed_kokoro_provider_revision(provider: str, repo_id: str) -> str | None:
+    """Return the immutable revision only for an exact managed official provider/repo pair."""
+
+    item = managed_kokoro_manifest()["providers"].get(str(provider or ""))
+    if not item or str(repo_id or "").strip() != item["repo"]:
+        return None
+    return item["revision"]
+
+
+def is_managed_kokoro_asset_id(asset_id: str) -> bool:
+    try:
+        return _normalized_asset_id(asset_id) in managed_kokoro_manifest()["assets"]
+    except KokoroAssetIntegrityError:
+        raise
+
+
+def is_managed_kokoro_directory(model_dir: Path) -> bool:
+    """Whether a directory is the canonical managed root or its immutable snapshot layout."""
+
+    candidate = Path(model_dir).expanduser().resolve(strict=False)
+    canonical = default_kokoro_model_dir().resolve(strict=False)
+    if candidate == canonical:
+        return True
+    try:
+        relative = candidate.relative_to(canonical / "snapshots")
+    except ValueError:
+        return False
+    return len(relative.parts) == 1 and bool(relative.parts[0])
+
+
+def is_managed_kokoro_mode(config, model_dir: Path | None = None) -> bool:
+    """Identify the closed official trust boundary without adding configuration knobs."""
+
+    manifest = managed_kokoro_manifest()
+    hf_repo = str(getattr(config, "kokoro_hf_repo", "") or "").strip()
+    ms_repo = str(getattr(config, "kokoro_modelscope_repo", "") or "").strip()
+    target = Path(model_dir if model_dir is not None else getattr(config, "model_dir", default_kokoro_model_dir()))
+    return (
+        hf_repo == manifest["providers"]["huggingface"]["repo"]
+        and ms_repo == manifest["providers"]["modelscope"]["repo"]
+        and is_managed_kokoro_directory(target)
+    )
+
+
+def log_kokoro_trust_mode(managed: bool, *, log: logging.Logger | None = None) -> None:
+    mode = "managed-official" if managed else "operator-trusted-custom"
+    if mode not in _LOGGED_TRUST_MODES:
+        (log or logger).info("Kokoro asset trust mode: %s", mode)
+        _LOGGED_TRUST_MODES.add(mode)
+
+
+def kokoro_file_sha256(path: Path) -> str:
+    """Calculate a file digest without retaining a model checkpoint in memory."""
+
+    digest = hashlib.sha256()
+    with Path(path).open("rb") as handle:
+        for chunk in iter(lambda: handle.read(1024 * 1024), b""):
+            digest.update(chunk)
+    return digest.hexdigest()
+
+
+def verify_managed_kokoro_asset_file(path: Path, asset_id: str) -> Path:
+    """Fail closed unless a managed asset exists and matches its bundled SHA-256."""
+
+    normalized = _normalized_asset_id(asset_id)
+    expected = managed_kokoro_manifest()["assets"].get(normalized)
+    if expected is None:
+        raise KokoroAssetIntegrityError(f"Kokoro managed asset is not declared: {normalized}")
+    target = Path(path)
+    if not target.is_file():
+        raise KokoroAssetIntegrityError(f"Kokoro managed asset is missing: {normalized}")
+    try:
+        actual = kokoro_file_sha256(target)
+    except OSError as exc:
+        raise KokoroAssetIntegrityError(f"Kokoro managed asset cannot be verified: {normalized}") from exc
+    if not hmac.compare_digest(actual, expected):
+        raise KokoroAssetIntegrityError(f"Kokoro managed asset hash mismatch: {normalized}")
+    return target
+
+
+def verify_managed_kokoro_asset(model_dir: Path, asset_id: str) -> Path:
+    normalized = _normalized_asset_id(asset_id)
+    return verify_managed_kokoro_asset_file(Path(model_dir) / normalized, normalized)
+
+
+def verify_managed_kokoro_core_assets(model_dir: Path) -> None:
+    verify_managed_kokoro_asset(model_dir, "config.json")
+    verify_managed_kokoro_asset(model_dir, KOKORO_MODEL_FILENAME)
+
+
+def verify_managed_kokoro_present_core_assets(model_dir: Path) -> None:
+    """Reject replaced managed core files while still allowing a missing file to download."""
+
+    root = Path(model_dir)
+    for asset_id in ("config.json", KOKORO_MODEL_FILENAME):
+        candidate = root / asset_id
+        if candidate.exists():
+            verify_managed_kokoro_asset_file(candidate, asset_id)
+
+
+def verify_managed_kokoro_present_voices(model_dir: Path) -> None:
+    voices_dir = Path(model_dir) / "voices"
+    if not voices_dir.is_dir():
+        return
+    for candidate in voices_dir.glob("*.pt"):
+        asset_id = f"voices/{candidate.name}"
+        if is_managed_kokoro_asset_id(asset_id):
+            verify_managed_kokoro_asset_file(candidate, asset_id)
 
 
 def models_root() -> Path:
