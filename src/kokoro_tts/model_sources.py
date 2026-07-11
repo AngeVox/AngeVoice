@@ -314,7 +314,6 @@ def _huggingface_snapshot_download(
         kwargs = {
             "repo_id": repo_id,
             "local_dir": str(target_dir),
-            "local_dir_use_symlinks": False,
         }
         if allow_patterns:
             kwargs["allow_patterns"] = list(allow_patterns)
