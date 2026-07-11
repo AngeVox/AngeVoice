@@ -1,3 +1,5 @@
+import { modelLabel, runtimeProviderLabel } from './studio/model-presentation.js?h=03bd16742352';
+
 const bootstrapEl = document.getElementById('angevoice-bootstrap');
 const bootstrap = bootstrapEl ? JSON.parse(bootstrapEl.textContent || '{}') : {};
 const defaultModels = Array.isArray(bootstrap.models) && bootstrap.models.length ? bootstrap.models : [{
@@ -512,13 +514,6 @@ function modelRequiresPromptText(model = currentModel()) {
   return Boolean(model?.requires_prompt_text);
 }
 
-function runtimeProviderLabel(model = currentModel()) {
-  const provider = String(model?.actual_provider || model?.provider || '').toLowerCase();
-  const display = provider === 'cuda_pytorch' || provider === 'cuda' ? 'CUDA'
-    : provider === 'cpu_onnx_int8' ? 'CPU ONNX INT8'
-      : provider === 'cpu' ? 'CPU' : (provider || '已加载');
-  return model?.fallback ? `${display} · 已回退` : display;
-}
 
 function currentParameterSchema(model = currentModel()) {
   return Array.isArray(model?.parameter_schema) ? model.parameter_schema : [];
@@ -593,10 +588,6 @@ function modelSupportsVoiceClone(model = currentModel()) {
   );
 }
 
-function modelLabel(model) {
-  if (!model) return '未知模型';
-  return `${model.name || model.id}`;
-}
 
 function profileForVoiceId(voiceId) {
   if (!modelSupportsProfiles()) return null;
