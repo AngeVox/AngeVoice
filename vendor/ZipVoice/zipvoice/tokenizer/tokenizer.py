@@ -22,6 +22,8 @@ from abc import ABC, abstractmethod
 from functools import reduce
 from typing import Dict, List, Optional
 
+# AngeVoice local security patch (upstream blob b5081762a5d6f2faea372f86c7e5c543baa40b2f):
+# keep user-derived tokenizer values out of logs.
 import jieba
 from lhotse import CutSet
 from pypinyin import Style, lazy_pinyin
@@ -115,7 +117,7 @@ class SimpleTokenizer(Tokenizer):
             token_ids = []
             for t in tokens:
                 if t not in self.token2id:
-                    logging.debug(f"Skip OOV {t}")
+                    logging.debug("Skipped OOV token in SimpleTokenizer")
                     continue
                 token_ids.append(self.token2id[t])
 
@@ -161,7 +163,7 @@ class EspeakTokenizer(Tokenizer):
             tokens = reduce(lambda x, y: x + y, tokens)
             return tokens
         except Exception as ex:
-            logging.warning(f"Tokenization of {self.lang} texts failed: {ex}")
+            logging.warning("Espeak tokenization failed (%s)", type(ex).__name__)
             return []
 
     def texts_to_token_ids(
@@ -189,7 +191,7 @@ class EspeakTokenizer(Tokenizer):
             token_ids = []
             for t in tokens:
                 if t not in self.token2id:
-                    logging.debug(f"Skip OOV {t}")
+                    logging.debug("Skipped OOV token in EspeakTokenizer")
                     continue
                 token_ids.append(self.token2id[t])
 
@@ -267,10 +269,7 @@ class EmiliaTokenizer(Tokenizer):
                 elif seg[1] == "tag":
                     phoneme = [seg[0]]
                 else:
-                    logging.warning(
-                        f"No English or Chinese characters found, \
-                            skipping segment of unknown language: {seg}"
-                    )
+                    logging.warning("Skipped segment with unsupported language classification")
                     continue
                 all_phoneme += phoneme
             phoneme_list.append(all_phoneme)
@@ -287,7 +286,7 @@ class EmiliaTokenizer(Tokenizer):
             token_ids = []
             for t in tokens:
                 if t not in self.token2id:
-                    logging.debug(f"Skip OOV {t}")
+                    logging.debug("Skipped OOV token in EmiliaTokenizer")
                     continue
                 token_ids.append(self.token2id[t])
 
@@ -315,7 +314,7 @@ class EmiliaTokenizer(Tokenizer):
                     phones.extend(self.seperate_pinyin(x))
             return phones
         except Exception as ex:
-            logging.warning(f"Tokenization of Chinese texts failed: {ex}")
+            logging.warning("Chinese tokenization failed (%s)", type(ex).__name__)
             return []
 
     def tokenize_EN(self, text: str) -> List[str]:
@@ -325,7 +324,7 @@ class EmiliaTokenizer(Tokenizer):
             tokens = reduce(lambda x, y: x + y, tokens)
             return tokens
         except Exception as ex:
-            logging.warning(f"Tokenization of English texts failed: {ex}")
+            logging.warning("English tokenization failed (%s)", type(ex).__name__)
             return []
 
     def tokenize_pinyin(self, text: str) -> List[str]:
@@ -334,15 +333,12 @@ class EmiliaTokenizer(Tokenizer):
             text = text.lstrip("<").rstrip(">")
             # valid pinyin (in tone3 style) is alphabet + 1 number in [1-5].
             if not (text[0:-1].isalpha() and text[-1] in ("1", "2", "3", "4", "5")):
-                logging.warning(
-                    f"Strings enclosed with <> should be pinyin, \
-                    but got: {text}. Skipped it. "
-                )
+                logging.warning("Skipped malformed pinyin-tag segment")
                 return []
             else:
                 return self.seperate_pinyin(text)
         except Exception as ex:
-            logging.warning(f"Tokenize pinyin failed: {ex}")
+            logging.warning("Pinyin tokenization failed (%s)", type(ex).__name__)
             return []
 
     def seperate_pinyin(self, text: str) -> List[str]:
@@ -602,7 +598,7 @@ class LibriTTSTokenizer(Tokenizer):
             token_ids = []
             for t in tokens:
                 if t not in self.token2id:
-                    logging.debug(f"Skip OOV {t}")
+                    logging.debug("Skipped OOV token in LibriTTSTokenizer")
                     continue
                 token_ids.append(self.token2id[t])
 
