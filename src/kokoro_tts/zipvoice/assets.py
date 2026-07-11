@@ -22,6 +22,10 @@ def file_sha256(path: Path) -> str:
     return digest.hexdigest()
 
 
+class ZipVoiceAssetIntegrityError(RuntimeError):
+    """Raised when a persisted ZipVoice asset does not match its expected digest."""
+
+
 class ZipVoiceAssetManager:
     """Download ZipVoice and Vocos files outside the image and verify them.
 
@@ -42,6 +46,26 @@ class ZipVoiceAssetManager:
     def _destination(self, item: dict[str, Any]) -> Path:
         root = self.model_root if item.get("install_root") == "model_root" else self.vocos_dir
         return root / str(item["destination"])
+
+    @staticmethod
+    def _recorded_digest(saved: dict[str, Any], asset_id: str) -> str | None:
+        return (saved.get(asset_id, {}) or {}).get("sha256")
+
+    @staticmethod
+    def _requires_forced_download(existing: bool, declared: str | None, recorded: str | None) -> bool:
+        return existing and declared is None and recorded is None
+
+    @staticmethod
+    def _download_asset(downloader, item: dict[str, Any], local_dir: Path, *, force_download: bool) -> Path:
+        kwargs = {
+            "repo_id": item["repo"],
+            "filename": item["filename"],
+            "revision": item["revision"],
+            "local_dir": str(local_dir),
+        }
+        if force_download:
+            kwargs["force_download"] = True
+        return Path(downloader(**kwargs))
 
     def _read_status(self) -> dict[str, Any]:
         try:
@@ -114,34 +138,36 @@ class ZipVoiceAssetManager:
         updated: dict[str, Any] = {}
         for item in self.manifest["assets"]:
             destination = self._destination(item)
-            expected = item.get("sha256") or (saved.get(item["id"], {}) or {}).get("sha256")
-            valid_existing = destination.is_file() and expected and file_sha256(destination) == expected
-            if not valid_existing:
-                if destination.exists() and item.get("sha256"):
-                    logger.warning("ZipVoice asset SHA256 mismatch, redownloading: %s", destination)
-                    destination.unlink()
+            declared = item.get("sha256")
+            recorded = self._recorded_digest(saved, item["id"])
+            expected = declared or recorded
+            existing = destination.is_file()
+            digest = file_sha256(destination) if existing else None
+            if existing and expected and digest != expected:
+                source = "declared" if declared else "recorded"
+                raise ZipVoiceAssetIntegrityError(f"ZipVoice {source} asset SHA256 mismatch: {destination}")
+            if not existing or not expected:
                 if not download_enabled:
                     raise FileNotFoundError(f"ZipVoice asset unavailable or unverifiable with downloads disabled: {destination}")
                 local_dir = self.model_root if item.get("install_root") == "model_root" else self.vocos_dir
                 local_dir.mkdir(parents=True, exist_ok=True)
-                downloaded = Path(hf_hub_download(
-                    repo_id=item["repo"],
-                    filename=item["filename"],
-                    revision=item["revision"],
-                    local_dir=str(local_dir),
-                ))
+                downloaded = self._download_asset(
+                    hf_hub_download,
+                    item,
+                    local_dir,
+                    force_download=self._requires_forced_download(existing, declared, recorded),
+                )
                 if downloaded.resolve() != destination.resolve():
                     destination.parent.mkdir(parents=True, exist_ok=True)
                     shutil.copy2(downloaded, destination)
+                digest = None
             if not destination.is_file():
                 raise FileNotFoundError(f"Missing downloaded ZipVoice asset: {destination}")
-            digest = file_sha256(destination)
-            declared = item.get("sha256")
-            locked = declared or expected or digest
-            if declared and digest != declared:
-                raise RuntimeError(f"ZipVoice asset SHA256 mismatch after download: {destination}")
+            digest = digest or file_sha256(destination)
+            locked = expected or digest
             if expected and digest != expected:
-                raise RuntimeError(f"ZipVoice recorded asset SHA256 mismatch: {destination}")
+                source = "declared" if declared else "recorded"
+                raise ZipVoiceAssetIntegrityError(f"ZipVoice {source} asset SHA256 mismatch: {destination}")
             updated[item["id"]] = {
                 "path": str(destination),
                 "repo": item["repo"],

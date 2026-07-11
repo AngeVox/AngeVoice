@@ -80,8 +80,8 @@
       "filename": "zipvoice_distill/model.pt",
       "install_root": "model_root",
       "destination": "zipvoice_distill/model.pt",
-      "sha256": null,
-      "verification_policy": "record_first_verified_download"
+      "sha256": "745855037478eb888cfa7a3603c1aa9f663f22a72d94cc1c37787228ff422095",
+      "verification_policy": "strict_sha256"
     }
   ]
 }
