@@ -23,6 +23,7 @@ TEMPLATE_DOM_KEY = re.compile(r"data-i18n-template=['\"]([^'\"]+)['\"]")
 T_CALL = re.compile(r"(?<![\w$.])t\s*\(")
 TEMPLATE_CALL = re.compile(r"(?<![\w$.])renderTranslationTemplate\s*\(")
 TRANSLATED_PROGRESS_CALL = re.compile(r"(?<![\w$.])setTranslatedProgress\s*\(")
+COPY_DESCRIPTOR_CALL = re.compile(r"(?<![\w$.])descriptor\s*\(")
 GROUP_LABEL_KEY = re.compile(r"\blabelKey\s*:\s*['\"]([^'\"]+)['\"]")
 pytestmark = pytest.mark.quality
 CATALOG_DOMAINS = ("common", "studio", "admin")
@@ -92,6 +93,17 @@ PRODUCTION_DYNAMIC_ALLOWLIST: Mapping[str, tuple[DynamicKeyAllowance, ...]] = {
                     "studio.session.removed",
                     "studio.session.saved",
                     "studio.session.token_required",
+                    "studio.record.active",
+                    "studio.record.cancelled",
+                    "studio.record.complete",
+                    "studio.record.complete_at_limit",
+                    "studio.record.device_failed",
+                    "studio.record.insecure_context",
+                    "studio.record.limit_quality_warning",
+                    "studio.record.limit_reached",
+                    "studio.record.microphone_unavailable",
+                    "studio.record.permission_denied",
+                    "studio.record.unsupported",
                 }
             ),
         ),
@@ -338,13 +350,21 @@ def scan_i18n_references(
     rich_template_keys: set[str] = set()
     errors: list[str] = []
     used_allowances: set[tuple[str, str]] = set()
+    javascript_files = _javascript_files(root)
+    descriptor_keys = frozenset().union(
+        *(
+            _literal_call_keys(path.read_text(encoding="utf-8"), pattern)
+            for path in javascript_files
+            for pattern in (TRANSLATED_PROGRESS_CALL, COPY_DESCRIPTOR_CALL)
+        )
+    )
 
     for path in sorted((root / "templates").rglob("*.html")):
         source = path.read_text(encoding="utf-8")
         referenced.update(DOM_KEY.findall(source))
         rich_template_keys.update(TEMPLATE_DOM_KEY.findall(source))
 
-    for path in _javascript_files(root):
+    for path in javascript_files:
         source = path.read_text(encoding="utf-8")
         relative = path.relative_to(root).as_posix()
         allowances = {item.expression: item for item in dynamic_allowlist.get(relative, ())}
@@ -370,7 +390,7 @@ def scan_i18n_references(
             proven = (
                 frozenset(GROUP_LABEL_KEY.findall(source))
                 if expression in {"group.labelKey", "tab.labelKey"}
-                else _literal_call_keys(source, TRANSLATED_PROGRESS_CALL)
+                else descriptor_keys
                 if expression == "copy.key"
                 else frozenset()
             )
@@ -383,19 +403,23 @@ def scan_i18n_references(
             used_allowances.add((relative, expression))
             referenced.update(allowance.keys)
 
-        for match in TRANSLATED_PROGRESS_CALL.finditer(source):
-            if re.search(r"function\s+$", source[max(0, match.start() - 24) : match.start()]):
-                continue
-            argument, _ = _first_argument(source, match.end())
-            expression = _normalise_expression(argument)
-            try:
-                value = ast.literal_eval(expression)
-            except (SyntaxError, ValueError):
-                value = None
-            if not isinstance(value, str):
-                errors.append(f"Dynamic translated progress key in {relative}: setTranslatedProgress({expression})")
-                continue
-            referenced.add(value)
+        for pattern, call_name in (
+            (TRANSLATED_PROGRESS_CALL, "setTranslatedProgress"),
+            (COPY_DESCRIPTOR_CALL, "descriptor"),
+        ):
+            for match in pattern.finditer(source):
+                if re.search(r"function\s+$", source[max(0, match.start() - 24) : match.start()]):
+                    continue
+                argument, _ = _first_argument(source, match.end())
+                expression = _normalise_expression(argument)
+                try:
+                    value = ast.literal_eval(expression)
+                except (SyntaxError, ValueError):
+                    value = None
+                if not isinstance(value, str):
+                    errors.append(f"Dynamic copy key in {relative}: {call_name}({expression})")
+                    continue
+                referenced.add(value)
 
         for match in TEMPLATE_CALL.finditer(source):
             if re.search(r"(?:export\s+)?function\s+$", source[max(0, match.start() - 40) : match.start()]):
@@ -439,7 +463,7 @@ def scan_i18n_references(
 
 
 def test_zh_and_en_catalogs_have_identical_keys_and_placeholders() -> None:
-    expected_counts = {"common": 15, "studio": 86, "admin": 7}
+    expected_counts = {"common": 15, "studio": 100, "admin": 7}
     for domain, expected in expected_counts.items():
         zh_domain = _domain_catalog(domain, "zh-cn")
         en_domain = _domain_catalog(domain, "en")
@@ -452,7 +476,7 @@ def test_zh_and_en_catalogs_have_identical_keys_and_placeholders() -> None:
 
     zh = _catalog("zh-cn")
     en = _catalog("en")
-    assert len(zh) == len(en) == sum(expected_counts.values()) == 108
+    assert len(zh) == len(en) == sum(expected_counts.values()) == 122
     assert set(zh) == set(en)
     for key in zh:
         assert PLACEHOLDER.findall(zh[key]) == PLACEHOLDER.findall(en[key]), key
@@ -574,4 +598,4 @@ def test_translated_progress_keys_are_literal_and_proven_by_the_scanner(tmp_path
         encoding="utf-8",
     )
     report = scan_i18n_references(root, catalog_keys=set())
-    assert any("Dynamic translated progress key" in error for error in report.errors)
+    assert any("Dynamic copy key" in error and "setTranslatedProgress(dynamicKey)" in error for error in report.errors)

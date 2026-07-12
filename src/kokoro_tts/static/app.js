@@ -10,6 +10,7 @@ import {
 import {
   builtinVoiceKind
 } from './studio/voice-presentation.js';
+import { createReferenceRecorderController } from './studio/recording.js';
 
 const bootstrapEl = document.getElementById('angevoice-bootstrap');
 const bootstrap = bootstrapEl ? JSON.parse(bootstrapEl.textContent || '{}') : {};
@@ -59,9 +60,9 @@ const state = {
   totalSegments: 0,
   totalAudioChunks: 0,
   engineParams: {},
-  referenceRecorder: null,
   toastTimer: null,
   progressTranslation: null,
+  recordingTranslation: null,
   composeTextEdited: false,
   zipvoiceExpanded: false,
   textNormalization: localStorage.getItem('angevoice.textNormalization.v1') || 'default'
@@ -141,6 +142,7 @@ const groups = [
   { id: 'favorites', labelKey: 'voices.favorite', match: voice => state.favorites.includes(voice) },
   { id: 'recent', labelKey: 'voices.recent', match: voice => state.recent.includes(voice) }
 ];
+let referenceRecorderController = null;
 
 class StreamPlayer {
   constructor() {
@@ -384,6 +386,9 @@ function localizeTransientCopy() {
   if (toast?.angevoiceTranslation) {
     toast.querySelector('.toast-message').textContent = translateDescriptor(toast.angevoiceTranslation);
   }
+  if (state.recordingTranslation && els.recordingStatus) {
+    els.recordingStatus.textContent = translateDescriptor(state.recordingTranslation);
+  }
 }
 
 const USER_ERROR_MESSAGES = {
@@ -458,6 +463,11 @@ function setProgress(text, isError = false, options = {}) {
 
 function setTranslatedProgress(key, params = null, isError = false, options = {}) {
   const translation = { key, params: params ? { ...params } : null };
+  setTranslatedDescriptor(translation, isError, options);
+}
+
+function setTranslatedDescriptor(copy, isError = false, options = {}) {
+  const translation = { key: copy.key, params: copy.params ? { ...copy.params } : null };
   setProgress(translateDescriptor(translation), isError, { ...options, translation });
 }
 
@@ -761,120 +771,31 @@ function setPromptAudioFile(file, { loadPreview = true } = {}) {
   applyStreamToggleState();
 }
 
-function setRecordingStatus(message, active = false) {
+function setRecordingStatus(copy, active = false) {
+  state.recordingTranslation = copy;
   if (!els.recordingStatus) return;
-  els.recordingStatus.textContent = message;
+  els.recordingStatus.textContent = translateDescriptor(copy);
   els.recordingStatus.classList.toggle('active', Boolean(active));
 }
 
-function encodeRecordedWav(chunks, sampleRate) {
-  const length = chunks.reduce((total, chunk) => total + chunk.length, 0);
-  const buffer = new ArrayBuffer(44 + length * 2);
-  const view = new DataView(buffer);
-  const writeText = (offset, text) => { for (let index = 0; index < text.length; index += 1) view.setUint8(offset + index, text.charCodeAt(index)); };
-  writeText(0, 'RIFF');
-  view.setUint32(4, 36 + length * 2, true);
-  writeText(8, 'WAVE');
-  writeText(12, 'fmt ');
-  view.setUint32(16, 16, true);
-  view.setUint16(20, 1, true);
-  view.setUint16(22, 1, true);
-  view.setUint32(24, sampleRate, true);
-  view.setUint32(28, sampleRate * 2, true);
-  view.setUint16(32, 2, true);
-  view.setUint16(34, 16, true);
-  writeText(36, 'data');
-  view.setUint32(40, length * 2, true);
-  let offset = 44;
-  chunks.forEach(chunk => {
-    for (let index = 0; index < chunk.length; index += 1) {
-      const value = Math.max(-1, Math.min(1, chunk[index]));
-      view.setInt16(offset, value < 0 ? value * 0x8000 : value * 0x7fff, true);
-      offset += 2;
-    }
+function initializeReferenceRecorder() {
+  referenceRecorderController = createReferenceRecorderController({
+    elements: {
+      startButton: els.recordReference,
+      stopButton: els.stopRecordReference,
+      fileInput: els.promptAudio,
+    },
+    callbacks: {
+      onStatus: setRecordingStatus,
+      onProgress: setTranslatedDescriptor,
+      onFile: file => setPromptAudioFile(file),
+      onTemporaryReference: selectZipVoiceTemporaryReference,
+      onLongRecording: warnReferenceDuration,
+      supportsVoiceClone: () => modelSupportsVoiceClone(currentModel()),
+      supportsProfiles: modelSupportsProfiles,
+      expandProfiles: () => setZipVoiceExpanded(true),
+    },
   });
-  return new Blob([buffer], { type: 'audio/wav' });
-}
-
-async function stopReferenceRecording({ discard = false, stoppedAtLimit = false } = {}) {
-  const recorder = state.referenceRecorder;
-  if (!recorder) return;
-  recorder.processor?.disconnect();
-  recorder.source?.disconnect();
-  recorder.silentGain?.disconnect();
-  recorder.stream?.getTracks().forEach(track => track.stop());
-  try { await recorder.context?.close(); } catch (_) { /* already closed */ }
-  state.referenceRecorder = null;
-  if (els.recordReference) els.recordReference.disabled = false;
-  if (els.stopRecordReference) els.stopRecordReference.disabled = true;
-  if (discard || !recorder.chunks.length) {
-    setRecordingStatus('录音已取消，可重新录制或上传 WAV 文件');
-    return;
-  }
-  const blob = encodeRecordedWav(recorder.chunks, recorder.sampleRate);
-  const file = new File([blob], `angevoice_reference_${Date.now()}.wav`, { type: 'audio/wav', lastModified: Date.now() });
-  if (modelSupportsProfiles()) selectZipVoiceTemporaryReference();
-  try {
-    const transfer = new DataTransfer();
-    transfer.items.add(file);
-    els.promptAudio.files = transfer.files;
-  } catch (_) { /* DataTransfer can be unavailable on older browsers; state still works. */ }
-  setPromptAudioFile(file);
-  const seconds = recorder.totalFrames / recorder.sampleRate;
-  setRecordingStatus(`${stoppedAtLimit ? '已在 15 秒上限处自动停止，' : ''}已录制 ${seconds.toFixed(1)} 秒 WAV 参考音频，可试听、保存或直接生成`);
-  if (stoppedAtLimit) {
-    setProgress('录音已在 15 秒上限处自动停止。建议重新录制少于 3 秒的清晰参考音频，以获得更好的克隆质量。', false, { kind: 'warning' });
-  } else if (seconds > 3) {
-    warnReferenceDuration(seconds);
-  }
-}
-
-async function startReferenceRecording() {
-  if (!modelSupportsVoiceClone(currentModel())) return;
-  if (modelSupportsProfiles()) setZipVoiceExpanded(true);
-  if (!window.isSecureContext) {
-    setProgress('当前页面通过 HTTP 打开，浏览器会禁止麦克风录音。请改用 HTTPS 或在本机通过 localhost 访问，也可直接上传 WAV 参考音频。', true);
-    return;
-  }
-  if (!navigator.mediaDevices?.getUserMedia || !window.AudioContext) {
-    setProgress('当前浏览器无法使用网页麦克风录音，请检查权限或改为上传 WAV 参考音频。', true);
-    return;
-  }
-  if (state.referenceRecorder) await stopReferenceRecording({ discard: true });
-  try {
-    const stream = await navigator.mediaDevices.getUserMedia({ audio: { channelCount: 1, echoCancellation: false, noiseSuppression: false, autoGainControl: false } });
-    const context = new AudioContext();
-    const source = context.createMediaStreamSource(stream);
-    const processor = context.createScriptProcessor(4096, 1, 1);
-    const silentGain = context.createGain();
-    silentGain.gain.value = 0;
-    const recorder = { stream, context, source, processor, silentGain, chunks: [], sampleRate: context.sampleRate, totalFrames: 0 };
-    processor.onaudioprocess = event => {
-      const samples = new Float32Array(event.inputBuffer.getChannelData(0));
-      recorder.chunks.push(samples);
-      recorder.totalFrames += samples.length;
-      const seconds = recorder.totalFrames / recorder.sampleRate;
-      if (seconds >= 14.8 && !recorder.autoStopping) {
-        recorder.autoStopping = true;
-        setProgress('录音已达到 15 秒上限，将自动停止。ZipVoice 官方仍建议使用少于 3 秒的清晰短音频。', false, { kind: 'warning' });
-        void stopReferenceRecording({ stoppedAtLimit: true });
-        return;
-      }
-      setRecordingStatus(`录音中 ${seconds.toFixed(1)} 秒 · 官方建议少于 3 秒，最长 15 秒`, true);
-    };
-    source.connect(processor);
-    processor.connect(silentGain);
-    silentGain.connect(context.destination);
-    state.referenceRecorder = recorder;
-    els.recordReference.disabled = true;
-    els.stopRecordReference.disabled = false;
-    setRecordingStatus('录音中 0.0 秒 · 官方建议少于 3 秒，最长 15 秒', true);
-  } catch (error) {
-    const denied = error?.name === 'NotAllowedError' || error?.name === 'SecurityError';
-    const guidance = denied ? '请在浏览器地址栏授予麦克风权限，或改为上传 WAV 参考音频。' : '请检查麦克风设备，或改为上传 WAV 参考音频。';
-    setProgress(`无法使用麦克风：${guidance}`, true);
-    setRecordingStatus('麦克风不可用，可改为上传 WAV 文件');
-  }
 }
 
 function applyStreamToggleState() {
@@ -1853,10 +1774,10 @@ function bindEvents() {
     }
     setPromptAudioFile(file);
   });
-  els.recordReference?.addEventListener('click', startReferenceRecording);
-  els.stopRecordReference?.addEventListener('click', () => stopReferenceRecording());
+  els.recordReference?.addEventListener('click', () => referenceRecorderController?.start());
+  els.stopRecordReference?.addEventListener('click', () => referenceRecorderController?.stop());
   els.clearPromptAudio?.addEventListener('click', async () => {
-    if (state.referenceRecorder) await stopReferenceRecording({ discard: true });
+    if (referenceRecorderController?.active) await referenceRecorderController.discard();
     setPromptAudioFile(null);
     if (els.promptAudio) {
       els.promptAudio.value = '';
@@ -1966,6 +1887,7 @@ function init() {
     els.textNormalization.value = currentTextNormalization();
   }
   els.text.value = t('studio.compose.default_text');
+  initializeReferenceRecorder();
   applyStreamToggleState();
   applyTheme(state.theme);
   setMetricsCollapsed(state.metricsCollapsed);

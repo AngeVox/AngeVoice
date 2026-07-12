@@ -158,6 +158,7 @@ def test_studio_recording_and_profile_delete_are_capability_driven():
     root = Path(__file__).resolve().parents[1] / "src/kokoro_tts"
     html = (root / "templates/index.html").read_text(encoding="utf-8")
     js = (root / "static/app.js").read_text(encoding="utf-8")
+    recording = (root / "static/studio/recording.js").read_text(encoding="utf-8")
     imports = js[: js.index("const bootstrapEl")]
     assert 'id="record-reference-btn"' in html
     assert 'id="stop-record-reference-btn"' in html
@@ -165,11 +166,12 @@ def test_studio_recording_and_profile_delete_are_capability_driven():
     assert 'id="zipvoice-update-profile"' in html
     assert 'id="zipvoice-toggle"' in html
     assert 'id="toast-stack"' in html
-    assert "navigator.mediaDevices.getUserMedia" in js
-    assert "window.isSecureContext" in js
+    assert "createReferenceRecorderController" in js
+    assert "getUserMedia" in recording
+    assert "isSecureContext" in recording
     assert "showToast" in js and "setZipVoiceExpanded" in js
-    assert "最长 15 秒" in js
-    assert "encodeRecordedWav" in js
+    assert "RECORDING_AUTO_STOP_SECONDS = 14.8" in recording
+    assert "encodeRecordedWav" in recording
     assert "/v1/voice-profiles/${encodeURIComponent(profileEngineId())}" in js
     assert "modelSupportsProfiles()" in js
     assert "modelRequiresPromptText" in imports
