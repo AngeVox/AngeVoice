@@ -196,7 +196,12 @@ def test_audio_route_depends_on_synthesis_service_not_zipvoice_private_helpers()
 def test_frontend_renders_engine_parameter_schema_without_hardcoded_fields():
     root = Path(__file__).resolve().parents[1] / "src" / "kokoro_tts"
     js = (root / "static" / "app.js").read_text(encoding="utf-8")
+    capabilities = (root / "static" / "studio" / "model-capabilities.js").read_text(encoding="utf-8")
     html = (root / "templates" / "index.html").read_text(encoding="utf-8")
-    assert "model?.parameter_schema" in js
+    imports = js[: js.index("const bootstrapEl")]
+    assert "modelParameterSchema" in imports
+    assert "modelParameterSchema(model)" in js
+    assert "Array.isArray(model?.parameter_schema)" in capabilities
+    assert "model.parameter_schema" in capabilities
     assert "collectEngineParams" in js
     assert "engine-parameter-fields" in html

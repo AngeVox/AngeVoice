@@ -13,6 +13,8 @@ ROOT = Path(__file__).resolve().parents[1]
 PACKAGE_ROOT = ROOT / "src" / "kokoro_tts"
 APP = PACKAGE_ROOT / "static" / "app.js"
 MODULE = PACKAGE_ROOT / "static" / "studio" / "model-presentation.js"
+CAPABILITIES_MODULE = PACKAGE_ROOT / "static" / "studio" / "model-capabilities.js"
+VOICE_MODULE = PACKAGE_ROOT / "static" / "studio" / "voice-presentation.js"
 INDEX = PACKAGE_ROOT / "templates" / "index.html"
 
 
@@ -58,6 +60,73 @@ def _module_results() -> dict[str, object]:
     return json.loads(_node(script).stdout)
 
 
+def _capability_results() -> dict[str, object]:
+    script = f"""
+      import * as capabilities from {json.dumps(CAPABILITIES_MODULE.as_uri())};
+      const {{
+        modelNeedsWake,
+        modelParameterSchema,
+        modelRequiresPromptAudio,
+        modelRequiresPromptText,
+        modelSupportsVoiceClone
+      }} = capabilities;
+      const emptySchema = [];
+      const populatedSchema = [{{ key: 'temperature', type: 'number' }}];
+      const populatedBefore = JSON.stringify(populatedSchema);
+      const output = {{
+        exports: Object.keys(capabilities).sort(),
+        wake: [
+          modelNeedsWake(null),
+          modelNeedsWake({{}}),
+          modelNeedsWake({{ available: false, loaded: false }}),
+          modelNeedsWake({{ loaded: false }}),
+          modelNeedsWake({{ loaded: true, idle_unloaded: true }}),
+          modelNeedsWake({{ loaded: true }})
+        ],
+        schema: {{
+          nullValue: modelParameterSchema(null),
+          missing: modelParameterSchema({{}}),
+          nonArray: modelParameterSchema({{ parameter_schema: 'invalid' }}),
+          emptySameReference: modelParameterSchema({{ parameter_schema: emptySchema }}) === emptySchema,
+          populatedSameReference: modelParameterSchema({{ parameter_schema: populatedSchema }}) === populatedSchema,
+          populatedValue: modelParameterSchema({{ parameter_schema: populatedSchema }}),
+          populatedUnchanged: JSON.stringify(populatedSchema) === populatedBefore
+        }},
+        promptAudio: [
+          modelRequiresPromptAudio({{ requires_prompt_audio: true }}),
+          modelRequiresPromptAudio({{ requires_prompt_audio: false }}),
+          modelRequiresPromptAudio({{}})
+        ],
+        promptText: [
+          modelRequiresPromptText({{ requires_prompt_text: true }}),
+          modelRequiresPromptText({{ requires_prompt_text: false }}),
+          modelRequiresPromptText({{}})
+        ],
+        clone: [
+          modelSupportsVoiceClone({{ voice_clone_supported: true }}),
+          modelSupportsVoiceClone({{ modes: ['voice_clone'] }}),
+          modelSupportsVoiceClone({{ backend: 'moss-tts-nano-onnx' }}),
+          modelSupportsVoiceClone({{ id: 'moss-demo' }}),
+          modelSupportsVoiceClone({{ id: 'kokoro', backend: 'kokoro', modes: [] }})
+        ]
+      }};
+      console.log(JSON.stringify(output));
+    """
+    return json.loads(_node(script).stdout)
+
+
+def _voice_results() -> dict[str, object]:
+    script = f"""
+      import * as presentation from {json.dumps(VOICE_MODULE.as_uri())};
+      const values = ['zf_xiaobei', 'zm_yunxi', 'af_maple', 'bf_emma', 'am_adam', 'bm_george', 'custom', '', null];
+      console.log(JSON.stringify({{
+        exports: Object.keys(presentation).sort(),
+        kinds: values.map(value => presentation.builtinVoiceKind(value))
+      }}));
+    """
+    return json.loads(_node(script).stdout)
+
+
 def test_model_label_contract_and_native_esm_import() -> None:
     results = _module_results()
     assert results["model-null"] == "未知模型"
@@ -78,6 +147,48 @@ def test_runtime_provider_label_contract() -> None:
     assert results["provider-empty-fallback"] == "已加载 · 已回退"
 
 
+def test_model_capability_contracts_and_native_esm_import() -> None:
+    results = _capability_results()
+    assert results["exports"] == [
+        "modelNeedsWake",
+        "modelParameterSchema",
+        "modelRequiresPromptAudio",
+        "modelRequiresPromptText",
+        "modelSupportsVoiceClone",
+    ]
+    assert results["wake"] == [False, False, False, True, True, False]
+    assert results["promptAudio"] == [True, False, False]
+    assert results["promptText"] == [True, False, False]
+    assert results["clone"] == [True, True, True, True, False]
+
+
+def test_model_parameter_schema_preserves_array_identity_and_content() -> None:
+    schema = _capability_results()["schema"]
+    assert schema["nullValue"] == []
+    assert schema["missing"] == []
+    assert schema["nonArray"] == []
+    assert schema["emptySameReference"] is True
+    assert schema["populatedSameReference"] is True
+    assert schema["populatedValue"] == [{"key": "temperature", "type": "number"}]
+    assert schema["populatedUnchanged"] is True
+
+
+def test_builtin_voice_kind_contract_and_native_esm_import() -> None:
+    results = _voice_results()
+    assert results["exports"] == ["builtinVoiceKind"]
+    assert results["kinds"] == [
+        "中文女声",
+        "中文男声",
+        "英文女声",
+        "英文女声",
+        "英文男声",
+        "英文男声",
+        "其他音色",
+        "其他音色",
+        "其他音色",
+    ]
+
+
 def test_presentation_module_is_pure_and_exports_only_the_contract() -> None:
     source = MODULE.read_text(encoding="utf-8")
     forbidden = ("window", "document", "localStorage", "sessionStorage", "globalThis", "state", "bootstrap", "currentModel")
@@ -85,13 +196,69 @@ def test_presentation_module_is_pure_and_exports_only_the_contract() -> None:
     assert re.findall(r"\bexport\s+function\s+(\w+)", source) == ["modelLabel", "runtimeProviderLabel"]
 
 
+def test_extracted_capability_and_voice_modules_are_pure() -> None:
+    forbidden = (
+        "window",
+        "document",
+        "localStorage",
+        "sessionStorage",
+        "globalThis",
+        "state",
+        "bootstrap",
+        "currentModel",
+        "profileForVoiceId",
+        "modelSupportsProfiles",
+    )
+    expected_exports = {
+        CAPABILITIES_MODULE: [
+            "modelNeedsWake",
+            "modelParameterSchema",
+            "modelRequiresPromptAudio",
+            "modelRequiresPromptText",
+            "modelSupportsVoiceClone",
+        ],
+        VOICE_MODULE: ["builtinVoiceKind"],
+    }
+    for path, exports in expected_exports.items():
+        source = path.read_text(encoding="utf-8")
+        assert not any(re.search(rf"\b{word}\b", source) for word in forbidden), path.name
+        assert re.findall(r"\bexport\s+function\s+(\w+)", source) == exports
+
+
 def test_app_imports_the_module_once_without_old_function_definitions() -> None:
     source = APP.read_text(encoding="utf-8")
-    imports = re.findall(r"^import\s+\{[^;]+\}\s+from\s+['\"]\.\/studio\/model-presentation\.js\?h=([0-9a-f]{12})['\"];", source, re.MULTILINE)
-    assert len(imports) == 1
+    for module_name in ("model-presentation", "model-capabilities", "voice-presentation"):
+        imports = re.findall(
+            rf"^import\s+\{{[^;]+\}}\s+from\s+['\"]\.\/studio\/{module_name}\.js\?h=([0-9a-f]{{12}})['\"];",
+            source,
+            re.MULTILINE,
+        )
+        assert len(imports) == 1, module_name
     assert source.startswith("import ")
-    assert not re.search(r"function\s+(?:modelLabel|runtimeProviderLabel)\s*\(", source)
+    removed = (
+        "modelLabel",
+        "runtimeProviderLabel",
+        "currentModelNeedsWake",
+        "currentParameterSchema",
+        "modelRequiresPromptAudio",
+        "modelRequiresPromptText",
+        "modelSupportsVoiceClone",
+    )
+    assert not re.search(rf"function\s+(?:{'|'.join(removed)})\s*\(", source)
     assert "runtimeProviderLabel(model)" in source
+    assert not re.search(r"window\.(?:modelNeedsWake|modelParameterSchema|builtinVoiceKind)\b", source)
+
+
+def test_app_voice_kind_keeps_profile_and_moss_branches_before_builtin_fallback() -> None:
+    source = APP.read_text(encoding="utf-8")
+    match = re.search(r"function voiceKind\(voice\) \{(?P<body>.*?)\n\}", source, re.DOTALL)
+    assert match
+    body = match.group("body")
+    profile = body.index("modelSupportsProfiles()")
+    moss = body.index("state.selectedModel.startsWith('moss')")
+    builtin = body.index("builtinVoiceKind(voice)")
+    assert profile < moss < builtin
+    assert not re.search(r"startsWith\(['\"](?:zf_|zm_)|\^\[ab\][fm]_", body)
 
 
 def test_index_has_one_module_entry_in_dependency_order() -> None:
@@ -110,12 +277,16 @@ def test_index_has_one_module_entry_in_dependency_order() -> None:
     assert [html.index(item) for item in ordered] == sorted(html.index(item) for item in ordered)
 
 
-def test_two_layer_cache_queries_match_real_sha256() -> None:
+def test_all_studio_cache_queries_match_portable_sha256() -> None:
     app_source = APP.read_text(encoding="utf-8")
     html = INDEX.read_text(encoding="utf-8")
-    module_hash = _portable_source_hash(MODULE)
+    presentation_hash = _portable_source_hash(MODULE)
+    capabilities_hash = _portable_source_hash(CAPABILITIES_MODULE)
+    voice_hash = _portable_source_hash(VOICE_MODULE)
     app_hash = _portable_source_hash(APP)
-    assert f"model-presentation.js?h={module_hash}" in app_source
+    assert f"model-presentation.js?h={presentation_hash}" in app_source
+    assert f"model-capabilities.js?h={capabilities_hash}" in app_source
+    assert f"voice-presentation.js?h={voice_hash}" in app_source
     assert f"/static/app.js?h={app_hash}" in html
 
 

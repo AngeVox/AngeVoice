@@ -158,6 +158,7 @@ def test_studio_recording_and_profile_delete_are_capability_driven():
     root = Path(__file__).resolve().parents[1] / "src/kokoro_tts"
     html = (root / "templates/index.html").read_text(encoding="utf-8")
     js = (root / "static/app.js").read_text(encoding="utf-8")
+    imports = js[: js.index("const bootstrapEl")]
     assert 'id="record-reference-btn"' in html
     assert 'id="stop-record-reference-btn"' in html
     assert 'id="zipvoice-delete-profile"' in html
@@ -171,7 +172,9 @@ def test_studio_recording_and_profile_delete_are_capability_driven():
     assert "encodeRecordedWav" in js
     assert "/v1/voice-profiles/${encodeURIComponent(profileEngineId())}" in js
     assert "modelSupportsProfiles()" in js
-    assert "modelRequiresPromptText()" in js
+    assert "modelRequiresPromptText" in imports
+    assert "modelRequiresPromptText(currentModel())" in js
+    assert "modelSupportsVoiceClone(currentModel())" in js
     assert "deleteSelectedVoiceProfile" in js
     assert "updateSelectedVoiceProfileMetadata" in js
     assert "/v1/reference-audio/${encodeURIComponent(profileEngineId())}/recommended-prompts" in js

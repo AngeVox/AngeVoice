@@ -1,4 +1,14 @@
 import { modelLabel, runtimeProviderLabel } from './studio/model-presentation.js?h=03bd16742352';
+import {
+  modelNeedsWake,
+  modelParameterSchema,
+  modelRequiresPromptAudio,
+  modelRequiresPromptText,
+  modelSupportsVoiceClone
+} from './studio/model-capabilities.js?h=18186a78103d';
+import {
+  builtinVoiceKind
+} from './studio/voice-presentation.js?h=fa98ca4f1311';
 
 const bootstrapEl = document.getElementById('angevoice-bootstrap');
 const bootstrap = bootstrapEl ? JSON.parse(bootstrapEl.textContent || '{}') : {};
@@ -473,7 +483,7 @@ function cancelRequestById(requestId) {
 
 function updateButtons() {
   els.generateBtn.disabled = state.busy;
-  els.generateBtn.textContent = state.busy ? t('action.processing') : (currentModelNeedsWake() ? t('action.wake') : t('action.generate'));
+  els.generateBtn.textContent = state.busy ? t('action.processing') : (modelNeedsWake(currentModel()) ? t('action.wake') : t('action.generate'));
   els.previewBtn.disabled = state.busy;
   if (els.model) {
     els.model.disabled = state.busy || bootstrap.modelSwitchEnabled === false;
@@ -484,11 +494,6 @@ function updateButtons() {
 
 function currentModel() {
   return state.models.find(model => model.id === state.selectedModel) || state.models.find(model => model.current) || state.models[0] || null;
-}
-
-function currentModelNeedsWake(model = currentModel()) {
-  if (!model) return false;
-  return model.available !== false && (model.loaded === false || model.idle_unloaded === true);
 }
 
 function currentModelSpeedValue(model = currentModel()) {
@@ -506,22 +511,9 @@ function profileEngineId(model = currentModel()) {
   return String(model?.id || state.selectedModel || '').toLowerCase();
 }
 
-function modelRequiresPromptAudio(model = currentModel()) {
-  return Boolean(model?.requires_prompt_audio);
-}
-
-function modelRequiresPromptText(model = currentModel()) {
-  return Boolean(model?.requires_prompt_text);
-}
-
-
-function currentParameterSchema(model = currentModel()) {
-  return Array.isArray(model?.parameter_schema) ? model.parameter_schema : [];
-}
-
 function renderEngineParameters(model = currentModel()) {
   if (!els.engineParameters || !els.engineParameterFields) return;
-  const schema = currentParameterSchema(model);
+  const schema = modelParameterSchema(model);
   els.engineParameterFields.innerHTML = '';
   els.engineParameters.hidden = schema.length === 0;
   if (!schema.length || !model) return;
@@ -577,17 +569,6 @@ function currentTextNormalization() {
   const value = String(els.textNormalization?.value || state.textNormalization || 'default').trim().toLowerCase();
   return ['default', 'wetext', 'legacy', 'off'].includes(value) ? value : 'default';
 }
-
-function modelSupportsVoiceClone(model = currentModel()) {
-  const modes = Array.isArray(model?.modes) ? model.modes : [];
-  return Boolean(
-    model?.voice_clone_supported ||
-    modes.includes('voice_clone') ||
-    model?.backend === 'moss-tts-nano-onnx' ||
-    String(model?.id || '').startsWith('moss')
-  );
-}
-
 
 function profileForVoiceId(voiceId) {
   if (!modelSupportsProfiles()) return null;
@@ -820,7 +801,7 @@ async function stopReferenceRecording({ discard = false, stoppedAtLimit = false 
 }
 
 async function startReferenceRecording() {
-  if (!modelSupportsVoiceClone()) return;
+  if (!modelSupportsVoiceClone(currentModel())) return;
   if (modelSupportsProfiles()) setZipVoiceExpanded(true);
   if (!window.isSecureContext) {
     setProgress('当前页面通过 HTTP 打开，浏览器会禁止麦克风录音。请改用 HTTPS 或在本机通过 localhost 访问，也可直接上传 WAV 参考音频。', true);
@@ -877,7 +858,7 @@ function applyStreamToggleState() {
     els.streamToggle.title = '当前模型运行时暂不支持流式播放';
     return;
   }
-  const cloneUploadActive = modelSupportsVoiceClone() && Boolean(state.promptAudioFile);
+  const cloneUploadActive = modelSupportsVoiceClone(currentModel()) && Boolean(state.promptAudioFile);
   els.streamToggle.disabled = false;
   if (String(model?.stream_mode || '') === 'segmented') {
     els.streamToggle.title = '分句流式：每句生成后立即播放';
@@ -900,7 +881,7 @@ function applyModelUi() {
     }
     els.speedValue.textContent = Number(els.speed.value || 1).toFixed(1);
   }
-  if (currentModelNeedsWake(model)) {
+  if (modelNeedsWake(model)) {
     const idleLabel = model.idle_unloaded ? '已休眠，点击“立即唤醒”加载模型' : '未加载，点击“立即唤醒”加载模型';
     els.modelStatus.textContent = idleLabel;
     els.modelStatus.className = 'warn-text';
@@ -983,7 +964,7 @@ function updateModelData(models = [], current = '') {
 
 async function wakeCurrentModel() {
   const model = currentModel();
-  if (!model || !currentModelNeedsWake(model)) {
+  if (!model || !modelNeedsWake(model)) {
     return false;
   }
   setBusy(true);
@@ -1037,11 +1018,7 @@ async function switchModel(modelId) {
 function voiceKind(voice) {
   if (modelSupportsProfiles()) return zipVoiceDescriptor(voice);
   if (state.selectedModel.startsWith('moss')) return 'MOSS 预设音色';
-  if (voice.startsWith('zf_')) return '中文女声';
-  if (voice.startsWith('zm_')) return '中文男声';
-  if (/^[ab]f_/.test(voice)) return '英文女声';
-  if (/^[ab]m_/.test(voice)) return '英文男声';
-  return '其他音色';
+  return builtinVoiceKind(voice);
 }
 
 function matchingVoices() {
@@ -1409,7 +1386,7 @@ async function synthesizeHttp(text, voice, speed, autoplay = true) {
   state.lastBlob = null;
   updateButtons();
   setBusy(true);
-  setProgress(modelRequiresPromptText() ? '正在生成正文音频（参考文本仅用于音色条件）...' : '正在生成 WAV...');
+  setProgress(modelRequiresPromptText(currentModel()) ? '正在生成正文音频（参考文本仅用于音色条件）...' : '正在生成 WAV...');
 
   try {
     const form = new FormData();
@@ -1420,17 +1397,17 @@ async function synthesizeHttp(text, voice, speed, autoplay = true) {
     form.append('response_format', 'wav');
     form.append('text_normalization', currentTextNormalization());
     Object.entries(collectEngineParams()).forEach(([key, value]) => form.append(key, String(value)));
-    const useUploadedReference = modelSupportsVoiceClone() && state.promptAudioFile && (!modelSupportsProfiles() || !voice);
+    const useUploadedReference = modelSupportsVoiceClone(currentModel()) && state.promptAudioFile && (!modelSupportsProfiles() || !voice);
     if (useUploadedReference) {
       form.append('prompt_audio', state.promptAudioFile, state.promptAudioFile.name);
     }
-    if (useUploadedReference && modelRequiresPromptText() && !els.promptText.value.trim()) {
+    if (useUploadedReference && modelRequiresPromptText(currentModel()) && !els.promptText.value.trim()) {
       throw new Error('当前模型临时克隆需要填写参考文本');
     }
-    if (modelRequiresPromptAudio() && !useUploadedReference && !voice) {
+    if (modelRequiresPromptAudio(currentModel()) && !useUploadedReference && !voice) {
       throw new Error('请上传参考音频，或选择已保存音色');
     }
-    if (useUploadedReference && modelRequiresPromptText()) {
+    if (useUploadedReference && modelRequiresPromptText(currentModel())) {
       form.append('prompt_text', els.promptText.value.trim());
     }
     const response = await apiFetch('/api/tts', {
@@ -1486,7 +1463,7 @@ function readFileAsBase64(file) {
 }
 
 async function buildPromptAudioPayload() {
-  if (!modelSupportsVoiceClone() || !state.promptAudioFile) {
+  if (!modelSupportsVoiceClone(currentModel()) || !state.promptAudioFile) {
     return null;
   }
   const file = state.promptAudioFile;
@@ -1502,7 +1479,7 @@ async function synthesizeStream(text, voice, speed) {
   setProgress(modelSupportsProfiles() ? '正在建立分句流式连接（参考文本仅用于音色条件）...' : '正在建立流式连接...');
   let promptAudio = null;
   try {
-    if (modelSupportsVoiceClone() && state.promptAudioFile && (!modelSupportsProfiles() || !voice)) {
+    if (modelSupportsVoiceClone(currentModel()) && state.promptAudioFile && (!modelSupportsProfiles() || !voice)) {
       setProgress('正在读取参考音频...');
       promptAudio = await buildPromptAudioPayload();
     }
@@ -1545,7 +1522,7 @@ async function synthesizeStream(text, voice, speed) {
     if (promptAudio) {
       payload.prompt_audio = promptAudio;
     }
-    if (modelRequiresPromptText() && !voice && promptAudio) {
+    if (modelRequiresPromptText(currentModel()) && !voice && promptAudio) {
       if (!els.promptText.value.trim()) {
         setProgress('当前模型临时克隆需要填写参考文本', true);
         cleanupWs(ws, true);
@@ -1754,7 +1731,7 @@ function bindEvents() {
     if (!ensureAuthToken()) {
       return;
     }
-    if (currentModelNeedsWake()) {
+    if (modelNeedsWake(currentModel())) {
       await wakeCurrentModel();
       return;
     }
@@ -1776,7 +1753,7 @@ function bindEvents() {
     if (!ensureAuthToken()) {
       return;
     }
-    if (currentModelNeedsWake()) {
+    if (modelNeedsWake(currentModel())) {
       wakeCurrentModel();
       return;
     }

@@ -556,7 +556,7 @@ def test_zipvoice_frontend_preview_is_not_reloaded_by_status_poll_and_saved_voic
     assert "state.lastAppliedModelId !== model.id" in js
     assert "loadZipVoiceProfiles({ forcePreview: modelChanged })" in js
     assert "sourceKey === state.zipvoicePreviewKey" in js
-    assert "if (modelRequiresPromptText() && !voice && promptAudio)" in js
+    assert "if (modelRequiresPromptText(currentModel()) && !voice && promptAudio)" in js
     assert "payload.prompt_text = els.promptText.value.trim()" in js
     assert "isZipVoice" not in js
     assert "临时克隆才发送参考文本" in js
