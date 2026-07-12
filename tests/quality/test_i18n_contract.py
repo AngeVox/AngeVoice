@@ -206,18 +206,14 @@ def test_current_static_and_javascript_translation_references_exist() -> None:
     assert not report.errors, "\n".join(report.errors)
 
 
-def test_pages_load_catalogs_before_the_module_runtime_and_entries() -> None:
+def test_pages_load_the_explicit_runtime_before_consumers_without_catalog_tags() -> None:
     pages = {
         "index.html": [
-            "/static/locale/messages.zh-cn.js",
-            "/static/locale/messages.en.js",
             "/static/common/i18n.js",
             "/static/security_notice.js",
             "/static/app.js",
         ],
         "admin.html": [
-            "/static/locale/messages.zh-cn.js",
-            "/static/locale/messages.en.js",
             "/static/common/i18n.js",
             "/static/admin.js",
         ],
@@ -228,5 +224,18 @@ def test_pages_load_catalogs_before_the_module_runtime_and_entries() -> None:
         runtime = re.search(r'<script\s+type="module"\s+src="/static/common/i18n\.js\?h=[0-9a-f]{12}"([^>]*)>', html)
         assert runtime, name
         assert "async" not in runtime.group(1)
+        assert "/static/locale/messages.zh-cn.js" not in html
+        assert "/static/locale/messages.en.js" not in html
         assert "/static/locale/translate.js" not in html
-    assert PACKAGE_ROOT / "static" / "common" / "i18n.js" in _javascript_files(PACKAGE_ROOT)
+    javascript_files = _javascript_files(PACKAGE_ROOT)
+    assert PACKAGE_ROOT / "static" / "common" / "i18n.js" in javascript_files
+    assert not any(path.name.startswith("messages.") for path in javascript_files)
+
+    runtime_source = (PACKAGE_ROOT / "static" / "common" / "i18n.js").read_text(encoding="utf-8")
+    imports = re.findall(
+        r"""^import \{ messages as (?:zhCNMessages|enMessages) \} from ['"]\.\./locale/messages\.(?:zh-cn|en)\.js\?h=[0-9a-f]{12}['"];""",
+        runtime_source,
+        re.MULTILINE,
+    )
+    assert len(imports) == 2
+    assert "window.AngeVoiceLocales" not in runtime_source

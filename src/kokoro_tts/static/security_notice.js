@@ -1,4 +1,4 @@
-import { translate as t } from './common/i18n.js?h=e8cc950b72ef';
+import { translate as t } from './common/i18n.js?h=513777febfd1';
 
 function bootstrap() {
   try {

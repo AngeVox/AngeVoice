@@ -1,6 +1,4 @@
-(function () {
-  window.AngeVoiceLocales = window.AngeVoiceLocales || {};
-  window.AngeVoiceLocales.en = {
+export const messages = Object.freeze({
     'language.current': 'English',
     'language.zh': '简体中文',
     'language.en': 'English',
@@ -76,5 +74,4 @@
     'toast.force_unloaded': 'Model process terminated',
     'config.runtime.has_overrides': '<b>{count}</b> admin runtime setting(s) override ENV: <code>{path}</code>',
     'config.runtime.no_overrides': 'No admin runtime overrides are saved. ENV/defaults are in use.'
-  };
-}());
+});

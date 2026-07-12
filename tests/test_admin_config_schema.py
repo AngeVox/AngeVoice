@@ -38,14 +38,14 @@ def test_admin_config_exposes_text_dictionary_group_and_tn_engine():
     assert fields["moss_apply_angevoice_rules"]["group"] == "text"
 
 
-def test_admin_frontend_uses_mib_for_byte_fields_and_i18n_lite():
+def test_admin_frontend_uses_mib_and_shared_i18n_module_graph():
     root = Path(__file__).resolve().parents[1] / "src" / "kokoro_tts"
     admin_js = (root / "static" / "admin.js").read_text(encoding="utf-8")
     admin_html = (root / "templates" / "admin.html").read_text(encoding="utf-8")
     assert "data-config-unit=\"mib\"" in admin_js
     assert "Number(input.value) * MIB" in admin_js
-    assert "/static/locale/messages.zh-cn.js" in admin_html
-    assert "/static/locale/messages.en.js" in admin_html
+    assert "/static/locale/messages.zh-cn.js" not in admin_html
+    assert "/static/locale/messages.en.js" not in admin_html
     assert "/static/common/i18n.js" in admin_html
     assert "/static/locale/translate.js" not in admin_html
     assert admin_html.index("/static/common/i18n.js") < admin_html.index("/static/admin.js")

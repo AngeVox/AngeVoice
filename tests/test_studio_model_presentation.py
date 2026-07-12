@@ -269,13 +269,13 @@ def test_index_has_one_module_entry_in_dependency_order() -> None:
     assert html.count("/static/app.js?h=") == 1
     assert not re.search(r'<script[^>]+src="/static/app\.js[^>]+\bdefer\b', html)
     ordered = [
-        "/static/locale/messages.zh-cn.js",
-        "/static/locale/messages.en.js",
         "/static/common/i18n.js",
         "/static/security_notice.js",
         "/static/app.js",
     ]
     assert [html.index(item) for item in ordered] == sorted(html.index(item) for item in ordered)
+    assert "/static/locale/messages.zh-cn.js" not in html
+    assert "/static/locale/messages.en.js" not in html
 
 
 def test_all_studio_cache_queries_match_portable_sha256() -> None:

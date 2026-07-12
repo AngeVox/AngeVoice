@@ -1,6 +1,4 @@
-(function () {
-  window.AngeVoiceLocales = window.AngeVoiceLocales || {};
-  window.AngeVoiceLocales['zh-CN'] = {
+export const messages = Object.freeze({
     'language.current': '简体中文',
     'language.zh': '简体中文',
     'language.en': 'English',
@@ -76,5 +74,4 @@
     'toast.force_unloaded': '已终止模型进程',
     'config.runtime.has_overrides': '当前有 <b>{count}</b> 项后台配置覆盖 ENV：<code>{path}</code>',
     'config.runtime.no_overrides': '当前没有后台持久化配置，主要使用 ENV / 默认值。'
-  };
-}());
+});

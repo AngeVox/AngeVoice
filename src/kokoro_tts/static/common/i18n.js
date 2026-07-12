@@ -1,4 +1,11 @@
+import { messages as zhCNMessages } from '../locale/messages.zh-cn.js?h=4766bfa75faa';
+import { messages as enMessages } from '../locale/messages.en.js?h=822654bf71a7';
+
 const storageKey = 'angevoice.locale.v1';
+const catalogs = Object.freeze({
+  'zh-CN': zhCNMessages,
+  en: enMessages
+});
 const aliases = {
   'zh': 'zh-CN',
   'zh-cn': 'zh-CN',
@@ -15,7 +22,7 @@ let domContentLoadedRegistered = false;
 let initialized = false;
 
 function available(locale) {
-  return Boolean(window.AngeVoiceLocales && window.AngeVoiceLocales[locale]);
+  return Boolean(catalogs[locale]);
 }
 
 export function normalizeLocale(locale) {
@@ -30,8 +37,8 @@ export function getCurrentLocale() {
 
 export function translate(key, params, locale) {
   const lang = normalizeLocale(locale || getCurrentLocale());
-  const messages = (window.AngeVoiceLocales && window.AngeVoiceLocales[lang]) || {};
-  const fallback = (window.AngeVoiceLocales && window.AngeVoiceLocales['zh-CN']) || {};
+  const messages = catalogs[lang] || {};
+  const fallback = catalogs['zh-CN'] || {};
   let template = messages[key] || fallback[key] || key;
   Object.keys(params || {}).forEach(name => {
     template = template.replaceAll(`{${name}}`, String(params[name]));
