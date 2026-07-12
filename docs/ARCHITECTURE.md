@@ -125,6 +125,8 @@ MOSS CUDA 依赖目标环境的 ONNX Runtime/CUDA/cuDNN 组合。通用 GPU Dock
 
 共享 i18n runtime 从 `static/locale/common`、`static/locale/studio` 和 `static/locale/admin` 合并互不重叠的分域词典；重复 key 会在模块初始化时失败，而不是按加载顺序静默覆盖。需要保留 `<code>`、链接或动态强调节点的文案使用 `data-i18n-template` 与命名 DOM slot：catalog 只保存纯文本和 `{slot}`，runtime 只拼接 TextNode 与受控节点，不解析翻译 HTML。
 
+Studio 的模型/Provider/音色展示模块保持纯函数边界：技术 ID 和用户命名原样返回，本地化状态通过调用方提供的 translator 或稳定 presentation key 解析。Toast 与进度条保存 `{key, params}` 描述符，因此切换语言可重绘瞬时文案；编辑区默认示例只在用户尚未输入时随语言切换，不能覆盖未保存内容。`tests/quality/studio_copy_debt.json` 是精确、分类且只允许缩减的迁移 ratchet；scanner 独立遍历模板和所有 `static/studio/**/*.js`，新硬编码用户文案、动态翻译 key 或过期债务条目都会失败。Phase 1 退出前该债务表必须清零，schema/error 边界只能通过稳定 key/code 合同消除，不能扩大路径 allowlist。
+
 启用 `KOKORO_API_KEY` 时，Studio 设置面板保存的 Bearer Token 会同时用于 HTTP 请求和 WebSocket 首个 JSON 消息。
 
 当所选模型支持 `voice_clone` 时，Studio 显示参考音频上传控件。HTTP 合成使用 multipart 上传；WebSocket 流式会把参考音频转成 base64 放入首个 JSON 消息，后端复用同一套校验、临时文件和 MOSS prompt 缓存逻辑。

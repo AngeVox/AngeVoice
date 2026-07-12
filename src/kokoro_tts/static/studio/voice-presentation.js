@@ -1,8 +1,15 @@
-export function builtinVoiceKind(voice) {
+export function builtinVoiceKindKey(voice) {
   const value = String(voice ?? '');
-  if (value.startsWith('zf_')) return '中文女声';
-  if (value.startsWith('zm_')) return '中文男声';
-  if (/^[ab]f_/.test(value)) return '英文女声';
-  if (/^[ab]m_/.test(value)) return '英文男声';
-  return '其他音色';
+  if (value.startsWith('zf_')) return 'voices.female_zh';
+  if (value.startsWith('zm_')) return 'voices.male_zh';
+  if (/^[ab]f_/.test(value)) return 'studio.voices.female_en';
+  if (/^[ab]m_/.test(value)) return 'studio.voices.male_en';
+  return 'studio.voices.other';
+}
+
+export function builtinVoiceKind(voice, translate) {
+  if (typeof translate !== 'function') {
+    throw new TypeError('A translation function is required for voice presentation');
+  }
+  return translate(builtinVoiceKindKey(voice));
 }

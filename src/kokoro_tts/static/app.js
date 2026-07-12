@@ -61,6 +61,8 @@ const state = {
   engineParams: {},
   referenceRecorder: null,
   toastTimer: null,
+  progressTranslation: null,
+  composeTextEdited: false,
   zipvoiceExpanded: false,
   textNormalization: localStorage.getItem('angevoice.textNormalization.v1') || 'default'
 };
@@ -369,6 +371,21 @@ function localizeToastAccessibility() {
   if (closeButton) closeButton.setAttribute('aria-label', t('toast.close'));
 }
 
+function translateDescriptor(copy) {
+  return t(copy.key, copy.params);
+}
+
+function localizeTransientCopy() {
+  localizeToastAccessibility();
+  if (state.progressTranslation && els.progress) {
+    els.progress.textContent = translateDescriptor(state.progressTranslation);
+  }
+  const toast = els.toastStack?.querySelector('.toast');
+  if (toast?.angevoiceTranslation) {
+    toast.querySelector('.toast-message').textContent = translateDescriptor(toast.angevoiceTranslation);
+  }
+}
+
 const USER_ERROR_MESSAGES = {
   NO_SYNTHESIZABLE_TEXT: '未检测到可合成的中文或英文文本\n当前内容包含代码、数字或符号，暂不适合直接语音合成\n请修改为自然语言后重试',
   FFMPEG_DISABLED: '当前未启用 FFmpeg 转码。请在管理后台启用后，再请求 mp3、ogg_opus、telegram_voice 或 m4a。',
@@ -390,7 +407,7 @@ function userFacingErrorMessage(payload, fallback = '请求失败') {
   return message || fallback;
 }
 
-function showToast(text, kind = 'success', { sticky = false } = {}) {
+function showToast(text, kind = 'success', { sticky = false, translation = null } = {}) {
   if (!els.toastStack || !text) return;
   if (state.toastTimer) {
     window.clearTimeout(state.toastTimer);
@@ -414,6 +431,7 @@ function showToast(text, kind = 'success', { sticky = false } = {}) {
   }
   localizeToastAccessibility();
   toast.className = `toast ${kind}`;
+  toast.angevoiceTranslation = translation;
   toast.querySelector('.toast-message').textContent = text;
   if (!sticky) {
     state.toastTimer = window.setTimeout(dismissToast, kind === 'error' || kind === 'warning' ? 9000 : 4800);
@@ -421,6 +439,7 @@ function showToast(text, kind = 'success', { sticky = false } = {}) {
 }
 
 function setProgress(text, isError = false, options = {}) {
+  state.progressTranslation = options.translation || null;
   if (els.progress) {
     els.progress.textContent = text;
     els.progress.classList.toggle('error', isError);
@@ -431,7 +450,15 @@ function setProgress(text, isError = false, options = {}) {
   }
   const loading = /正在|连接|读取|加载|唤醒|切换|处理中|合成开始|已接收音频块/.test(text);
   const kind = options.kind || (isError ? 'error' : (loading ? 'loading' : 'success'));
-  showToast(text, kind, { sticky: options.sticky ?? (loading || isError) });
+  showToast(text, kind, {
+    sticky: options.sticky ?? (loading || isError),
+    translation: state.progressTranslation
+  });
+}
+
+function setTranslatedProgress(key, params = null, isError = false, options = {}) {
+  const translation = { key, params: params ? { ...params } : null };
+  setProgress(translateDescriptor(translation), isError, { ...options, translation });
 }
 
 function setZipVoiceExpanded(expanded) {
@@ -452,10 +479,15 @@ function ensureAuthToken() {
   if (!bootstrap.authRequired || state.token || state.hasCookieSession) {
     return true;
   }
-  const adminTip = bootstrap.adminEnabled
-    ? '可点击设置窗口里的管理后台链接，在 API Key 区域复制或轮换。'
-    : `管理后台未启用时，请查看启动日志或 ${bootstrap.apiKeyFile || 'ANGEVOICE_API_KEY_FILE'}。`;
-  setProgress(`服务已启用 API Key，请先填写 Bearer Token。${adminTip} KOKORO_API_KEY=auto 会在首次启动自动生成。`, true);
+  if (bootstrap.adminEnabled) {
+    setTranslatedProgress('studio.auth.required_admin', null, true);
+  } else {
+    setTranslatedProgress(
+      'studio.auth.required_file',
+      { api_key_file: bootstrap.apiKeyFile || 'ANGEVOICE_API_KEY_FILE' },
+      true
+    );
+  }
   els.tokenInput.value = '';
   els.settingsDialog.showModal();
   return false;
@@ -852,34 +884,34 @@ function applyStreamToggleState() {
   if (!streamAvailable) {
     els.streamToggle.checked = false;
     els.streamToggle.disabled = true;
-    els.streamToggle.title = '当前模型运行时暂不支持流式播放';
+    els.streamToggle.title = t('studio.stream.runtime_unsupported');
     return;
   }
   const cloneUploadActive = modelSupportsVoiceClone(currentModel()) && Boolean(state.promptAudioFile);
   els.streamToggle.disabled = false;
   if (String(model?.stream_mode || '') === 'segmented') {
-    els.streamToggle.title = '分句流式：每句生成后立即播放';
+    els.streamToggle.title = t('studio.stream.segmented');
   } else {
-    els.streamToggle.title = cloneUploadActive ? '参考音频会随流式首包发送' : '';
+    els.streamToggle.title = cloneUploadActive ? t('studio.stream.reference_first_frame') : '';
   }
 }
 
 function applyModelUi() {
   const model = currentModel();
   if (!model) return;
-  els.modelStatus.textContent = model.loaded ? runtimeProviderLabel(model) : '未加载';
+  els.modelStatus.textContent = model.loaded ? runtimeProviderLabel(model, t) : t('studio.model.unloaded');
   els.modelStatus.className = model.available === false ? 'warn-text' : '';
   if (els.speed) {
     const speedSupported = model.speed_supported !== false;
     els.speed.disabled = !speedSupported;
-    els.speed.title = speedSupported ? '' : '当前模型暂不支持语速调节，MOSS 固定 speed=1.0';
+    els.speed.title = speedSupported ? '' : t('studio.speed.unsupported');
     if (!speedSupported) {
       els.speed.value = '1.0';
     }
     els.speedValue.textContent = Number(els.speed.value || 1).toFixed(1);
   }
   if (modelNeedsWake(model)) {
-    const idleLabel = model.idle_unloaded ? '已休眠，点击“立即唤醒”加载模型' : '未加载，点击“立即唤醒”加载模型';
+    const idleLabel = model.idle_unloaded ? t('studio.model.sleeping') : t('studio.model.not_loaded');
     els.modelStatus.textContent = idleLabel;
     els.modelStatus.className = 'warn-text';
   }
@@ -925,8 +957,8 @@ function applyModelUi() {
     }
   }
   if (els.previewBtn) {
-    els.previewBtn.textContent = modelSupportsProfiles(model) ? '生成示例音频' : '试听';
-    els.previewBtn.title = modelSupportsProfiles(model) ? '生成一段新的示例语音，不是播放参考录音' : '';
+    els.previewBtn.textContent = modelSupportsProfiles(model) ? t('studio.preview.generate') : t('action.preview');
+    els.previewBtn.title = modelSupportsProfiles(model) ? t('studio.preview.generate_title') : '';
   }
   renderEngineParameters(model);
   applyStreamToggleState();
@@ -938,7 +970,7 @@ function renderModelSelect() {
   state.models.forEach(model => {
     const option = document.createElement('option');
     option.value = model.id;
-    option.textContent = modelLabel(model);
+    option.textContent = modelLabel(model, t);
     option.disabled = model.available === false;
     els.model.appendChild(option);
   });
@@ -965,14 +997,18 @@ async function wakeCurrentModel() {
     return false;
   }
   setBusy(true);
-  setProgress(`正在唤醒 ${model.id}，首次下载/加载可能需要更久...`);
+  setTranslatedProgress('studio.model.waking', { model_id: model.id }, false, { kind: 'loading' });
   try {
     const response = await apiFetch(`/v1/models/${encodeURIComponent(model.id)}/load`, { method: 'POST' });
     if (!response.ok) {
       throw new Error(await readError(response));
     }
     const result = await response.json().catch(() => ({}));
-    setProgress(result.message || `${model.id} 已唤醒，可以立即生成`);
+    if (result.message) {
+      setProgress(result.message);
+    } else {
+      setTranslatedProgress('studio.model.wake_success', { model_id: model.id });
+    }
     await refreshServiceState();
     return true;
   } catch (error) {
@@ -990,7 +1026,7 @@ async function switchModel(modelId) {
     return;
   }
   setBusy(true);
-  setProgress(`正在切换到 ${modelId}...`);
+  setTranslatedProgress('studio.model.switching', { model_id: modelId }, false, { kind: 'loading' });
   try {
     const response = await apiFetch('/v1/models/switch', {
       method: 'POST',
@@ -1002,7 +1038,7 @@ async function switchModel(modelId) {
     }
     const result = await response.json();
     state.selectedModel = result.current_model || modelId;
-    setProgress(`已切换到 ${state.selectedModel}`);
+    setTranslatedProgress('studio.model.switched', { model_id: state.selectedModel });
     await refreshServiceState();
   } catch (error) {
     setProgress(error.message || '模型切换失败', true);
@@ -1014,8 +1050,8 @@ async function switchModel(modelId) {
 
 function voiceKind(voice) {
   if (modelSupportsProfiles()) return zipVoiceDescriptor(voice);
-  if (state.selectedModel.startsWith('moss')) return 'MOSS 预设音色';
-  return builtinVoiceKind(voice);
+  if (state.selectedModel.startsWith('moss')) return t('studio.voices.moss_preset');
+  return builtinVoiceKind(voice, t);
 }
 
 function matchingVoices() {
@@ -1194,7 +1230,7 @@ function renderVoiceSelect() {
     const option = document.createElement('option');
     option.value = voice;
     option.textContent = displayVoiceName(voice);
-    option.title = modelSupportsProfiles() ? `音色 ID：${voice}` : '';
+    option.title = modelSupportsProfiles() ? t('studio.voices.id_title', { voice_id: voice }) : '';
     els.voice.appendChild(option);
   });
   if (!state.voices.includes(state.selectedVoice)) {
@@ -1332,7 +1368,9 @@ async function refreshServiceState() {
     const health = await fetch('/health').then(resp => resp.json());
     updateModelData(health.models || [], health.current_model || health.model?.id || '');
     const hasAuth = state.token || state.hasCookieSession;
-    const healthLabel = health.auth_required && !hasAuth ? '需要 Key' : `${health.status}${health.current_model ? ` · ${health.current_model}` : ''}`;
+    const healthLabel = health.auth_required && !hasAuth
+      ? t('studio.health.key_required')
+      : `${health.status}${health.current_model ? ` · ${health.current_model}` : ''}`;
     setHealth(['ok', 'idle'].includes(health.status) ? 'ok' : '', healthLabel);
     if (!modelSupportsProfiles() && Array.isArray(health.voices) && health.voices.join('|') !== state.voices.join('|')) {
       state.voices = health.voices;
@@ -1342,7 +1380,7 @@ async function refreshServiceState() {
     }
     updateMetrics({ cache_items: health.cache_items || 0 });
   } catch (_) {
-    setHealth('error', '离线');
+    setHealth('error', t('studio.health.offline'));
     return;
   }
 
@@ -1756,10 +1794,11 @@ function bindEvents() {
     }
     state.selectedVoice = els.voice.value;
     addRecent(state.selectedVoice);
-    synthesizeHttp('你好，我是 AngeVoice 当前选中的音色预览。', state.selectedVoice, currentModelSpeedValue(), true);
+    synthesizeHttp(t('studio.preview.default_text'), state.selectedVoice, currentModelSpeedValue(), true);
   });
   els.stopBtn.addEventListener('click', stopCurrent);
   els.clearBtn.addEventListener('click', () => {
+    state.composeTextEdited = true;
     els.text.value = '';
     updateCounter();
   });
@@ -1830,7 +1869,10 @@ function bindEvents() {
     state.textNormalization = currentTextNormalization();
     localStorage.setItem('angevoice.textNormalization.v1', state.textNormalization);
   });
-  els.text.addEventListener('input', updateCounter);
+  els.text.addEventListener('input', () => {
+    state.composeTextEdited = true;
+    updateCounter();
+  });
   els.audio.addEventListener('ended', () => {
     state.playing = false;
     updateButtons();
@@ -1865,7 +1907,7 @@ function bindEvents() {
   els.saveTokenBtn.addEventListener('click', async () => {
     const token = els.tokenInput.value.trim();
     if (!token) {
-      setProgress('请输入 API Key 后再保存。', true);
+      setTranslatedProgress('studio.session.token_required', null, true);
       return;
     }
     try {
@@ -1876,7 +1918,7 @@ function bindEvents() {
       els.tokenInput.value = '';
       localStorage.removeItem('angevoice.apiToken.v1');
       els.settingsDialog.close();
-      setProgress('已在此浏览器保存访问会话。');
+      setTranslatedProgress('studio.session.saved');
       refreshServiceState();
     } catch (err) {
       setProgress(err.message || '会话保存失败，请检查 API Key。', true);
@@ -1893,14 +1935,20 @@ function bindEvents() {
     } catch (_) {
       // Local state should still be cleared even if the server is unavailable.
     }
-    setProgress('已移除此浏览器的访问会话。');
+    setTranslatedProgress('studio.session.removed');
     refreshServiceState();
   });
   document.addEventListener('angevoice:locale-changed', () => {
-    localizeToastAccessibility();
+    localizeTransientCopy();
+    if (!state.composeTextEdited) {
+      els.text.value = t('studio.compose.default_text');
+      updateCounter();
+    }
     setMetricsCollapsed(state.metricsCollapsed);
     setZipVoiceExpanded(state.zipvoiceExpanded);
+    applyModelUi();
     renderVoiceTabs();
+    renderVoices();
     renderFavorite();
     updateButtons();
   });
@@ -1917,6 +1965,7 @@ function init() {
   if (els.textNormalization) {
     els.textNormalization.value = currentTextNormalization();
   }
+  els.text.value = t('studio.compose.default_text');
   applyStreamToggleState();
   applyTheme(state.theme);
   setMetricsCollapsed(state.metricsCollapsed);

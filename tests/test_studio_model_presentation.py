@@ -16,6 +16,8 @@ MODULE = PACKAGE_ROOT / "static" / "studio" / "model-presentation.js"
 CAPABILITIES_MODULE = PACKAGE_ROOT / "static" / "studio" / "model-capabilities.js"
 VOICE_MODULE = PACKAGE_ROOT / "static" / "studio" / "voice-presentation.js"
 I18N_MODULE = PACKAGE_ROOT / "static" / "common" / "i18n.js"
+STUDIO_ZH_CATALOG = PACKAGE_ROOT / "static" / "locale" / "studio" / "messages.zh-cn.js"
+STUDIO_EN_CATALOG = PACKAGE_ROOT / "static" / "locale" / "studio" / "messages.en.js"
 INDEX = PACKAGE_ROOT / "templates" / "index.html"
 
 
@@ -34,7 +36,7 @@ def _node(script: str) -> subprocess.CompletedProcess[str]:
     )
 
 
-def _module_results() -> dict[str, object]:
+def _module_results(locale: str = "zh-cn") -> dict[str, object]:
     cases = [
         ["model-null", None],
         ["model-name", {"id": "fallback-id", "name": "Named model"}],
@@ -48,14 +50,20 @@ def _module_results() -> dict[str, object]:
         ["provider-fallback", {"provider": "cuda", "fallback": True}],
         ["provider-empty-fallback", {"fallback": True}],
     ]
+    catalog = STUDIO_ZH_CATALOG if locale == "zh-cn" else STUDIO_EN_CATALOG
     script = f"""
       import {{ modelLabel, runtimeProviderLabel }} from {json.dumps(MODULE.as_uri())};
+      import {{ messages }} from {json.dumps(catalog.as_uri())};
       const cases = {json.dumps(cases, ensure_ascii=False)};
+      const translate = (key, params = null) => Object.entries(params || {{}}).reduce(
+        (value, [name, replacement]) => value.replaceAll(`{{${{name}}}}`, String(replacement)),
+        messages[key] || key
+      );
       const output = Object.fromEntries(cases.map(([name, value]) => [
         name,
-        name.startsWith('model-') ? modelLabel(value) : runtimeProviderLabel(value)
+        name.startsWith('model-') ? modelLabel(value, translate) : runtimeProviderLabel(value, translate)
       ]));
-      output['model-undefined'] = modelLabel(undefined);
+      output['model-undefined'] = modelLabel(undefined, translate);
       console.log(JSON.stringify(output));
     """
     return json.loads(_node(script).stdout)
@@ -116,13 +124,17 @@ def _capability_results() -> dict[str, object]:
     return json.loads(_node(script).stdout)
 
 
-def _voice_results() -> dict[str, object]:
+def _voice_results(locale: str = "zh-cn") -> dict[str, object]:
+    catalog = STUDIO_ZH_CATALOG if locale == "zh-cn" else STUDIO_EN_CATALOG
     script = f"""
       import * as presentation from {json.dumps(VOICE_MODULE.as_uri())};
+      import {{ messages }} from {json.dumps(catalog.as_uri())};
+      const translate = key => messages[key] || key;
       const values = ['zf_xiaobei', 'zm_yunxi', 'af_maple', 'bf_emma', 'am_adam', 'bm_george', 'custom', '', null];
       console.log(JSON.stringify({{
         exports: Object.keys(presentation).sort(),
-        kinds: values.map(value => presentation.builtinVoiceKind(value))
+        keys: values.map(value => presentation.builtinVoiceKindKey(value)),
+        kinds: values.map(value => presentation.builtinVoiceKind(value, translate))
       }}));
     """
     return json.loads(_node(script).stdout)
@@ -134,6 +146,7 @@ def test_model_label_contract_and_native_esm_import() -> None:
     assert results["model-undefined"] == "未知模型"
     assert results["model-name"] == "Named model"
     assert results["model-id"] == "model-id"
+    assert _module_results("en")["model-null"] == "Unknown model"
 
 
 def test_runtime_provider_label_contract() -> None:
@@ -146,6 +159,9 @@ def test_runtime_provider_label_contract() -> None:
     assert results["provider-empty"] == "已加载"
     assert results["provider-fallback"] == "CUDA · 已回退"
     assert results["provider-empty-fallback"] == "已加载 · 已回退"
+    english = _module_results("en")
+    assert english["provider-empty"] == "Loaded"
+    assert english["provider-fallback"] == "CUDA · fallback"
 
 
 def test_model_capability_contracts_and_native_esm_import() -> None:
@@ -176,7 +192,18 @@ def test_model_parameter_schema_preserves_array_identity_and_content() -> None:
 
 def test_builtin_voice_kind_contract_and_native_esm_import() -> None:
     results = _voice_results()
-    assert results["exports"] == ["builtinVoiceKind"]
+    assert results["exports"] == ["builtinVoiceKind", "builtinVoiceKindKey"]
+    assert results["keys"] == [
+        "voices.female_zh",
+        "voices.male_zh",
+        "studio.voices.female_en",
+        "studio.voices.female_en",
+        "studio.voices.male_en",
+        "studio.voices.male_en",
+        "studio.voices.other",
+        "studio.voices.other",
+        "studio.voices.other",
+    ]
     assert results["kinds"] == [
         "中文女声",
         "中文男声",
@@ -187,6 +214,17 @@ def test_builtin_voice_kind_contract_and_native_esm_import() -> None:
         "其他音色",
         "其他音色",
         "其他音色",
+    ]
+    assert _voice_results("en")["kinds"] == [
+        "Chinese Female",
+        "Chinese Male",
+        "English Female",
+        "English Female",
+        "English Male",
+        "English Male",
+        "Other voice",
+        "Other voice",
+        "Other voice",
     ]
 
 
@@ -218,7 +256,7 @@ def test_extracted_capability_and_voice_modules_are_pure() -> None:
             "modelRequiresPromptText",
             "modelSupportsVoiceClone",
         ],
-        VOICE_MODULE: ["builtinVoiceKind"],
+        VOICE_MODULE: ["builtinVoiceKindKey", "builtinVoiceKind"],
     }
     for path, exports in expected_exports.items():
         source = path.read_text(encoding="utf-8")
@@ -246,7 +284,7 @@ def test_app_imports_the_module_once_without_old_function_definitions() -> None:
         "modelSupportsVoiceClone",
     )
     assert not re.search(rf"function\s+(?:{'|'.join(removed)})\s*\(", source)
-    assert "runtimeProviderLabel(model)" in source
+    assert "runtimeProviderLabel(model, t)" in source
     assert not re.search(r"window\.(?:modelNeedsWake|modelParameterSchema|builtinVoiceKind)\b", source)
 
 
@@ -257,7 +295,7 @@ def test_app_voice_kind_keeps_profile_and_moss_branches_before_builtin_fallback(
     body = match.group("body")
     profile = body.index("modelSupportsProfiles()")
     moss = body.index("state.selectedModel.startsWith('moss')")
-    builtin = body.index("builtinVoiceKind(voice)")
+    builtin = body.index("builtinVoiceKind(voice, t)")
     assert profile < moss < builtin
     assert not re.search(r"startsWith\(['\"](?:zf_|zm_)|\^\[ab\][fm]_", body)
 
@@ -346,10 +384,10 @@ def test_scanner_reports_stale_dynamic_allowlist(tmp_path: Path) -> None:
     assert any("Stale dynamic-key allowance" in error and "unused.key" in error for error in report.errors)
 
 
-def test_catalogs_remain_78_key_symmetric_with_matching_placeholders() -> None:
+def test_catalogs_remain_108_key_symmetric_with_matching_placeholders() -> None:
     placeholder = re.compile(r"\{([a-zA-Z_][a-zA-Z0-9_]*)\}")
     catalogs = [_catalog(locale) for locale in ("zh-cn", "en")]
-    assert len(catalogs[0]) == len(catalogs[1]) == 78
+    assert len(catalogs[0]) == len(catalogs[1]) == 108
     assert catalogs[0].keys() == catalogs[1].keys()
     assert all(placeholder.findall(catalogs[0][key]) == placeholder.findall(catalogs[1][key]) for key in catalogs[0])
 
@@ -361,3 +399,37 @@ def test_static_accessibility_copy_uses_catalogued_safe_dom_sinks() -> None:
     assert 'aria-label="关闭通知"' not in app_source
     assert "toast.innerHTML" not in app_source
     assert 'data-i18n-aria-label="text_tools.eyebrow"' in html
+
+
+def test_locale_change_rerenders_dynamic_studio_copy_without_overwriting_edited_text() -> None:
+    source = APP.read_text(encoding="utf-8")
+    handler = re.search(
+        r"document\.addEventListener\('angevoice:locale-changed', \(\) => \{(?P<body>.*?)\n  \}\);",
+        source,
+        re.DOTALL,
+    )
+    assert handler
+    body = handler.group("body")
+    for call in (
+        "localizeTransientCopy();",
+        "applyModelUi();",
+        "renderVoiceTabs();",
+        "renderVoices();",
+        "renderFavorite();",
+        "updateButtons();",
+    ):
+        assert call in body
+    assert "if (!state.composeTextEdited)" in body
+    assert "els.text.value = t('studio.compose.default_text')" in body
+    assert "state.composeTextEdited = true" in source
+    assert '<textarea id="text"' in INDEX.read_text(encoding="utf-8")
+    assert '>你好，欢迎使用 AngeVoice。</textarea>' not in INDEX.read_text(encoding="utf-8")
+
+
+def test_translated_transient_copy_retains_key_and_params_for_locale_changes() -> None:
+    source = APP.read_text(encoding="utf-8")
+    assert "const translation = { key, params: params ? { ...params } : null };" in source
+    assert "toast.angevoiceTranslation = translation;" in source
+    assert "translateDescriptor(state.progressTranslation)" in source
+    assert "translateDescriptor(toast.angevoiceTranslation)" in source
+    assert "setTranslatedProgress('studio.session.token_required', null, true)" in source

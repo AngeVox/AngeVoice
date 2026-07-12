@@ -14,6 +14,7 @@ from kokoro_tts.engines.registry import EngineRegistry
 from kokoro_tts.service_state import ServiceState
 from kokoro_tts.zipvoice.assets import ZipVoiceAssetManager, file_sha256
 from kokoro_tts.zipvoice.profiles import ZipVoiceProfileStore
+from tests.quality.test_i18n_contract import _catalog
 
 
 def _cfg(tmp_path: Path) -> TTSConfig:
@@ -560,7 +561,9 @@ def test_zipvoice_frontend_preview_is_not_reloaded_by_status_poll_and_saved_voic
     assert "payload.prompt_text = els.promptText.value.trim()" in js
     assert "isZipVoice" not in js
     assert "临时克隆才发送参考文本" in js
-    assert "生成示例音频" in js
+    assert "t('studio.preview.generate')" in js
+    assert _catalog("zh-cn")["studio.preview.generate"] == "生成示例音频"
+    assert _catalog("en")["studio.preview.generate"] == "Generate sample audio"
 
 
 def test_zipvoice_ui_explains_reference_text_is_not_target_text():
