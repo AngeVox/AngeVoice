@@ -195,10 +195,27 @@ def test_current_static_and_javascript_translation_references_exist() -> None:
     assert not report.errors, "\n".join(report.errors)
 
 
-def test_studio_loads_both_catalogs_before_the_runtime() -> None:
-    html = (PACKAGE_ROOT / "templates" / "index.html").read_text(encoding="utf-8")
-    zh_index = html.index("/static/locale/messages.zh-cn.js")
-    en_index = html.index("/static/locale/messages.en.js")
-    runtime_index = html.index("/static/locale/translate.js")
-    assert zh_index < runtime_index
-    assert en_index < runtime_index
+def test_pages_load_catalogs_before_the_module_runtime_and_entries() -> None:
+    pages = {
+        "index.html": [
+            "/static/locale/messages.zh-cn.js",
+            "/static/locale/messages.en.js",
+            "/static/common/i18n.js",
+            "/static/security_notice.js",
+            "/static/app.js",
+        ],
+        "admin.html": [
+            "/static/locale/messages.zh-cn.js",
+            "/static/locale/messages.en.js",
+            "/static/common/i18n.js",
+            "/static/admin.js",
+        ],
+    }
+    for name, ordered in pages.items():
+        html = (PACKAGE_ROOT / "templates" / name).read_text(encoding="utf-8")
+        assert [html.index(item) for item in ordered] == sorted(html.index(item) for item in ordered)
+        runtime = re.search(r'<script\s+type="module"\s+src="/static/common/i18n\.js\?h=[0-9a-f]{12}"([^>]*)>', html)
+        assert runtime, name
+        assert "async" not in runtime.group(1)
+        assert "/static/locale/translate.js" not in html
+    assert PACKAGE_ROOT / "static" / "common" / "i18n.js" in _javascript_files(PACKAGE_ROOT)

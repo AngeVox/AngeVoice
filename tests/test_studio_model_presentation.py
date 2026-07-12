@@ -15,6 +15,7 @@ APP = PACKAGE_ROOT / "static" / "app.js"
 MODULE = PACKAGE_ROOT / "static" / "studio" / "model-presentation.js"
 CAPABILITIES_MODULE = PACKAGE_ROOT / "static" / "studio" / "model-capabilities.js"
 VOICE_MODULE = PACKAGE_ROOT / "static" / "studio" / "voice-presentation.js"
+I18N_MODULE = PACKAGE_ROOT / "static" / "common" / "i18n.js"
 INDEX = PACKAGE_ROOT / "templates" / "index.html"
 
 
@@ -270,7 +271,7 @@ def test_index_has_one_module_entry_in_dependency_order() -> None:
     ordered = [
         "/static/locale/messages.zh-cn.js",
         "/static/locale/messages.en.js",
-        "/static/locale/translate.js",
+        "/static/common/i18n.js",
         "/static/security_notice.js",
         "/static/app.js",
     ]
@@ -283,10 +284,12 @@ def test_all_studio_cache_queries_match_portable_sha256() -> None:
     presentation_hash = _portable_source_hash(MODULE)
     capabilities_hash = _portable_source_hash(CAPABILITIES_MODULE)
     voice_hash = _portable_source_hash(VOICE_MODULE)
+    i18n_hash = _portable_source_hash(I18N_MODULE)
     app_hash = _portable_source_hash(APP)
     assert f"model-presentation.js?h={presentation_hash}" in app_source
     assert f"model-capabilities.js?h={capabilities_hash}" in app_source
     assert f"voice-presentation.js?h={voice_hash}" in app_source
+    assert f"/static/common/i18n.js?h={i18n_hash}" in html
     assert f"/static/app.js?h={app_hash}" in html
 
 
