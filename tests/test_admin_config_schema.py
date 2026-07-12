@@ -49,7 +49,8 @@ def test_admin_frontend_uses_mib_for_byte_fields_and_i18n_lite():
     assert "/static/common/i18n.js" in admin_html
     assert "/static/locale/translate.js" not in admin_html
     assert admin_html.index("/static/common/i18n.js") < admin_html.index("/static/admin.js")
-    assert re.search(r'<script\s+src="/static/admin\.js\?h=[0-9a-f]+"\s+defer></script>', admin_html)
+    assert re.search(r'<script\s+type="module"\s+src="/static/admin\.js\?h=[0-9a-f]{12}"></script>', admin_html)
+    assert not re.search(r'<script[^>]+src="/static/admin\.js[^>]+\bdefer\b', admin_html)
 
 
 def test_admin_profile_values_are_valid_and_apply():

@@ -52,6 +52,13 @@ PRODUCTION_DYNAMIC_ALLOWLIST: Mapping[str, tuple[DynamicKeyAllowance, ...]] = {
             ),
         ),
     ),
+    "static/admin.js": (
+        DynamicKeyAllowance(
+            expression="tab.labelKey",
+            reason="renderAdminSubnav translates the statically declared adminSubtabs labelKey values",
+            keys=frozenset({"nav.config.text"}),
+        ),
+    ),
 }
 
 
@@ -159,7 +166,11 @@ def scan_i18n_references(
             if not allowance.reason or not allowance.keys:
                 errors.append(f"Invalid dynamic-key allowance in {relative}: {expression}")
                 continue
-            proven = frozenset(GROUP_LABEL_KEY.findall(source)) if expression == "group.labelKey" else frozenset()
+            proven = (
+                frozenset(GROUP_LABEL_KEY.findall(source))
+                if expression in {"group.labelKey", "tab.labelKey"}
+                else frozenset()
+            )
             if proven != allowance.keys:
                 errors.append(
                     f"Dynamic-key proof mismatch in {relative}: {expression}; "

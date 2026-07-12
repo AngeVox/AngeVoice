@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import hashlib
 import json
 import re
 import subprocess
@@ -8,6 +9,17 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 RUNTIME = ROOT / "src" / "kokoro_tts" / "static" / "common" / "i18n.js"
+APP = ROOT / "src" / "kokoro_tts" / "static" / "app.js"
+ADMIN = ROOT / "src" / "kokoro_tts" / "static" / "admin.js"
+SECURITY_NOTICE = ROOT / "src" / "kokoro_tts" / "static" / "security_notice.js"
+INDEX = ROOT / "src" / "kokoro_tts" / "templates" / "index.html"
+ADMIN_HTML = ROOT / "src" / "kokoro_tts" / "templates" / "admin.html"
+
+
+def _portable_source_hash(path: Path) -> str:
+    text = path.read_text(encoding="utf-8")
+    normalized = text.replace("\r\n", "\n").replace("\r", "\n")
+    return hashlib.sha256(normalized.encode("utf-8")).hexdigest()[:12]
 
 
 def _runtime_result(*, saved: str = "", language: str = "unknown", ready_state: str = "complete", actions: str) -> dict[str, object]:
@@ -236,3 +248,106 @@ def test_runtime_source_has_no_async_readiness_or_second_runtime() -> None:
     assert "Promise" not in source
     assert source.count("window.AngeVoiceI18n =") == 1
     assert "angevoice.locale.v1" in source
+
+
+def test_consumers_use_one_static_runtime_import_and_module_entries_with_portable_hashes() -> None:
+    runtime_hash = _portable_source_hash(RUNTIME)
+    consumers = (APP, ADMIN, SECURITY_NOTICE)
+    for path in consumers:
+        source = path.read_text(encoding="utf-8")
+        imports = re.findall(
+            r"^import \{ translate as t \} from ['\"]\.\/common\/i18n\.js\?h=([0-9a-f]{12})['\"];",
+            source,
+            re.MULTILINE,
+        )
+        assert imports == [runtime_hash], path.name
+        assert "window.AngeVoiceI18n" not in source
+        assert "window.AngeVoiceLocaleMessages" not in source
+
+    index = INDEX.read_text(encoding="utf-8")
+    admin_html = ADMIN_HTML.read_text(encoding="utf-8")
+    entries = {
+        APP: (index, "/static/app.js"),
+        SECURITY_NOTICE: (index, "/static/security_notice.js"),
+        ADMIN: (admin_html, "/static/admin.js"),
+    }
+    for path, (html, url) in entries.items():
+        match = re.search(rf'<script type="module" src="{re.escape(url)}\?h=([0-9a-f]{{12}})"([^>]*)></script>', html)
+        assert match, path.name
+        assert match.group(1) == _portable_source_hash(path)
+        assert "defer" not in match.group(2)
+        assert "async" not in match.group(2)
+
+    assert index.count('/static/common/i18n.js?h=') == 1
+    assert admin_html.count('/static/common/i18n.js?h=') == 1
+    for html in (index, admin_html):
+        assert re.search(r'<script src="/static/locale/messages\.zh-cn\.js\?h=[0-9a-f]{12}" defer></script>', html)
+        assert re.search(r'<script src="/static/locale/messages\.en\.js\?h=[0-9a-f]{12}" defer></script>', html)
+
+
+def test_admin_removes_lite_map_and_rerenders_only_locale_dependent_dynamic_regions() -> None:
+    source = ADMIN.read_text(encoding="utf-8")
+    assert "const messages =" not in source
+    assert "labelKey: 'nav.config.text'" in source
+    assert "tab.labelKey ? t(tab.labelKey) : tab.label" in source
+    assert "function renderRuntimeConfigNote(payload)" in source
+    render_config = source[source.index("function renderConfigForms") : source.index("function renderProfiles")]
+    assert "renderRuntimeConfigNote(payload)" in render_config
+    listener = re.search(
+        r"document\.addEventListener\('angevoice:locale-changed', \(\) => \{(?P<body>.*?)\n\}\);",
+        source,
+        re.DOTALL,
+    )
+    assert listener
+    body = listener.group("body")
+    assert "renderAdminSubnav()" in body
+    assert "if (lastData) renderModels(lastData)" in body
+    assert "if (lastConfigPayload) renderRuntimeConfigNote(lastConfigPayload)" in body
+    assert "renderConfigForms" not in body
+
+
+def test_security_notice_module_prefers_shared_translation_and_rerenders() -> None:
+    script = f"""
+      const listeners = {{}};
+      const storage = new Map([['angevoice.locale.v1', 'en']]);
+      const bootstrap = {{ textContent: JSON.stringify({{
+        adminDefaultCredentialsActive: true,
+        adminSecurityWarning: '固定中文后端警告'
+      }}) }};
+      const banner = {{ hidden: true }};
+      const message = {{ textContent: '' }};
+      globalThis.window = globalThis;
+      globalThis.localStorage = {{
+        getItem: key => storage.get(key) || null,
+        setItem: (key, value) => storage.set(key, value)
+      }};
+      Object.defineProperty(globalThis, 'navigator', {{ value: {{ language: 'zh-CN' }}, configurable: true }});
+      globalThis.CustomEvent = class {{ constructor(type, options) {{ this.type = type; this.detail = options.detail; }} }};
+      globalThis.document = {{
+        readyState: 'complete',
+        documentElement: {{ lang: 'zh-CN', dataset: {{}} }},
+        querySelectorAll: () => [],
+        getElementById(id) {{ return {{ 'angevoice-bootstrap': bootstrap, 'security-banner': banner, 'security-banner-message': message }}[id] || null; }},
+        addEventListener(name, callback) {{ (listeners[name] ||= []).push(callback); }},
+        dispatchEvent(event) {{ (listeners[event.type] || []).forEach(callback => callback(event)); return true; }}
+      }};
+      window.AngeVoiceLocales = {{
+        'zh-CN': {{ 'language.current': '简体中文', 'security.default_desc': '中文安全提醒' }},
+        en: {{ 'language.current': 'English', 'security.default_desc': 'English security warning' }}
+      }};
+      await import({json.dumps(SECURITY_NOTICE.as_uri())});
+      const initial = message.textContent;
+      window.AngeVoiceI18n.apply('zh-CN');
+      console.log(JSON.stringify({{ initial, after: message.textContent, visible: !banner.hidden }}));
+    """
+    completed = subprocess.run(
+        ["node", "--input-type=module", "--eval", script],
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+    assert json.loads(completed.stdout) == {
+        "initial": "English security warning",
+        "after": "中文安全提醒",
+        "visible": True,
+    }

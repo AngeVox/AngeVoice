@@ -1,3 +1,4 @@
+import { translate as t } from './common/i18n.js?h=e8cc950b72ef';
 import { modelLabel, runtimeProviderLabel } from './studio/model-presentation.js?h=03bd16742352';
 import {
   modelNeedsWake,
@@ -129,10 +130,6 @@ const els = {
   metricVoices: document.getElementById('metric-voices'),
   metricActive: document.getElementById('metric-active')
 };
-
-function t(key, params) {
-  return window.AngeVoiceI18n?.t?.(key, params) || key;
-}
 
 function applyTokenSessionNotice() {
   const hint = document.querySelector('[data-i18n-html="settings.hint"]');

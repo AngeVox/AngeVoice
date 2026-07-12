@@ -1,23 +1,16 @@
+import { translate as t } from './common/i18n.js?h=e8cc950b72ef';
+
 let lastData = null;
 let lastConfigPayload = null;
 let activeGroup = 'kokoro';
 let activeAdminTab = 'overview';
 const MIB = 1024 * 1024;
 const BYTE_FIELD_HINT = '按 MiB 显示和编辑，保存时会自动转换为后端 bytes。';
-const messages = {
-  'nav.config.text': '文本与词典',
-  'action.force_stop': '终止进程',
-  'confirm.force_unload_model': '终止 {model} 的模型进程？正在运行的请求会被中断。',
-  'confirm.force_unload_all': '终止所有模型进程？正在运行的请求会被中断。',
-  'toast.force_unloaded': '已终止模型进程',
-  'config.runtime.has_overrides': '当前有 <b>{count}</b> 项后台配置覆盖 ENV：<code>{path}</code>',
-  'config.runtime.no_overrides': '当前没有后台持久化配置，主要使用 ENV / 默认值。',
-};
 const adminSubtabs = {
   config: [
     { key: 'config.runtime', label: '运行配置' },
     { key: 'config.quality', label: '音频质量' },
-    { key: 'config.text', label: messages['nav.config.text'] },
+    { key: 'config.text', labelKey: 'nav.config.text' },
   ],
   security: [
     { key: 'security.auth', label: '鉴权与访问' },
@@ -31,17 +24,6 @@ const adminSubtabs = {
 const activeSubtab = { config: 'config.runtime', security: 'security.auth', api: 'api.diagnostics' };
 
 const $ = id => document.getElementById(id);
-
-function t(key, params = {}) {
-  if (window.AngeVoiceI18n?.t && window.AngeVoiceLocaleMessages?.[key]) {
-    return window.AngeVoiceI18n.t(key, params);
-  }
-  let template = messages[key] || key;
-  Object.entries(params).forEach(([name, value]) => {
-    template = template.replaceAll(`{${name}}`, String(value));
-  });
-  return template;
-}
 
 async function api(path, options = {}) {
   const res = await fetch(path, options);
@@ -87,7 +69,7 @@ function renderAdminSubnav() {
     return;
   }
   holder.classList.add('show');
-  holder.innerHTML = tabs.map(tab => `<button class="admin-subnav-btn ${activeSubtab[activeAdminTab] === tab.key ? 'active' : ''}" data-admin-subtab="${escapeHtml(tab.key)}" type="button">${escapeHtml(tab.label)}</button>`).join('');
+  holder.innerHTML = tabs.map(tab => `<button class="admin-subnav-btn ${activeSubtab[activeAdminTab] === tab.key ? 'active' : ''}" data-admin-subtab="${escapeHtml(tab.key)}" type="button">${escapeHtml(tab.labelKey ? t(tab.labelKey) : tab.label)}</button>`).join('');
   document.querySelectorAll('[data-admin-subpanel]').forEach(el => {
     const key = el.dataset.adminSubpanel;
     if (!key.startsWith(`${activeAdminTab}.`)) return;
@@ -295,9 +277,7 @@ function renderConfigTabs(schema) {
   )).join('');
 }
 
-function renderConfigForms(payload) {
-  const schema = payload.schema || {};
-  const values = payload.values || {};
+function renderRuntimeConfigNote(payload) {
   const runtime = payload.runtime_config || {};
   const note = $('runtime-config-note');
   if (note) {
@@ -307,6 +287,12 @@ function renderConfigForms(payload) {
       : t('config.runtime.no_overrides');
     note.classList.toggle('warn', runtime.exists && count > 0);
   }
+}
+
+function renderConfigForms(payload) {
+  const schema = payload.schema || {};
+  const values = payload.values || {};
+  renderRuntimeConfigNote(payload);
   renderConfigTabs(schema);
   const fields = schema.fields || [];
   $('config-form').innerHTML = fields
@@ -544,6 +530,12 @@ document.addEventListener('click', async event => {
   } catch (err) {
     toast(`操作失败：${err.message}`, true);
   }
+});
+
+document.addEventListener('angevoice:locale-changed', () => {
+  renderAdminSubnav();
+  if (lastData) renderModels(lastData);
+  if (lastConfigPayload) renderRuntimeConfigNote(lastConfigPayload);
 });
 
 
