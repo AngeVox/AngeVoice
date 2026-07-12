@@ -26,6 +26,7 @@ from .routes import (
 from .security import make_verify_api_key
 from .service_state import ServiceState
 from .rate_limit import GlobalQueueMiddleware, RateLimitMiddleware
+from .static_assets import StaticAssetManifest
 
 logger = logging.getLogger(__name__)
 
@@ -282,7 +283,10 @@ def create_app(config: Optional[TTSConfig] = None, engine: Optional[TTSEngine] =
         app.add_middleware(GlobalQueueMiddleware, max_concurrent=cfg.max_queue_length)
 
     static_dir = Path(__file__).parent / "static"
+    static_assets = None
     if static_dir.exists():
+        static_assets = StaticAssetManifest(static_dir)
+        app.state.static_assets = static_assets
         try:
             from fastapi.staticfiles import StaticFiles
             app.mount("/static", StaticFiles(directory=str(static_dir)), name="static")
@@ -290,11 +294,16 @@ def create_app(config: Optional[TTSConfig] = None, engine: Optional[TTSEngine] =
             logger.debug("静态文件服务不可用", exc_info=True)
 
     templates = None
-    try:
-        from fastapi.templating import Jinja2Templates
-        templates = Jinja2Templates(directory=str(Path(__file__).parent / "templates"))
-    except Exception:
-        logger.debug("Jinja2 templates are unavailable", exc_info=True)
+    if static_assets is not None:
+        try:
+            from fastapi.templating import Jinja2Templates
+            templates = Jinja2Templates(directory=str(Path(__file__).parent / "templates"))
+            templates.env.globals.update(
+                asset_url=static_assets.url,
+                asset_import_map_json=static_assets.import_map_json,
+            )
+        except Exception:
+            logger.debug("Jinja2 templates are unavailable", exc_info=True)
 
     state.templates = templates
     app.include_router(create_auth_router(cfg))

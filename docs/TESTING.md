@@ -56,7 +56,8 @@ uv pip compile requirements/test-torch-cpu.in --universal --python-version 3.10 
 | WebSocket 首包、认证、停止、断连、finally cleanup | `test_security_hardening.py`、`test_ws_cancel_characterization_2615.py`、`test_docker_integration.py` |
 | 配置默认值、ENV、runtime config、调用参数优先级 | `test_basic.py::TestConfig`、`test_admin_config_schema.py`、`test_v26601_hardening.py`、`tests/contracts/test_foundation_contracts.py` |
 | HTTP/status/resource 载荷 | `test_status_routes_characterization_2615.py`、`test_service_state_characterization_2615.py`、`test_extension_architecture.py` |
-| i18n 键和占位参数 | `tests/quality/test_i18n_contract.py` |
+| i18n 分域键、占位参数、安全 DOM slot 与 scanner 可见性 | `tests/quality/test_i18n_contract.py`、`test_i18n_runtime.py` |
+| 静态资源 content hash、ESM import map 与递归 wheel 打包 | `test_static_asset_manifest.py`、`test_i18n_runtime.py`、`test_studio_model_presentation.py` |
 
 ## 覆盖率策略
 
@@ -67,6 +68,8 @@ Python 3.12 当前覆盖率基线约为 72%。CI 下限设为 70%，给跨平台
 ## 浏览器与真实模型 smoke
 
 真实 Chromium/Playwright 基线已验证 Studio 的 `zh-CN -> en` 切换、`localStorage` 持久化和刷新恢复。Playwright 目前不进入默认 CI；涉及前端模块或本地化的变更必须覆盖这三项浏览器行为。Admin 与 API Docs 当前没有完整 i18n，相关改动应补齐对应验收，而不是用错误断言锁住已知缺陷。
+
+涉及静态资源或模块图的改动还必须验证三个页面输出的 import map、全部请求 URL 的 12 位内容哈希、module/CSS 200、无 404/console error/pageerror，并构建 wheel 确认 `static/**/*` 中的新模块确实被打包。
 
 真实模型 smoke 由部署画像运行，不能伪装成无权重单元测试：
 

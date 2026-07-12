@@ -1,15 +1,15 @@
-import { translate as t } from './common/i18n.js?h=513777febfd1';
-import { modelLabel, runtimeProviderLabel } from './studio/model-presentation.js?h=03bd16742352';
+import { translate as t } from './common/i18n.js';
+import { modelLabel, runtimeProviderLabel } from './studio/model-presentation.js';
 import {
   modelNeedsWake,
   modelParameterSchema,
   modelRequiresPromptAudio,
   modelRequiresPromptText,
   modelSupportsVoiceClone
-} from './studio/model-capabilities.js?h=18186a78103d';
+} from './studio/model-capabilities.js';
 import {
   builtinVoiceKind
-} from './studio/voice-presentation.js?h=fa98ca4f1311';
+} from './studio/voice-presentation.js';
 
 const bootstrapEl = document.getElementById('angevoice-bootstrap');
 const bootstrap = bootstrapEl ? JSON.parse(bootstrapEl.textContent || '{}') : {};
@@ -130,20 +130,6 @@ const els = {
   metricVoices: document.getElementById('metric-voices'),
   metricActive: document.getElementById('metric-active')
 };
-
-function applyTokenSessionNotice() {
-  const hint = document.querySelector('[data-i18n-html="settings.hint"]');
-  if (!hint) return;
-  hint.querySelector('[data-token-session-notice]')?.remove();
-  const locale = String(document.documentElement.dataset.locale || 'zh-CN').toLowerCase();
-  const message = locale.startsWith('en')
-    ? ' Studio remembers this browser with a secure HttpOnly session cookie; clear access here or rotate the API Key to revoke it.'
-    : ' Studio 会用安全的 HttpOnly 会话 Cookie 记住此浏览器；可在这里移除访问，或轮换 API Key 让旧会话失效。';
-  const notice = document.createElement('span');
-  notice.dataset.tokenSessionNotice = 'true';
-  notice.textContent = message;
-  hint.appendChild(notice);
-}
 
 const groups = [
   { id: 'all', labelKey: 'voices.all', match: () => true },
@@ -378,6 +364,11 @@ function dismissToast() {
   els.toastStack?.replaceChildren();
 }
 
+function localizeToastAccessibility() {
+  const closeButton = els.toastStack?.querySelector('.toast-close');
+  if (closeButton) closeButton.setAttribute('aria-label', t('toast.close'));
+}
+
 const USER_ERROR_MESSAGES = {
   NO_SYNTHESIZABLE_TEXT: '未检测到可合成的中文或英文文本\n当前内容包含代码、数字或符号，暂不适合直接语音合成\n请修改为自然语言后重试',
   FFMPEG_DISABLED: '当前未启用 FFmpeg 转码。请在管理后台启用后，再请求 mp3、ogg_opus、telegram_voice 或 m4a。',
@@ -409,10 +400,19 @@ function showToast(text, kind = 'success', { sticky = false } = {}) {
   if (!toast) {
     toast = document.createElement('section');
     toast.className = 'toast';
-    toast.innerHTML = '<span class="toast-dot"></span><div class="toast-message"></div><button type="button" class="toast-close" aria-label="关闭通知">×</button>';
-    toast.querySelector('.toast-close').addEventListener('click', dismissToast);
+    const dot = document.createElement('span');
+    dot.className = 'toast-dot';
+    const message = document.createElement('div');
+    message.className = 'toast-message';
+    const closeButton = document.createElement('button');
+    closeButton.type = 'button';
+    closeButton.className = 'toast-close';
+    closeButton.textContent = '×';
+    closeButton.addEventListener('click', dismissToast);
+    toast.append(dot, message, closeButton);
     els.toastStack.replaceChildren(toast);
   }
+  localizeToastAccessibility();
   toast.className = `toast ${kind}`;
   toast.querySelector('.toast-message').textContent = text;
   if (!sticky) {
@@ -1860,7 +1860,6 @@ function bindEvents() {
   });
   els.settingsBtn.addEventListener('click', () => {
     els.tokenInput.value = state.token;
-    applyTokenSessionNotice();
     els.settingsDialog.showModal();
   });
   els.saveTokenBtn.addEventListener('click', async () => {
@@ -1898,12 +1897,12 @@ function bindEvents() {
     refreshServiceState();
   });
   document.addEventListener('angevoice:locale-changed', () => {
+    localizeToastAccessibility();
     setMetricsCollapsed(state.metricsCollapsed);
     setZipVoiceExpanded(state.zipvoiceExpanded);
     renderVoiceTabs();
     renderFavorite();
     updateButtons();
-    applyTokenSessionNotice();
   });
 }
 
@@ -1920,7 +1919,6 @@ function init() {
   }
   applyStreamToggleState();
   applyTheme(state.theme);
-  applyTokenSessionNotice();
   setMetricsCollapsed(state.metricsCollapsed);
   renderModelSelect();
   renderVoiceSelect();

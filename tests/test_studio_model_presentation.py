@@ -6,7 +6,7 @@ import re
 import subprocess
 from pathlib import Path
 
-from tests.quality.test_i18n_contract import DynamicKeyAllowance, scan_i18n_references
+from tests.quality.test_i18n_contract import DynamicKeyAllowance, _catalog, scan_i18n_references
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -230,7 +230,7 @@ def test_app_imports_the_module_once_without_old_function_definitions() -> None:
     source = APP.read_text(encoding="utf-8")
     for module_name in ("model-presentation", "model-capabilities", "voice-presentation"):
         imports = re.findall(
-            rf"^import\s+\{{[^;]+\}}\s+from\s+['\"]\.\/studio\/{module_name}\.js\?h=([0-9a-f]{{12}})['\"];",
+            rf"^import\s+\{{[^;]+\}}\s+from\s+['\"]\.\/studio\/{module_name}\.js['\"];",
             source,
             re.MULTILINE,
         )
@@ -264,33 +264,29 @@ def test_app_voice_kind_keeps_profile_and_moss_branches_before_builtin_fallback(
 
 def test_index_has_one_module_entry_in_dependency_order() -> None:
     html = INDEX.read_text(encoding="utf-8")
-    entry = re.findall(r'<script\s+type="module"\s+src="(/static/app\.js\?h=[0-9a-f]{12})"></script>', html)
-    assert len(entry) == 1
-    assert html.count("/static/app.js?h=") == 1
-    assert not re.search(r'<script[^>]+src="/static/app\.js[^>]+\bdefer\b', html)
+    marker = '<script type="module" src="{{ asset_url(\'app.js\') }}"></script>'
+    assert html.count(marker) == 1
+    assert html.count("asset_url('app.js')") == 1
+    assert html.index('type="importmap"') < html.index('type="module"')
+    assert "defer" not in marker
     ordered = [
-        "/static/common/i18n.js",
-        "/static/security_notice.js",
-        "/static/app.js",
+        "common/i18n.js",
+        "security_notice.js",
+        "app.js",
     ]
     assert [html.index(item) for item in ordered] == sorted(html.index(item) for item in ordered)
     assert "/static/locale/messages.zh-cn.js" not in html
     assert "/static/locale/messages.en.js" not in html
 
 
-def test_all_studio_cache_queries_match_portable_sha256() -> None:
+def test_studio_sources_leave_all_cache_versioning_to_the_manifest() -> None:
     app_source = APP.read_text(encoding="utf-8")
     html = INDEX.read_text(encoding="utf-8")
-    presentation_hash = _portable_source_hash(MODULE)
-    capabilities_hash = _portable_source_hash(CAPABILITIES_MODULE)
-    voice_hash = _portable_source_hash(VOICE_MODULE)
-    i18n_hash = _portable_source_hash(I18N_MODULE)
-    app_hash = _portable_source_hash(APP)
-    assert f"model-presentation.js?h={presentation_hash}" in app_source
-    assert f"model-capabilities.js?h={capabilities_hash}" in app_source
-    assert f"voice-presentation.js?h={voice_hash}" in app_source
-    assert f"/static/common/i18n.js?h={i18n_hash}" in html
-    assert f"/static/app.js?h={app_hash}" in html
+    assert "?h=" not in app_source
+    assert "?h=" not in html
+    assert "asset_import_map_json()" in html
+    for asset in ("common/i18n.js", "security_notice.js", "app.js", "app.css"):
+        assert f"asset_url('{asset}')" in html
 
 
 def test_portable_source_hash_is_independent_of_line_endings(tmp_path: Path) -> None:
@@ -323,6 +319,22 @@ def test_scanner_fails_closed_for_unregistered_dynamic_key(tmp_path: Path) -> No
     assert any("Unallowlisted dynamic translation key" in error and "dynamicKey" in error for error in report.errors)
 
 
+def test_scanner_covers_rich_template_keys_in_unimported_nested_modules(tmp_path: Path) -> None:
+    root = _temporary_source_tree(
+        tmp_path,
+        "renderTranslationTemplate(target, 'missing.rich.key', { value: slot });",
+    )
+    report = scan_i18n_references(root, catalog_keys={"known.key"})
+    assert "missing.rich.key" in report.referenced
+    assert any("Missing translation keys" in error and "missing.rich.key" in error for error in report.errors)
+
+
+def test_scanner_fails_closed_for_dynamic_rich_template_keys(tmp_path: Path) -> None:
+    root = _temporary_source_tree(tmp_path, "renderTranslationTemplate(target, dynamicKey, { value: slot });")
+    report = scan_i18n_references(root, catalog_keys=set())
+    assert any("Dynamic rich translation key" in error and "dynamicKey" in error for error in report.errors)
+
+
 def test_scanner_reports_stale_dynamic_allowlist(tmp_path: Path) -> None:
     root = _temporary_source_tree(tmp_path, 'const value = t("known.key");')
     allowlist = {
@@ -334,11 +346,18 @@ def test_scanner_reports_stale_dynamic_allowlist(tmp_path: Path) -> None:
     assert any("Stale dynamic-key allowance" in error and "unused.key" in error for error in report.errors)
 
 
-def test_catalogs_remain_75_key_symmetric_with_matching_placeholders() -> None:
-    locale = PACKAGE_ROOT / "static" / "locale"
-    pair = re.compile(r"^\s*'([^']+)'\s*:\s*'((?:\\'|[^'])*)'", re.MULTILINE)
+def test_catalogs_remain_78_key_symmetric_with_matching_placeholders() -> None:
     placeholder = re.compile(r"\{([a-zA-Z_][a-zA-Z0-9_]*)\}")
-    catalogs = [dict(pair.findall((locale / name).read_text(encoding="utf-8"))) for name in ("messages.zh-cn.js", "messages.en.js")]
-    assert len(catalogs[0]) == len(catalogs[1]) == 75
+    catalogs = [_catalog(locale) for locale in ("zh-cn", "en")]
+    assert len(catalogs[0]) == len(catalogs[1]) == 78
     assert catalogs[0].keys() == catalogs[1].keys()
     assert all(placeholder.findall(catalogs[0][key]) == placeholder.findall(catalogs[1][key]) for key in catalogs[0])
+
+
+def test_static_accessibility_copy_uses_catalogued_safe_dom_sinks() -> None:
+    app_source = APP.read_text(encoding="utf-8")
+    html = INDEX.read_text(encoding="utf-8")
+    assert "t('toast.close')" in app_source
+    assert 'aria-label="关闭通知"' not in app_source
+    assert "toast.innerHTML" not in app_source
+    assert 'data-i18n-aria-label="text_tools.eyebrow"' in html

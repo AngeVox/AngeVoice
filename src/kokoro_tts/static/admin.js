@@ -1,4 +1,4 @@
-import { translate as t } from './common/i18n.js?h=513777febfd1';
+import { renderTranslationTemplate, translate as t } from './common/i18n.js';
 
 let lastData = null;
 let lastConfigPayload = null;
@@ -282,9 +282,15 @@ function renderRuntimeConfigNote(payload) {
   const note = $('runtime-config-note');
   if (note) {
     const count = Number(runtime.field_count || 0);
-    note.innerHTML = runtime.exists
-      ? t('config.runtime.has_overrides', { count, path: escapeHtml(runtime.path || '') })
-      : t('config.runtime.no_overrides');
+    if (runtime.exists) {
+      const countNode = document.createElement('b');
+      countNode.textContent = String(count);
+      const pathNode = document.createElement('code');
+      pathNode.textContent = String(runtime.path || '');
+      renderTranslationTemplate(note, 'config.runtime.has_overrides', { count: countNode, path: pathNode });
+    } else {
+      note.textContent = t('config.runtime.no_overrides');
+    }
     note.classList.toggle('warn', runtime.exists && count > 0);
   }
 }

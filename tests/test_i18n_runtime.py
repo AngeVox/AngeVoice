@@ -9,8 +9,8 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 RUNTIME = ROOT / "src" / "kokoro_tts" / "static" / "common" / "i18n.js"
-ZH_CATALOG = ROOT / "src" / "kokoro_tts" / "static" / "locale" / "messages.zh-cn.js"
-EN_CATALOG = ROOT / "src" / "kokoro_tts" / "static" / "locale" / "messages.en.js"
+LOCALE_ROOT = ROOT / "src" / "kokoro_tts" / "static" / "locale"
+CATALOG_DOMAINS = ("common", "studio", "admin")
 APP = ROOT / "src" / "kokoro_tts" / "static" / "app.js"
 ADMIN = ROOT / "src" / "kokoro_tts" / "static" / "admin.js"
 SECURITY_NOTICE = ROOT / "src" / "kokoro_tts" / "static" / "security_notice.js"
@@ -26,11 +26,17 @@ def _portable_source_hash(path: Path) -> str:
 
 def _runtime_result(*, saved: str = "", language: str = "unknown", ready_state: str = "complete", actions: str) -> dict[str, object]:
     script = f"""
+      class FakeFragment {{
+        constructor() {{ this.children = []; }}
+        append(...nodes) {{ this.children.push(...nodes); }}
+      }}
+
       class FakeNode {{
         constructor(dataset = {{}}) {{
           this.dataset = dataset;
           this.textContent = '';
           this.innerHTML = '';
+          this.children = [];
           this.attributes = {{}};
           this.listeners = {{}};
           this.open = false;
@@ -45,15 +51,41 @@ def _runtime_result(*, saved: str = "", language: str = "unknown", ready_state: 
         fire(name, event = {{}}) {{
           (this.listeners[name] || []).forEach(callback => callback(event));
         }}
+        append(...nodes) {{ this.children.push(...nodes); }}
+        replaceChildren(...nodes) {{
+          this.children = nodes.length === 1 && nodes[0] instanceof FakeFragment
+            ? [...nodes[0].children]
+            : [...nodes];
+        }}
+        querySelectorAll(selector) {{
+          if (selector !== '[data-i18n-slot]') return [];
+          const matches = [];
+          const visit = node => {{
+            (node.children || []).forEach(child => {{
+              if (child.dataset?.i18nSlot) matches.push(child);
+              visit(child);
+            }});
+          }};
+          visit(this);
+          return matches;
+        }}
         setAttribute(name, value) {{ this.attributes[name] = value; }}
         closest(selector) {{ return selector === '[data-locale-menu]' ? this.menu || null : null; }}
         contains(target) {{ return target === this; }}
       }}
 
       const textNode = new FakeNode({{ i18n: 'top.title' }});
-      const htmlNode = new FakeNode({{ i18nHtml: 'settings.hint' }});
       const placeholderNode = new FakeNode({{ i18nPlaceholder: 'compose.placeholder' }});
       const titleNode = new FakeNode({{ i18nTitle: 'top.theme' }});
+      const ariaNode = new FakeNode({{ i18nAriaLabel: 'text_tools.eyebrow' }});
+      const autoSlot = new FakeNode({{ i18nSlot: 'auto' }});
+      autoSlot.textContent = 'KOKORO_API_KEY=auto';
+      const adminSlot = new FakeNode({{ i18nSlot: 'admin', i18n: 'settings.admin_link' }});
+      adminSlot.textContent = '管理后台';
+      const sessionSlot = new FakeNode({{ i18nSlot: 'session', i18n: 'settings.session_notice' }});
+      sessionSlot.textContent = '保存会话';
+      const templateNode = new FakeNode({{ i18nTemplate: 'settings.hint' }});
+      templateNode.append(autoSlot, adminSlot, sessionSlot);
       const currentNode = new FakeNode();
       const zhChoice = new FakeNode({{ localeChoice: 'zh-CN' }});
       const enChoice = new FakeNode({{ localeChoice: 'en' }});
@@ -62,7 +94,7 @@ def _runtime_result(*, saved: str = "", language: str = "unknown", ready_state: 
       zhChoice.menu = firstMenu;
       enChoice.menu = firstMenu;
       const selectorNodes = {{
-        '[data-i18n],[data-i18n-html],[data-i18n-placeholder],[data-i18n-title]': [textNode, htmlNode, placeholderNode, titleNode],
+        '[data-i18n-template],[data-i18n],[data-i18n-placeholder],[data-i18n-title],[data-i18n-aria-label]': [templateNode, textNode, adminSlot, sessionSlot, placeholderNode, titleNode, ariaNode],
         '[data-locale-choice]': [zhChoice, enChoice],
         '[data-current-locale]': [currentNode],
         '[data-locale-menu]': [firstMenu, secondMenu]
@@ -72,6 +104,8 @@ def _runtime_result(*, saved: str = "", language: str = "unknown", ready_state: 
       const document = {{
         readyState: {json.dumps(ready_state)},
         documentElement: {{ lang: 'zh-CN', dataset: {{}} }},
+        createDocumentFragment() {{ return new FakeFragment(); }},
+        createTextNode(text) {{ return {{ textContent: text, dataset: {{}}, children: [] }}; }},
         querySelectorAll(selector) {{ return selectorNodes[selector] || []; }},
         addEventListener(name, callback, options = {{}}) {{
           (documentListeners[name] ||= []).push({{ callback, once: Boolean(options.once) }});
@@ -101,7 +135,8 @@ def _runtime_result(*, saved: str = "", language: str = "unknown", ready_state: 
       const runtime = await import({json.dumps(RUNTIME.as_uri())});
       const fixture = {{
         runtime, storage, storageWrites, dispatched, document, documentListeners,
-        nodes: {{ textNode, htmlNode, placeholderNode, titleNode, currentNode, zhChoice, enChoice, firstMenu, secondMenu }}
+        FakeNode,
+        nodes: {{ textNode, templateNode, autoSlot, adminSlot, sessionSlot, placeholderNode, titleNode, ariaNode, currentNode, zhChoice, enChoice, firstMenu, secondMenu }}
       }};
       {actions}
     """
@@ -153,6 +188,7 @@ def test_runtime_exports_facade_and_loading_initialization_are_synchronous_and_i
         "getCurrentLocale",
         "initializeI18n",
         "normalizeLocale",
+        "renderTranslationTemplate",
         "translate",
     ]
     assert result["facadeReady"] is True
@@ -200,10 +236,14 @@ def test_translate_and_apply_locale_contracts() -> None:
             lang: fixture.document.documentElement.lang,
             datasetLocale: fixture.document.documentElement.dataset.locale,
             text: n.textNode.textContent,
-            html: n.htmlNode.innerHTML,
+            richText: n.templateNode.children.map(child => child.textContent).join(''),
+            richSlots: n.templateNode.children.filter(child => child.dataset?.i18nSlot).map(child => child.dataset.i18nSlot),
+            richInnerHTML: n.templateNode.innerHTML,
             placeholder: n.placeholderNode.attributes.placeholder,
             title: n.titleNode.attributes.title,
             ariaLabel: n.titleNode.attributes['aria-label'],
+            ariaOnlyLabel: n.ariaNode.attributes['aria-label'],
+            ariaOnlyTitle: n.ariaNode.attributes.title || null,
             activeZh: n.zhChoice.classList.values.has('active'),
             activeEn: n.enChoice.classList.values.has('active'),
             currentLabel: n.currentNode.textContent,
@@ -219,9 +259,17 @@ def test_translate_and_apply_locale_contracts() -> None:
     }
     assert result["stored"] == result["lang"] == result["datasetLocale"] == "en"
     assert result["text"] == "Chinese TTS Studio"
-    assert result["html"].startswith("Production templates can use <code>KOKORO_API_KEY=auto</code>")
+    assert result["richText"] == (
+        "Production templates can use KOKORO_API_KEY=auto to generate a key on first start. "
+        "If Admin is enabled, view or rotate it in Admin. After saving, Studio remembers this browser "
+        "with a secure HttpOnly session cookie; clear access here or rotate the API Key to revoke it."
+    )
+    assert result["richSlots"] == ["auto", "admin", "session"]
+    assert result["richInnerHTML"] == ""
     assert result["placeholder"] == "Enter text to synthesize"
     assert result["title"] == result["ariaLabel"] == "Toggle theme"
+    assert result["ariaOnlyLabel"] == "Text Preprocessing"
+    assert result["ariaOnlyTitle"] is None
     assert result["activeZh"] is False
     assert result["activeEn"] is True
     assert result["currentLabel"] == "English"
@@ -239,11 +287,41 @@ def test_runtime_source_has_no_async_readiness_or_second_runtime() -> None:
     assert "const catalogs = Object.freeze(" in source
     assert source.count("window.AngeVoiceI18n =") == 1
     assert "angevoice.locale.v1" in source
+    assert "data-i18n-html" not in source
+    assert "innerHTML" not in source
+
+
+def test_rich_translation_templates_fail_closed_for_missing_or_unused_slots() -> None:
+    result = _runtime_result(
+        actions="""
+          const slot = new fixture.FakeNode();
+          const host = new fixture.FakeNode();
+          let missing = '';
+          let unused = '';
+          try {
+            fixture.runtime.renderTranslationTemplate(host, 'settings.hint', { auto: slot }, 'en');
+          } catch (error) {
+            missing = String(error.message || error);
+          }
+          try {
+            fixture.runtime.renderTranslationTemplate(host, 'top.title', { extra: slot }, 'en');
+          } catch (error) {
+            unused = String(error.message || error);
+          }
+          console.log(JSON.stringify({ missing, unused }));
+        """,
+    )
+    assert result["missing"] == "Missing i18n template slot for settings.hint: admin"
+    assert result["unused"] == "Unused i18n template slots for top.title: extra"
 
 
 def test_catalogs_are_frozen_side_effect_free_native_esm_modules() -> None:
     forbidden = ("window", "document", "localStorage", "sessionStorage", "globalThis")
-    for path in (ZH_CATALOG, EN_CATALOG):
+    catalog_paths = {
+        locale: [LOCALE_ROOT / domain / f"messages.{locale}.js" for domain in CATALOG_DOMAINS]
+        for locale in ("zh-cn", "en")
+    }
+    for path in [*catalog_paths["zh-cn"], *catalog_paths["en"]]:
         source = path.read_text(encoding="utf-8")
         assert re.findall(r"\bexport\s+const\s+(\w+)", source) == ["messages"]
         assert "export default" not in source
@@ -253,13 +331,17 @@ def test_catalogs_are_frozen_side_effect_free_native_esm_modules() -> None:
         assert all(name not in source for name in forbidden)
 
     script = f"""
-      const zh = await import({json.dumps(ZH_CATALOG.as_uri())});
-      const en = await import({json.dumps(EN_CATALOG.as_uri())});
+      const zhDomains = await Promise.all({json.dumps([path.as_uri() for path in catalog_paths['zh-cn']])}.map(path => import(path)));
+      const enDomains = await Promise.all({json.dumps([path.as_uri() for path in catalog_paths['en']])}.map(path => import(path)));
+      const zh = Object.assign({{}}, ...zhDomains.map(domain => domain.messages));
+      const en = Object.assign({{}}, ...enDomains.map(domain => domain.messages));
       console.log(JSON.stringify({{
-        zhExports: Object.keys(zh), enExports: Object.keys(en),
-        zhFrozen: Object.isFrozen(zh.messages), enFrozen: Object.isFrozen(en.messages),
-        zhCount: Object.keys(zh.messages).length, enCount: Object.keys(en.messages).length,
-        sameKeys: JSON.stringify(Object.keys(zh.messages).sort()) === JSON.stringify(Object.keys(en.messages).sort())
+        exportsOnlyMessages: [...zhDomains, ...enDomains].every(domain => JSON.stringify(Object.keys(domain)) === '["messages"]'),
+        allFrozen: [...zhDomains, ...enDomains].every(domain => Object.isFrozen(domain.messages)),
+        zhDomainCounts: zhDomains.map(domain => Object.keys(domain.messages).length),
+        enDomainCounts: enDomains.map(domain => Object.keys(domain.messages).length),
+        zhCount: Object.keys(zh).length, enCount: Object.keys(en).length,
+        sameKeys: JSON.stringify(Object.keys(zh).sort()) === JSON.stringify(Object.keys(en).sort())
       }}));
     """
     completed = subprocess.run(
@@ -269,66 +351,68 @@ def test_catalogs_are_frozen_side_effect_free_native_esm_modules() -> None:
         text=True,
     )
     assert json.loads(completed.stdout) == {
-        "zhExports": ["messages"],
-        "enExports": ["messages"],
-        "zhFrozen": True,
-        "enFrozen": True,
-        "zhCount": 75,
-        "enCount": 75,
+        "exportsOnlyMessages": True,
+        "allFrozen": True,
+        "zhDomainCounts": [15, 56, 7],
+        "enDomainCounts": [15, 56, 7],
+        "zhCount": 78,
+        "enCount": 78,
         "sameKeys": True,
     }
 
 
-def test_consumers_use_one_static_runtime_import_and_module_entries_with_portable_hashes() -> None:
-    runtime_hash = _portable_source_hash(RUNTIME)
+def test_consumers_use_relative_imports_and_templates_use_the_asset_manifest() -> None:
     runtime_source = RUNTIME.read_text(encoding="utf-8")
     catalog_imports = re.findall(
-        r"""^import \{ messages as (zhCNMessages|enMessages) \} from ['"]\.\./locale/(messages\.(?:zh-cn|en)\.js)\?h=([0-9a-f]{12})['"];""",
+        r"""^import \{ messages as (\w+Messages) \} from ['"]\.\./locale/(common|studio|admin)/(messages\.(?:zh-cn|en)\.js)['"];""",
         runtime_source,
         re.MULTILINE,
     )
     assert catalog_imports == [
-        ("zhCNMessages", "messages.zh-cn.js", _portable_source_hash(ZH_CATALOG)),
-        ("enMessages", "messages.en.js", _portable_source_hash(EN_CATALOG)),
+        ("commonZhCNMessages", "common", "messages.zh-cn.js"),
+        ("commonEnMessages", "common", "messages.en.js"),
+        ("studioZhCNMessages", "studio", "messages.zh-cn.js"),
+        ("studioEnMessages", "studio", "messages.en.js"),
+        ("adminZhCNMessages", "admin", "messages.zh-cn.js"),
+        ("adminEnMessages", "admin", "messages.en.js"),
     ]
     consumers = (APP, ADMIN, SECURITY_NOTICE)
     for path in consumers:
         source = path.read_text(encoding="utf-8")
         imports = re.findall(
-            r"^import \{ translate as t \} from ['\"]\.\/common\/i18n\.js\?h=([0-9a-f]{12})['\"];",
+            r"^import \{ ([^}]+) \} from ['\"]\.\/common\/i18n\.js['\"];",
             source,
             re.MULTILINE,
         )
-        assert imports == [runtime_hash], path.name
+        assert len(imports) == 1, path.name
+        assert "translate as t" in imports[0]
+        assert "?h=" not in source
         assert "window.AngeVoiceI18n" not in source
         assert "window.AngeVoiceLocaleMessages" not in source
 
     index = INDEX.read_text(encoding="utf-8")
     admin_html = ADMIN_HTML.read_text(encoding="utf-8")
     entries = {
-        APP: (index, "/static/app.js"),
-        SECURITY_NOTICE: (index, "/static/security_notice.js"),
-        ADMIN: (admin_html, "/static/admin.js"),
+        APP: (index, "app.js"),
+        SECURITY_NOTICE: (index, "security_notice.js"),
+        ADMIN: (admin_html, "admin.js"),
     }
-    for path, (html, url) in entries.items():
-        match = re.search(rf'<script type="module" src="{re.escape(url)}\?h=([0-9a-f]{{12}})"([^>]*)></script>', html)
-        assert match, path.name
-        assert match.group(1) == _portable_source_hash(path)
-        assert "defer" not in match.group(2)
-        assert "async" not in match.group(2)
+    for path, (html, asset) in entries.items():
+        marker = f'<script type="module" src="{{{{ asset_url(\'{asset}\') }}}}"></script>'
+        assert marker in html, path.name
+        assert "defer" not in marker
+        assert "async" not in marker
 
-    assert index.count('/static/common/i18n.js?h=') == 1
-    assert admin_html.count('/static/common/i18n.js?h=') == 1
+    assert index.count("asset_url('common/i18n.js')") == 1
+    assert admin_html.count("asset_url('common/i18n.js')") == 1
     for html in (index, admin_html):
         assert "/static/locale/messages.zh-cn.js" not in html
         assert "/static/locale/messages.en.js" not in html
-        runtime_entry = re.search(
-            r'<script type="module" src="/static/common/i18n\.js\?h=([0-9a-f]{12})"></script>', html
-        )
-        assert runtime_entry and runtime_entry.group(1) == runtime_hash
+        assert 'type="importmap"' in html
+        assert "asset_import_map_json()" in html
 
-    assert index.index("/static/common/i18n.js") < index.index("/static/security_notice.js") < index.index("/static/app.js")
-    assert admin_html.index("/static/common/i18n.js") < admin_html.index("/static/admin.js")
+    assert index.index("common/i18n.js") < index.index("security_notice.js") < index.index("app.js")
+    assert admin_html.index("common/i18n.js") < admin_html.index("admin.js")
 
 
 def test_admin_removes_lite_map_and_rerenders_only_locale_dependent_dynamic_regions() -> None:
@@ -337,6 +421,11 @@ def test_admin_removes_lite_map_and_rerenders_only_locale_dependent_dynamic_regi
     assert "labelKey: 'nav.config.text'" in source
     assert "tab.labelKey ? t(tab.labelKey) : tab.label" in source
     assert "function renderRuntimeConfigNote(payload)" in source
+    runtime_note = source[source.index("function renderRuntimeConfigNote") : source.index("function renderConfigForms")]
+    assert "renderTranslationTemplate(note, 'config.runtime.has_overrides', { count: countNode, path: pathNode })" in runtime_note
+    assert "document.createElement('b')" in runtime_note
+    assert "document.createElement('code')" in runtime_note
+    assert "innerHTML" not in runtime_note
     render_config = source[source.index("function renderConfigForms") : source.index("function renderProfiles")]
     assert "renderRuntimeConfigNote(payload)" in render_config
     listener = re.search(

@@ -9,7 +9,8 @@
     const savedTheme = localStorage.getItem('angevoice.theme.v1');
     document.documentElement.dataset.theme = savedTheme || (matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light');
   </script>
-  <link rel="stylesheet" href="/static/app.css?h=dc8364f6afbe" />
+  <script type="importmap">{{ asset_import_map_json() | safe }}</script>
+  <link rel="stylesheet" href="{{ asset_url('app.css') }}" />
 </head>
 <body>
   <div class="boot-screen" id="boot-screen" aria-hidden="true">
@@ -66,7 +67,7 @@
       <form class="composer panel spotlight" id="tts-form">
         <div class="section-head"><div><p class="eyebrow" data-i18n="compose.eyebrow">Compose</p><h2 data-i18n="compose.title">文本与参数</h2></div><span class="counter"><b id="char-count">0</b>/<span id="max-count">10000</span></span></div>
         <textarea id="text" maxlength="10000" spellcheck="false" data-i18n-placeholder="compose.placeholder">你好，欢迎使用 AngeVoice。</textarea>
-        <section class="text-tools-card" aria-label="文本预处理">
+        <section class="text-tools-card" aria-label="文本预处理" data-i18n-aria-label="text_tools.eyebrow">
           <div>
             <p class="eyebrow" data-i18n="text_tools.eyebrow">文本预处理</p>
             <h3 data-i18n="text_tools.title">数字与日期处理</h3>
@@ -152,12 +153,12 @@
     <form method="dialog" class="settings-card">
       <div class="section-head"><div><p class="eyebrow" data-i18n="settings.eyebrow">Access</p><h2 data-i18n="settings.title">API Key</h2></div><button type="submit" class="icon-button" data-i18n-title="settings.close">×</button></div>
       <label class="field"><span data-i18n="settings.token">API Key（Bearer Token）</span><input type="password" id="api-token" autocomplete="off" placeholder="KOKORO_API_KEY" /></label>
-      <p class="hint" data-i18n-html="settings.hint">生产模板可使用 <code>KOKORO_API_KEY=auto</code> 自动生成；如果已开启管理后台，可在 <a href="/admin">管理后台</a> 查看或轮换。保存后 Studio 会用 HttpOnly Cookie 记住此浏览器，刷新或重新打开页面无需重复输入。</p>
+      <p class="hint" data-i18n-template="settings.hint">生产模板可使用 <code data-i18n-slot="auto">KOKORO_API_KEY=auto</code> 自动生成密钥；如果已开启管理后台，可在<a href="/admin" data-i18n-slot="admin" data-i18n="settings.admin_link">管理后台</a>查看或轮换。<span data-i18n-slot="session" data-i18n="settings.session_notice">保存后 Studio 会用安全的 HttpOnly 会话 Cookie 记住此浏览器；可在这里移除访问，或轮换 API Key 让旧会话失效。</span></p>
       <div class="button-row"><button type="button" class="primary-button" id="save-token-btn" data-i18n="settings.save">保存</button><button type="button" class="ghost-button" id="clear-token-btn" data-i18n="settings.remove">移除</button></div>
     </form>
   </dialog>
-  <script type="module" src="/static/common/i18n.js?h=513777febfd1"></script>
-  <script type="module" src="/static/security_notice.js?h=4ec7d1484eb2"></script>
-  <script type="module" src="/static/app.js?h=936baca8b80a"></script>
+  <script type="module" src="{{ asset_url('common/i18n.js') }}"></script>
+  <script type="module" src="{{ asset_url('security_notice.js') }}"></script>
+  <script type="module" src="{{ asset_url('app.js') }}"></script>
 </body>
 </html>

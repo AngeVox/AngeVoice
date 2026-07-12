@@ -46,11 +46,12 @@ def test_admin_frontend_uses_mib_and_shared_i18n_module_graph():
     assert "Number(input.value) * MIB" in admin_js
     assert "/static/locale/messages.zh-cn.js" not in admin_html
     assert "/static/locale/messages.en.js" not in admin_html
-    assert "/static/common/i18n.js" in admin_html
+    assert "asset_url('common/i18n.js')" in admin_html
     assert "/static/locale/translate.js" not in admin_html
-    assert admin_html.index("/static/common/i18n.js") < admin_html.index("/static/admin.js")
-    assert re.search(r'<script\s+type="module"\s+src="/static/admin\.js\?h=[0-9a-f]{12}"></script>', admin_html)
-    assert not re.search(r'<script[^>]+src="/static/admin\.js[^>]+\bdefer\b', admin_html)
+    assert admin_html.index("common/i18n.js") < admin_html.index("admin.js")
+    marker = '<script type="module" src="{{ asset_url(\'admin.js\') }}"></script>'
+    assert marker in admin_html
+    assert "defer" not in marker
 
 
 def test_admin_profile_values_are_valid_and_apply():

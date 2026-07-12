@@ -8,7 +8,8 @@
     const savedTheme = localStorage.getItem('angevoice.theme.v1');
     document.documentElement.dataset.theme = savedTheme || (matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light');
   </script>
-  <link rel="stylesheet" href="/static/app.css?h=dc8364f6afbe" />
+  <script type="importmap">{{ asset_import_map_json() | safe }}</script>
+  <link rel="stylesheet" href="{{ asset_url('app.css') }}" />
   <style>
     .docs-shell {
       width: min(1180px, calc(100% - 32px));

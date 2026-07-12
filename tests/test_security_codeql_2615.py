@@ -16,6 +16,7 @@ from kokoro_tts.prompt_audio import (
     save_prompt_audio_bytes,
 )
 from kokoro_tts.rate_limit import RateLimitMiddleware
+from tests.quality.test_i18n_contract import _catalog
 
 
 def test_2615_prompt_audio_safe_delete_allows_only_generated_temp_files(monkeypatch, tmp_path):
@@ -142,5 +143,6 @@ def test_2615_studio_token_is_session_only_and_legacy_storage_is_cleared():
     assert ("localStorage." + "setItem('angevoice.apiToken.v1'") not in app_js
     assert "localStorage.removeItem('angevoice.apiToken.v1')" in app_js
     assert "token: ''," in app_js
-    assert "HttpOnly" in app_js
+    assert "HttpOnly" not in app_js
+    assert "HttpOnly" in _catalog("en")["settings.session_notice"]
     assert "/v1/auth/session" in app_js

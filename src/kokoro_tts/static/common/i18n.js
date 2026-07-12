@@ -1,10 +1,27 @@
-import { messages as zhCNMessages } from '../locale/messages.zh-cn.js?h=4766bfa75faa';
-import { messages as enMessages } from '../locale/messages.en.js?h=822654bf71a7';
+import { messages as commonZhCNMessages } from '../locale/common/messages.zh-cn.js';
+import { messages as commonEnMessages } from '../locale/common/messages.en.js';
+import { messages as studioZhCNMessages } from '../locale/studio/messages.zh-cn.js';
+import { messages as studioEnMessages } from '../locale/studio/messages.en.js';
+import { messages as adminZhCNMessages } from '../locale/admin/messages.zh-cn.js';
+import { messages as adminEnMessages } from '../locale/admin/messages.en.js';
+
+function mergeDomains(locale, domains) {
+  const merged = {};
+  domains.forEach(domain => {
+    Object.entries(domain).forEach(([key, value]) => {
+      if (Object.prototype.hasOwnProperty.call(merged, key)) {
+        throw new Error(`Duplicate ${locale} i18n key across catalog domains: ${key}`);
+      }
+      merged[key] = value;
+    });
+  });
+  return Object.freeze(merged);
+}
 
 const storageKey = 'angevoice.locale.v1';
 const catalogs = Object.freeze({
-  'zh-CN': zhCNMessages,
-  en: enMessages
+  'zh-CN': mergeDomains('zh-CN', [commonZhCNMessages, studioZhCNMessages, adminZhCNMessages]),
+  en: mergeDomains('en', [commonEnMessages, studioEnMessages, adminEnMessages])
 });
 const aliases = {
   'zh': 'zh-CN',
@@ -46,12 +63,45 @@ export function translate(key, params, locale) {
   return template;
 }
 
-function applyNode(node, locale) {
-  if (node.dataset.i18n) {
-    node.textContent = translate(node.dataset.i18n, null, locale);
+function templateSlots(node, slots) {
+  const entries = slots
+    ? Object.entries(slots)
+    : Array.from(node.querySelectorAll('[data-i18n-slot]'), slot => [slot.dataset.i18nSlot, slot]);
+  const resolved = new Map();
+  entries.forEach(([name, slot]) => {
+    if (!name || resolved.has(name)) throw new Error(`Duplicate or unnamed i18n template slot: ${name || '<empty>'}`);
+    resolved.set(name, slot);
+  });
+  return resolved;
+}
+
+export function renderTranslationTemplate(node, key, slots = null, locale = null) {
+  const owner = node.ownerDocument || document;
+  const available = templateSlots(node, slots);
+  const used = new Set();
+  const fragment = owner.createDocumentFragment();
+  const template = translate(key, null, locale || getCurrentLocale());
+  const pattern = /\{([a-zA-Z_][a-zA-Z0-9_]*)\}/g;
+  let cursor = 0;
+  for (const match of template.matchAll(pattern)) {
+    const name = match[1];
+    if (!available.has(name)) throw new Error(`Missing i18n template slot for ${key}: ${name}`);
+    if (used.has(name)) throw new Error(`Repeated i18n template slot for ${key}: ${name}`);
+    fragment.append(owner.createTextNode(template.slice(cursor, match.index)), available.get(name));
+    used.add(name);
+    cursor = match.index + match[0].length;
   }
-  if (node.dataset.i18nHtml) {
-    node.innerHTML = translate(node.dataset.i18nHtml, null, locale);
+  fragment.append(owner.createTextNode(template.slice(cursor)));
+  const unused = [...available.keys()].filter(name => !used.has(name));
+  if (unused.length) throw new Error(`Unused i18n template slots for ${key}: ${unused.join(', ')}`);
+  node.replaceChildren(fragment);
+}
+
+function applyNode(node, locale) {
+  if (node.dataset.i18nTemplate) {
+    renderTranslationTemplate(node, node.dataset.i18nTemplate, null, locale);
+  } else if (node.dataset.i18n) {
+    node.textContent = translate(node.dataset.i18n, null, locale);
   }
   if (node.dataset.i18nPlaceholder) {
     node.setAttribute('placeholder', translate(node.dataset.i18nPlaceholder, null, locale));
@@ -61,6 +111,9 @@ function applyNode(node, locale) {
     node.setAttribute('title', value);
     node.setAttribute('aria-label', value);
   }
+  if (node.dataset.i18nAriaLabel) {
+    node.setAttribute('aria-label', translate(node.dataset.i18nAriaLabel, null, locale));
+  }
 }
 
 export function applyLocale(locale) {
@@ -68,7 +121,7 @@ export function applyLocale(locale) {
   localStorage.setItem(storageKey, lang);
   document.documentElement.lang = lang;
   document.documentElement.dataset.locale = lang;
-  document.querySelectorAll('[data-i18n],[data-i18n-html],[data-i18n-placeholder],[data-i18n-title]').forEach(node => {
+  document.querySelectorAll('[data-i18n-template],[data-i18n],[data-i18n-placeholder],[data-i18n-title],[data-i18n-aria-label]').forEach(node => {
     applyNode(node, lang);
   });
   document.querySelectorAll('[data-locale-choice]').forEach(node => {

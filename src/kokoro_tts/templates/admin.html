@@ -8,8 +8,9 @@
     const savedTheme = localStorage.getItem('angevoice.theme.v1');
     document.documentElement.dataset.theme = savedTheme || (matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light');
   </script>
-  <link rel="stylesheet" href="/static/app.css?h=dc8364f6afbe" />
-  <link rel="stylesheet" href="/static/admin.css?h=b64b7d47b521" />
+  <script type="importmap">{{ asset_import_map_json() | safe }}</script>
+  <link rel="stylesheet" href="{{ asset_url('app.css') }}" />
+  <link rel="stylesheet" href="{{ asset_url('admin.css') }}" />
 </head>
 <body>
   <main class="app-shell admin-shell">
@@ -198,7 +199,7 @@
 
     <div class="admin-toast" id="admin-toast" role="status" aria-live="polite"></div>
   </main>
-  <script type="module" src="/static/common/i18n.js?h=513777febfd1"></script>
-  <script type="module" src="/static/admin.js?h=f567ea7fc351"></script>
+  <script type="module" src="{{ asset_url('common/i18n.js') }}"></script>
+  <script type="module" src="{{ asset_url('admin.js') }}"></script>
 </body>
 </html>

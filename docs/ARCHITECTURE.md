@@ -39,6 +39,7 @@ src/kokoro_tts/
 ├── workers/              # Kokoro / ZipVoice 通用可销毁 Worker 客户端与子进程入口
 ├── config.py             # 配置和环境变量
 ├── cli.py                # angevoice / kokoro-tts CLI
+├── static_assets.py      # 统一静态资源内容哈希与原生 ESM import map
 ├── templates/index.html  # Studio Web UI HTML shell
 └── static/               # Studio Web UI CSS/JS
 ```
@@ -119,6 +120,10 @@ MOSS CUDA 依赖目标环境的 ONNX Runtime/CUDA/cuDNN 组合。通用 GPU Dock
 ## Studio Web UI
 
 `routes/status.py` 的首页路由会注入 bootstrap JSON，包含音色列表、默认音色、最大文本长度、采样率、认证和流式能力。前端静态资源由 `/static/app.css` 和 `/static/app.js` 提供，不需要额外构建步骤。
+
+`static_assets.py` 在应用装配时为所有打包资源计算 LF 标准化的内容哈希；模板通过同一个 manifest 生成 CSS 和入口模块 URL，并注入覆盖全部原生 ESM 模块的 import map。JavaScript 源码只保留普通相对 import，不再人工维护递归查询参数，同时仍可由 Node 直接执行 ESM smoke。
+
+共享 i18n runtime 从 `static/locale/common`、`static/locale/studio` 和 `static/locale/admin` 合并互不重叠的分域词典；重复 key 会在模块初始化时失败，而不是按加载顺序静默覆盖。需要保留 `<code>`、链接或动态强调节点的文案使用 `data-i18n-template` 与命名 DOM slot：catalog 只保存纯文本和 `{slot}`，runtime 只拼接 TextNode 与受控节点，不解析翻译 HTML。
 
 启用 `KOKORO_API_KEY` 时，Studio 设置面板保存的 Bearer Token 会同时用于 HTTP 请求和 WebSocket 首个 JSON 消息。
 
