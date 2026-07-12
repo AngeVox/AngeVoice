@@ -59,6 +59,7 @@ uv pip compile requirements/test-torch-cpu.in --universal --python-version 3.10 
 | i18n 分域键、占位参数、安全 DOM slot、动态 key 证明与硬编码 copy ratchet | `tests/quality/test_i18n_contract.py`、`tests/quality/studio_copy_debt.json`、`test_i18n_runtime.py` |
 | 静态资源 content hash、ESM import map 与递归 wheel 打包 | `test_static_asset_manifest.py`、`test_i18n_runtime.py`、`test_studio_model_presentation.py` |
 | Studio 录音 PCM/WAV、权限失败、手动/自动停止和资源释放 | `test_studio_recording.py`、`test_product_features_packaging.py` |
+| Studio 参考试听请求取消、迟到响应隔离、WAV MIME、Object URL 与媒体错误释放 | `test_studio_reference_audio_preview.py`、`test_product_features_packaging.py` |
 
 ## 覆盖率策略
 

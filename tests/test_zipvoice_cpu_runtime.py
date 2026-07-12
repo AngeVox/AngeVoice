@@ -459,13 +459,15 @@ def test_zipvoice_reference_preview_disables_stale_cache_and_sniffing(tmp_path):
 def test_zipvoice_frontend_uses_profile_display_names_and_normalized_preview_only():
     from pathlib import Path
 
-    js = (Path(__file__).resolve().parents[1] / "src" / "kokoro_tts" / "static" / "app.js").read_text(encoding="utf-8")
+    static = Path(__file__).resolve().parents[1] / "src" / "kokoro_tts" / "static"
+    js = (static / "app.js").read_text(encoding="utf-8")
+    preview = (static / "studio" / "reference-audio-preview.js").read_text(encoding="utf-8")
     assert "name.textContent = displayVoiceName(voice);" in js
     assert "option.textContent = displayVoiceName(voice);" in js
     assert "profile?.name || voiceId" in js
     assert "replaceZipVoicePreviewBlob(state.promptAudioFile);" not in js
-    assert "正在准备参考音频试听" in js
-    assert "媒体错误码" in js
+    assert "descriptor('studio.reference_audio.preparing')" in preview
+    assert "descriptor('studio.reference_audio.media_failed', { code })" in preview
 
 
 def test_segment_text_can_preserve_hard_sentence_boundaries_for_zipvoice_streaming():
@@ -481,10 +483,12 @@ def test_segment_text_can_preserve_hard_sentence_boundaries_for_zipvoice_streami
 def test_zipvoice_frontend_skips_protected_polling_without_token_and_resets_audio_source():
     from pathlib import Path
 
-    js = (Path(__file__).resolve().parents[1] / "src" / "kokoro_tts" / "static" / "app.js").read_text(encoding="utf-8")
+    static = Path(__file__).resolve().parents[1] / "src" / "kokoro_tts" / "static"
+    js = (static / "app.js").read_text(encoding="utf-8")
+    preview = (static / "studio" / "reference-audio-preview.js").read_text(encoding="utf-8")
     assert "bootstrap.authRequired && ((!state.token && !state.hasCookieSession) || state.authRejected)" in js
-    assert "const blob = await response.blob();" in js
-    assert "els.zipvoiceReferencePreview.removeAttribute('src');" in js
+    assert "const blob = await response.blob();" in preview
+    assert "element.removeAttribute?.('src');" in preview
     assert "API Key 无效或已轮换" in js
 
 
@@ -553,10 +557,13 @@ def test_zipvoice_saved_profile_wins_over_stale_uploaded_reference_and_prompt_te
 
 def test_zipvoice_frontend_preview_is_not_reloaded_by_status_poll_and_saved_voice_does_not_send_page_prompt():
     """播放器不得被状态轮询反复重载，保存音色不得携带页面临时参考文本。"""
-    js = (Path(__file__).resolve().parents[1] / "src" / "kokoro_tts" / "static" / "app.js").read_text(encoding="utf-8")
+    static = Path(__file__).resolve().parents[1] / "src" / "kokoro_tts" / "static"
+    js = (static / "app.js").read_text(encoding="utf-8")
+    preview = (static / "studio" / "reference-audio-preview.js").read_text(encoding="utf-8")
     assert "state.lastAppliedModelId !== model.id" in js
     assert "loadZipVoiceProfiles({ forcePreview: modelChanged })" in js
-    assert "sourceKey === state.zipvoicePreviewKey" in js
+    assert "nextSourceKey === sourceKey" in preview
+    assert "activeRequest?.sourceKey === nextSourceKey" in preview
     assert "if (modelRequiresPromptText(currentModel()) && !voice && promptAudio)" in js
     assert "payload.prompt_text = els.promptText.value.trim()" in js
     assert "isZipVoice" not in js

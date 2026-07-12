@@ -11,6 +11,11 @@ import {
   builtinVoiceKind
 } from './studio/voice-presentation.js';
 import { createReferenceRecorderController } from './studio/recording.js';
+import {
+  createReferenceAudioPreviewController,
+  referenceAudioProfileKey,
+  referenceAudioUploadKey
+} from './studio/reference-audio-preview.js';
 
 const bootstrapEl = document.getElementById('angevoice-bootstrap');
 const bootstrap = bootstrapEl ? JSON.parse(bootstrapEl.textContent || '{}') : {};
@@ -46,12 +51,6 @@ const state = {
   lastBlob: null,
   promptAudioFile: null,
   zipvoiceProfiles: [],
-  zipvoicePreviewUrl: '',
-  zipvoicePreviewSequence: 0,
-  zipvoicePreviewReady: false,
-  zipvoicePreviewKey: '',
-  zipvoicePreviewLoadingKey: '',
-  zipvoicePreviewIgnoreError: false,
   zipvoiceProfilesLoaded: false,
   zipvoiceProfilesSignature: '',
   lastAppliedModelId: '',
@@ -63,6 +62,7 @@ const state = {
   toastTimer: null,
   progressTranslation: null,
   recordingTranslation: null,
+  promptAudioStatusTranslation: null,
   composeTextEdited: false,
   zipvoiceExpanded: false,
   textNormalization: localStorage.getItem('angevoice.textNormalization.v1') || 'default'
@@ -143,6 +143,7 @@ const groups = [
   { id: 'recent', labelKey: 'voices.recent', match: voice => state.recent.includes(voice) }
 ];
 let referenceRecorderController = null;
+let referenceAudioPreviewController = null;
 
 class StreamPlayer {
   constructor() {
@@ -377,6 +378,10 @@ function translateDescriptor(copy) {
   return t(copy.key, copy.params);
 }
 
+function descriptor(key, params = null) {
+  return { key, params };
+}
+
 function localizeTransientCopy() {
   localizeToastAccessibility();
   if (state.progressTranslation && els.progress) {
@@ -388,6 +393,9 @@ function localizeTransientCopy() {
   }
   if (state.recordingTranslation && els.recordingStatus) {
     els.recordingStatus.textContent = translateDescriptor(state.recordingTranslation);
+  }
+  if (state.promptAudioStatusTranslation && els.cloneStatus) {
+    els.cloneStatus.textContent = translateDescriptor(state.promptAudioStatusTranslation);
   }
 }
 
@@ -482,7 +490,12 @@ function setZipVoiceExpanded(expanded) {
 
 function warnReferenceDuration(seconds) {
   if (!modelSupportsProfiles() || !Number.isFinite(seconds) || seconds <= 3) return;
-  setProgress(`参考录音为 ${seconds.toFixed(1)} 秒。ZipVoice 官方建议单人参考音频少于 3 秒；较长录音仍可使用，但可能降低速度或音质。`, false, { kind: 'warning' });
+  setTranslatedProgress(
+    'studio.reference_audio.duration_warning',
+    { seconds: seconds.toFixed(1) },
+    false,
+    { kind: 'warning' },
+  );
 }
 
 function ensureAuthToken() {
@@ -624,120 +637,60 @@ function zipVoiceDescriptor(voiceId) {
   return profile ? `${currentModel()?.name || '已保存音色'} · 音色 ID ${profile.voice_id}` : '已保存参考音色';
 }
 
-function zipVoiceUploadKey(file) {
-  if (!file) return '';
-  return `upload:${file.name || 'reference.wav'}:${file.size || 0}:${file.lastModified || 0}`;
-}
-
 function zipVoiceProfileKey(voiceId) {
   const profile = profileForVoiceId(voiceId);
-  return `profile:${voiceId}:${profile?.revision || ''}`;
+  return referenceAudioProfileKey(voiceId, profile?.revision);
 }
 
 function clearZipVoicePreview() {
-  if (!els.zipvoiceReferencePreview) return;
-  state.zipvoicePreviewReady = false;
-  state.zipvoicePreviewKey = '';
-  state.zipvoicePreviewLoadingKey = '';
-  state.zipvoicePreviewIgnoreError = true;
-  els.zipvoiceReferencePreview.pause();
-  els.zipvoiceReferencePreview.removeAttribute('src');
-  els.zipvoiceReferencePreview.hidden = true;
-  els.zipvoiceReferencePreview.load();
-  window.setTimeout(() => { state.zipvoicePreviewIgnoreError = false; }, 100);
-  if (state.zipvoicePreviewUrl) {
-    URL.revokeObjectURL(state.zipvoicePreviewUrl);
-    state.zipvoicePreviewUrl = '';
-  }
-}
-
-function replaceZipVoicePreviewBlob(blob, sourceKey = '') {
-  if (!els.zipvoiceReferencePreview) return;
-  if (!blob) {
-    clearZipVoicePreview();
-    return;
-  }
-  if (sourceKey && sourceKey === state.zipvoicePreviewKey && els.zipvoiceReferencePreview.src) {
-    return;
-  }
-  const playableBlob = blob.type === 'audio/wav'
-    ? blob
-    : new Blob([blob], { type: 'audio/wav' });
-  const previousUrl = state.zipvoicePreviewUrl;
-  const nextUrl = URL.createObjectURL(playableBlob);
-  state.zipvoicePreviewReady = false;
-  state.zipvoicePreviewKey = sourceKey;
-  state.zipvoicePreviewLoadingKey = '';
-  state.zipvoicePreviewUrl = nextUrl;
-  state.zipvoicePreviewIgnoreError = true;
-  els.zipvoiceReferencePreview.pause();
-  els.zipvoiceReferencePreview.src = nextUrl;
-  els.zipvoiceReferencePreview.hidden = false;
-  els.zipvoiceReferencePreview.load();
-  window.setTimeout(() => {
-    state.zipvoicePreviewIgnoreError = false;
-    if (previousUrl && previousUrl !== nextUrl) {
-      URL.revokeObjectURL(previousUrl);
-    }
-  }, 150);
-}
-
-async function responseAudioWavBlob(response) {
-  const blob = await response.blob();
-  return blob.type === 'audio/wav' ? blob : new Blob([await blob.arrayBuffer()], { type: 'audio/wav' });
+  referenceAudioPreviewController?.clear();
 }
 
 async function normalizeUploadedZipVoicePreview(file, { force = false } = {}) {
   if (!modelSupportsProfiles() || !file || !els.zipvoiceReferencePreview || state.selectedVoice) return;
   if (bootstrap.authRequired && !state.token && !state.hasCookieSession) return;
-  const sourceKey = zipVoiceUploadKey(file);
-  if (!force && (state.zipvoicePreviewKey === sourceKey || state.zipvoicePreviewLoadingKey === sourceKey)) return;
-  state.zipvoicePreviewLoadingKey = sourceKey;
-  const requestSequence = ++state.zipvoicePreviewSequence;
-  const form = new FormData();
-  form.append('reference_audio', file, file.name || 'reference.wav');
-  try {
-    const response = await apiFetch(`/v1/reference-audio/${encodeURIComponent(profileEngineId())}/preview`, { method: 'POST', body: form });
-    if (!response.ok) throw new Error(await readError(response));
-    if (state.promptAudioFile !== file || state.selectedVoice || requestSequence !== state.zipvoicePreviewSequence) return;
-    replaceZipVoicePreviewBlob(await responseAudioWavBlob(response), sourceKey);
-    const duration = Number(response.headers.get('X-AngeVoice-Duration-Seconds'));
-    if (Number.isFinite(duration) && duration > 3) {
-      warnReferenceDuration(duration);
-    } else {
-      setProgress('参考音频已准备完成，可点击播放器试听');
-    }
-  } catch (error) {
-    if (state.promptAudioFile === file && !state.selectedVoice && requestSequence === state.zipvoicePreviewSequence) {
-      clearZipVoicePreview();
-      setProgress(`参考音频试听转换失败：${error.message || '请上传有效 WAV 文件'}`, true);
-    }
-  } finally {
-    if (state.zipvoicePreviewLoadingKey === sourceKey) state.zipvoicePreviewLoadingKey = '';
-  }
+  await referenceAudioPreviewController?.previewUploaded({
+    file,
+    key: referenceAudioUploadKey(file),
+    force,
+  });
 }
 
 async function loadSavedZipVoicePreview(voiceId, { force = false } = {}) {
   if (!modelSupportsProfiles() || !voiceId || !els.zipvoiceReferencePreview) return;
   if (!ensureAuthToken()) return;
-  const sourceKey = zipVoiceProfileKey(voiceId);
-  if (!force && (state.zipvoicePreviewKey === sourceKey || state.zipvoicePreviewLoadingKey === sourceKey)) return;
-  state.zipvoicePreviewLoadingKey = sourceKey;
-  const requestSequence = ++state.zipvoicePreviewSequence;
-  setProgress(`正在加载音色“${displayVoiceName(voiceId)}”的参考试听…`);
-  try {
-    const response = await apiFetch(`/v1/voice-profiles/${encodeURIComponent(profileEngineId())}/${encodeURIComponent(voiceId)}/reference.wav`);
-    if (!response.ok) throw new Error(await readError(response));
-    if (state.selectedVoice !== voiceId || requestSequence !== state.zipvoicePreviewSequence) return;
-    replaceZipVoicePreviewBlob(await responseAudioWavBlob(response), sourceKey);
-    setProgress(`音色“${displayVoiceName(voiceId)}”已加载，可点击播放器试听`);
-  } catch (error) {
-    if (requestSequence !== state.zipvoicePreviewSequence) return;
-    clearZipVoicePreview();
-    setProgress(`已保存音色试听失败：${error.message || '无法读取参考音频'}`, true);
-  } finally {
-    if (state.zipvoicePreviewLoadingKey === sourceKey) state.zipvoicePreviewLoadingKey = '';
-  }
+  await referenceAudioPreviewController?.previewSaved({
+    voiceId,
+    name: displayVoiceName(voiceId),
+    key: zipVoiceProfileKey(voiceId),
+    force,
+  });
+}
+
+function initializeReferenceAudioPreview() {
+  referenceAudioPreviewController = createReferenceAudioPreviewController({
+    element: els.zipvoiceReferencePreview,
+    requests: {
+      uploaded: (file, { signal }) => {
+        const form = new FormData();
+        form.append('reference_audio', file, file.name || 'reference.wav');
+        return apiFetch(`/v1/reference-audio/${encodeURIComponent(profileEngineId())}/preview`, {
+          method: 'POST',
+          body: form,
+          signal,
+        });
+      },
+      saved: (voiceId, { signal }) => apiFetch(
+        `/v1/voice-profiles/${encodeURIComponent(profileEngineId())}/${encodeURIComponent(voiceId)}/reference.wav`,
+        { signal },
+      ),
+      readError,
+    },
+    callbacks: {
+      onProgress: setTranslatedDescriptor,
+      onDurationWarning: warnReferenceDuration,
+    },
+  });
 }
 
 function selectZipVoiceTemporaryReference() {
@@ -752,17 +705,23 @@ function setPromptAudioFile(file, { loadPreview = true } = {}) {
   if (file && modelSupportsProfiles()) setZipVoiceExpanded(true);
   const changed = state.promptAudioFile !== (file || null);
   state.promptAudioFile = file || null;
-  if (changed) state.zipvoicePreviewSequence += 1;
+  if (changed) clearZipVoicePreview();
   if (els.cloneStatus) {
-    els.cloneStatus.textContent = state.promptAudioFile ? state.promptAudioFile.name : (modelSupportsProfiles() ? `${currentModel()?.name || '模型'} 参考录音` : '参考音频克隆');
+    if (state.promptAudioFile) {
+      state.promptAudioStatusTranslation = null;
+      els.cloneStatus.textContent = state.promptAudioFile.name;
+    } else {
+      state.promptAudioStatusTranslation = modelSupportsProfiles()
+        ? descriptor('studio.reference_audio.profile_recording', { model: currentModel()?.name || t('studio.model.unknown') })
+        : descriptor('studio.reference_audio.clone');
+      els.cloneStatus.textContent = translateDescriptor(state.promptAudioStatusTranslation);
+    }
   }
   if (els.clearPromptAudio) {
     els.clearPromptAudio.disabled = !state.promptAudioFile;
   }
   if (els.zipvoiceReferencePreview && loadPreview) {
     if (modelSupportsProfiles() && state.promptAudioFile && !state.selectedVoice) {
-      clearZipVoicePreview();
-      setProgress('正在准备参考音频试听…');
       normalizeUploadedZipVoicePreview(state.promptAudioFile, { force: true });
     } else if (!modelSupportsProfiles() || (!state.promptAudioFile && !state.selectedVoice)) {
       clearZipVoicePreview();
@@ -842,7 +801,7 @@ function applyModelUi() {
   }
   if (els.promptAudio) {
     els.promptAudio.accept = modelSupportsProfiles(model) ? '.wav,audio/wav' : 'audio/*,.wav,.mp3,.flac,.ogg,.m4a,.aac';
-    els.promptAudio.title = modelSupportsProfiles(model) ? '可保存音色的模型请上传或录制 WAV 参考音频' : '';
+    els.promptAudio.title = modelSupportsProfiles(model) ? t('studio.reference_audio.wav_only_title') : '';
   }
   if (els.zipvoiceCard) {
     els.zipvoiceCard.hidden = !modelSupportsProfiles(model);
@@ -1019,7 +978,11 @@ async function loadZipVoiceProfiles({ forcePreview = false } = {}) {
     renderVoiceSelect();
     renderVoices();
     resetDeleteProfileConfirmation();
-    if (state.selectedVoice && (forcePreview || profilesChanged || state.zipvoicePreviewKey !== zipVoiceProfileKey(state.selectedVoice))) {
+    if (state.selectedVoice && (
+      forcePreview
+      || profilesChanged
+      || referenceAudioPreviewController?.sourceKey !== zipVoiceProfileKey(state.selectedVoice)
+    )) {
       await loadSavedZipVoicePreview(state.selectedVoice, { force: forcePreview || profilesChanged });
     }
   } catch (_) {
@@ -1675,6 +1638,9 @@ function bindSpotlights() {
 }
 
 function bindEvents() {
+  window.addEventListener('pagehide', event => {
+    if (!event.persisted) referenceAudioPreviewController?.dispose();
+  });
   els.form.addEventListener('submit', async event => {
     event.preventDefault();
     // 合成处理中禁止重复提交。按钮已禁用，但键盘回车仍可能触发表单提交。
@@ -1740,7 +1706,7 @@ function bindEvents() {
       } else if (state.promptAudioFile) {
         setPromptAudioFile(state.promptAudioFile);
       } else {
-        replaceZipVoicePreviewBlob(null);
+        clearZipVoicePreview();
       }
     }
     renderVoices();
@@ -1758,7 +1724,7 @@ function bindEvents() {
     } else if (state.promptAudioFile) {
       setPromptAudioFile(state.promptAudioFile);
     } else {
-      replaceZipVoicePreviewBlob(null);
+      clearZipVoicePreview();
     }
   });
   els.zipvoiceToggle?.addEventListener('click', () => setZipVoiceExpanded(!state.zipvoiceExpanded));
@@ -1803,16 +1769,6 @@ function bindEvents() {
       state.playing = false;
       updateButtons();
     }
-  });
-
-  els.zipvoiceReferencePreview?.addEventListener('loadeddata', () => {
-    state.zipvoicePreviewReady = true;
-    state.zipvoicePreviewIgnoreError = false;
-  });
-  els.zipvoiceReferencePreview?.addEventListener('error', () => {
-    if (state.zipvoicePreviewIgnoreError || !els.zipvoiceReferencePreview?.getAttribute('src')) return;
-    const code = els.zipvoiceReferencePreview?.error?.code || '未知';
-    setProgress(`参考音频试听失败（媒体错误码 ${code}）。请在无浏览器扩展的窗口复测，并保留 Network 响应。`, true);
   });
 
   els.themeBtn.addEventListener('click', () => {
@@ -1887,6 +1843,7 @@ function init() {
     els.textNormalization.value = currentTextNormalization();
   }
   els.text.value = t('studio.compose.default_text');
+  initializeReferenceAudioPreview();
   initializeReferenceRecorder();
   applyStreamToggleState();
   applyTheme(state.theme);

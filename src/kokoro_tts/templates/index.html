@@ -94,12 +94,12 @@
           <div class="engine-parameter-fields" id="engine-parameter-fields"></div>
         </section>
         <div class="clone-panel" id="clone-panel" hidden>
-          <label class="field file-field"><span>参考音频 <b id="clone-status">参考音频克隆</b></span><input type="file" id="prompt-audio" accept="audio/*,.wav,.mp3,.flac,.ogg,.m4a,.aac" /></label>
+          <label class="field file-field"><span><span data-i18n="studio.reference_audio.label">参考音频</span> <b id="clone-status" data-i18n="studio.reference_audio.clone">参考音频克隆</b></span><input type="file" id="prompt-audio" accept="audio/*,.wav,.mp3,.flac,.ogg,.m4a,.aac" /></label>
           <div class="reference-actions">
             <button type="button" class="secondary-button small" id="record-reference-btn" data-i18n="studio.record.start">网页录音</button>
             <button type="button" class="danger-button small" id="stop-record-reference-btn" data-i18n="studio.record.stop" disabled>停止录音</button>
             <span class="recording-status" id="recording-status" data-i18n="studio.record.idle">也可直接使用麦克风录制 WAV 参考音频</span>
-            <button type="button" class="ghost-button small" id="clear-prompt-audio" disabled>清除</button>
+            <button type="button" class="ghost-button small" id="clear-prompt-audio" data-i18n="studio.reference_audio.clear" disabled>清除参考音频</button>
           </div>
           <section class="zipvoice-card collapsed" id="zipvoice-card" hidden>
             <div class="zipvoice-title">

@@ -37,27 +37,9 @@
   },
   {
     "path": "static/app.js",
-    "owner": "applyModelUi",
-    "sink": "title",
-    "text": "可保存音色的模型请上传或录制 WAV 参考音频",
-    "classification": "lifecycle_high_risk",
-    "target_phase": "1E-3A",
-    "reason": "Prompt-audio, recording, or Voice Profile copy must migrate with its owned lifecycle module."
-  },
-  {
-    "path": "static/app.js",
     "owner": "bindEvents",
     "sink": "progress",
     "text": "会话保存失败，请检查 API Key。",
-    "classification": "error_policy_defer_1H",
-    "target_phase": "1H",
-    "reason": "Error wording or raw-message fallback remains coupled to the stable error_code + params policy."
-  },
-  {
-    "path": "static/app.js",
-    "owner": "bindEvents",
-    "sink": "progress",
-    "text": "参考音频试听失败（媒体错误码 ${code}）。请在无浏览器扩展的窗口复测，并保留 Network 响应。",
     "classification": "error_policy_defer_1H",
     "target_phase": "1H",
     "reason": "Error wording or raw-message fallback remains coupled to the stable error_code + params policy."
@@ -136,57 +118,12 @@
   },
   {
     "path": "static/app.js",
-    "owner": "loadSavedZipVoicePreview",
-    "sink": "progress",
-    "text": "已保存音色试听失败：${error.message || '无法读取参考音频'}",
-    "classification": "error_policy_defer_1H",
-    "target_phase": "1H",
-    "reason": "Error wording or raw-message fallback remains coupled to the stable error_code + params policy."
-  },
-  {
-    "path": "static/app.js",
-    "owner": "loadSavedZipVoicePreview",
-    "sink": "progress",
-    "text": "正在加载音色“${displayVoiceName(voiceId)}”的参考试听…",
-    "classification": "lifecycle_high_risk",
-    "target_phase": "1E-3A",
-    "reason": "Prompt-audio, recording, or Voice Profile copy must migrate with its owned lifecycle module."
-  },
-  {
-    "path": "static/app.js",
-    "owner": "loadSavedZipVoicePreview",
-    "sink": "progress",
-    "text": "音色“${displayVoiceName(voiceId)}”已加载，可点击播放器试听",
-    "classification": "lifecycle_high_risk",
-    "target_phase": "1E-3A",
-    "reason": "Prompt-audio, recording, or Voice Profile copy must migrate with its owned lifecycle module."
-  },
-  {
-    "path": "static/app.js",
     "owner": "loadZipVoiceProfiles",
     "sink": "innerHTML",
     "text": "<option value=\"\">临时克隆（使用上传参考）</option>",
     "classification": "lifecycle_high_risk",
     "target_phase": "1E-3A",
     "reason": "Prompt-audio, recording, or Voice Profile copy must migrate with its owned lifecycle module."
-  },
-  {
-    "path": "static/app.js",
-    "owner": "normalizeUploadedZipVoicePreview",
-    "sink": "progress",
-    "text": "参考音频已准备完成，可点击播放器试听",
-    "classification": "lifecycle_high_risk",
-    "target_phase": "1E-3A",
-    "reason": "Prompt-audio, recording, or Voice Profile copy must migrate with its owned lifecycle module."
-  },
-  {
-    "path": "static/app.js",
-    "owner": "normalizeUploadedZipVoicePreview",
-    "sink": "progress",
-    "text": "参考音频试听转换失败：${error.message || '请上传有效 WAV 文件'}",
-    "classification": "error_policy_defer_1H",
-    "target_phase": "1H",
-    "reason": "Error wording or raw-message fallback remains coupled to the stable error_code + params policy."
   },
   {
     "path": "static/app.js",
@@ -238,33 +175,6 @@
     "owner": "saveZipVoiceProfile",
     "sink": "progress",
     "text": "音色“${data.profile.name || state.selectedVoice}”已保存，可直接复用",
-    "classification": "lifecycle_high_risk",
-    "target_phase": "1E-3A",
-    "reason": "Prompt-audio, recording, or Voice Profile copy must migrate with its owned lifecycle module."
-  },
-  {
-    "path": "static/app.js",
-    "owner": "setPromptAudioFile",
-    "sink": "progress",
-    "text": "正在准备参考音频试听…",
-    "classification": "lifecycle_high_risk",
-    "target_phase": "1E-3A",
-    "reason": "Prompt-audio, recording, or Voice Profile copy must migrate with its owned lifecycle module."
-  },
-  {
-    "path": "static/app.js",
-    "owner": "setPromptAudioFile",
-    "sink": "textContent",
-    "text": "${currentModel()?.name || '模型'} 参考录音",
-    "classification": "lifecycle_high_risk",
-    "target_phase": "1E-3A",
-    "reason": "Prompt-audio, recording, or Voice Profile copy must migrate with its owned lifecycle module."
-  },
-  {
-    "path": "static/app.js",
-    "owner": "setPromptAudioFile",
-    "sink": "textContent",
-    "text": "参考音频克隆",
     "classification": "lifecycle_high_risk",
     "target_phase": "1E-3A",
     "reason": "Prompt-audio, recording, or Voice Profile copy must migrate with its owned lifecycle module."
@@ -558,33 +468,6 @@
     "reason": "Error wording or raw-message fallback remains coupled to the stable error_code + params policy."
   },
   {
-    "path": "static/app.js",
-    "owner": "warnReferenceDuration",
-    "sink": "progress",
-    "text": "参考录音为 ${seconds.toFixed(1)} 秒。ZipVoice 官方建议单人参考音频少于 3 秒；较长录音仍可使用，但可能降低速度或音质。",
-    "classification": "lifecycle_high_risk",
-    "target_phase": "1E-3A",
-    "reason": "Prompt-audio, recording, or Voice Profile copy must migrate with its owned lifecycle module."
-  },
-  {
-    "path": "templates/index.html",
-    "owner": "b#clone-status",
-    "sink": "html_text",
-    "text": "参考音频克隆",
-    "classification": "lifecycle_high_risk",
-    "target_phase": "1E-3A",
-    "reason": "Prompt-audio, recording, or Voice Profile copy must migrate with its owned lifecycle module."
-  },
-  {
-    "path": "templates/index.html",
-    "owner": "button#clear-prompt-audio",
-    "sink": "html_text",
-    "text": "清除",
-    "classification": "lifecycle_high_risk",
-    "target_phase": "1E-3A",
-    "reason": "Prompt-audio, recording, or Voice Profile copy must migrate with its owned lifecycle module."
-  },
-  {
     "path": "templates/index.html",
     "owner": "button#zipvoice-delete-profile",
     "sink": "html_text",
@@ -715,15 +598,6 @@
     "owner": "span#-",
     "sink": "html_text",
     "text": "参考文本",
-    "classification": "lifecycle_high_risk",
-    "target_phase": "1E-3A",
-    "reason": "Prompt-audio, recording, or Voice Profile copy must migrate with its owned lifecycle module."
-  },
-  {
-    "path": "templates/index.html",
-    "owner": "span#-",
-    "sink": "html_text",
-    "text": "参考音频",
     "classification": "lifecycle_high_risk",
     "target_phase": "1E-3A",
     "reason": "Prompt-audio, recording, or Voice Profile copy must migrate with its owned lifecycle module."

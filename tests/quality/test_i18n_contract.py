@@ -104,6 +104,18 @@ PRODUCTION_DYNAMIC_ALLOWLIST: Mapping[str, tuple[DynamicKeyAllowance, ...]] = {
                     "studio.record.microphone_unavailable",
                     "studio.record.permission_denied",
                     "studio.record.unsupported",
+                    "studio.reference_audio.clone",
+                    "studio.reference_audio.duration_warning",
+                    "studio.reference_audio.media_failed",
+                    "studio.reference_audio.preparing",
+                    "studio.reference_audio.profile_recording",
+                    "studio.reference_audio.saved_failed",
+                    "studio.reference_audio.saved_failed_detail",
+                    "studio.reference_audio.saved_loading",
+                    "studio.reference_audio.saved_ready",
+                    "studio.reference_audio.upload_failed",
+                    "studio.reference_audio.upload_failed_detail",
+                    "studio.reference_audio.upload_ready",
                 }
             ),
         ),
@@ -463,7 +475,7 @@ def scan_i18n_references(
 
 
 def test_zh_and_en_catalogs_have_identical_keys_and_placeholders() -> None:
-    expected_counts = {"common": 15, "studio": 100, "admin": 7}
+    expected_counts = {"common": 15, "studio": 115, "admin": 7}
     for domain, expected in expected_counts.items():
         zh_domain = _domain_catalog(domain, "zh-cn")
         en_domain = _domain_catalog(domain, "en")
@@ -476,7 +488,7 @@ def test_zh_and_en_catalogs_have_identical_keys_and_placeholders() -> None:
 
     zh = _catalog("zh-cn")
     en = _catalog("en")
-    assert len(zh) == len(en) == sum(expected_counts.values()) == 122
+    assert len(zh) == len(en) == sum(expected_counts.values()) == 137
     assert set(zh) == set(en)
     for key in zh:
         assert PLACEHOLDER.findall(zh[key]) == PLACEHOLDER.findall(en[key]), key
