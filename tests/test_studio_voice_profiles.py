@@ -295,6 +295,242 @@ def test_voice_profile_controller_dispose_invalidates_every_pending_operation() 
     assert result == {"loadResult": False, "selected": "voice_a", "profiles": [], "events": [], "selectChildren": 0}
 
 
+def test_voice_profile_controller_releases_operation_locks_after_an_engine_change_without_applying_late_data() -> None:
+    result = _node(
+        f"""
+        import {{ createVoiceProfileController }} from {json.dumps(MODULE.as_uri())};
+        {ELEMENT_FIXTURE}
+        const run = async kind => {{
+          let selected = 'old';
+          let engine = 'zipvoice-a';
+          let resolveOperation;
+          const events = [];
+          const elements = {{
+            profileSelect: new FakeElement(), profileId: new FakeElement('new'), profileName: new FakeElement('New name'),
+            promptText: new FakeElement('reference text'), recommendedPrompts: new FakeElement(), recommendButton: new FakeElement(),
+            saveButton: new FakeElement(), updateButton: new FakeElement(), deleteButton: new FakeElement(),
+          }};
+          const controller = createVoiceProfileController({{
+            elements,
+            requests: {{
+              list: async () => new Response(JSON.stringify({{ profiles: [{{ voice_id: 'old', name: 'Old', revision: 'r1' }}] }})),
+              save: () => new Promise(resolve => {{ resolveOperation = resolve; }}),
+              update: () => new Promise(resolve => {{ resolveOperation = resolve; }}),
+              delete: () => new Promise(resolve => {{ resolveOperation = resolve; }}),
+            }},
+            callbacks: {{
+              supportsProfiles: () => true, currentEngineId: () => engine, getSelectedVoice: () => selected,
+              setSelectedVoice: value => {{ selected = value; }}, getPromptAudioFile: () => ({{ name: 'reference.wav' }}),
+              onProfilesChanged: () => events.push('profiles'), onSelection: () => events.push('selection'),
+              onProgress: () => events.push('progress'), onError: () => events.push('error'),
+            }},
+            environment: {{ document: fakeDocument, setTimeout: () => 1, clearTimeout: () => {{}} }},
+          }});
+          await controller.load();
+          events.length = 0;
+          let pending;
+          if (kind === 'save') pending = controller.save();
+          if (kind === 'update') pending = controller.updateName();
+          if (kind === 'delete') {{ await controller.remove(); events.length = 0; pending = controller.remove(); }}
+          engine = 'moss';
+          resolveOperation(new Response(JSON.stringify(kind === 'save'
+            ? {{ profile: {{ voice_id: 'new', name: 'New name', revision: 'r2' }} }}
+            : kind === 'delete' ? {{ deleted: true }} : {{ profile: {{ voice_id: 'old', name: 'New name', revision: 'r2' }} }})));
+          const returned = await pending;
+          return {{
+            returned, selected, profiles: controller.profiles.map(profile => [profile.voice_id, profile.name, profile.revision]),
+            events, saveDisabled: elements.saveButton.disabled, updateDisabled: elements.updateButton.disabled,
+            deleteDisabled: elements.deleteButton.disabled,
+          }};
+        }};
+        console.log(JSON.stringify({{ save: await run('save'), update: await run('update'), delete: await run('delete') }}));
+        """
+    )
+    for operation in result.values():
+        assert operation["returned"] is False
+        assert operation["selected"] == "old"
+        assert operation["profiles"] == [["old", "Old", "r1"]]
+        assert operation["events"] == []
+        assert operation["saveDisabled"] is False
+        assert operation["updateDisabled"] is False
+        assert operation["deleteDisabled"] is False
+
+
+def test_voice_profile_save_keeps_the_post_confirmed_profile_when_refresh_fails_or_is_superseded() -> None:
+    result = _node(
+        f"""
+        import {{ createVoiceProfileController }} from {json.dumps(MODULE.as_uri())};
+        {ELEMENT_FIXTURE}
+        const create = requests => {{
+          let selected = '';
+          const progress = [];
+          const changes = [];
+          const elements = {{
+            profileSelect: new FakeElement(), profileId: new FakeElement('saved-id'), profileName: new FakeElement('Saved name'),
+            promptText: new FakeElement('reference text'), recommendedPrompts: new FakeElement(), recommendButton: new FakeElement(),
+            saveButton: new FakeElement(), updateButton: new FakeElement(), deleteButton: new FakeElement(),
+          }};
+          const controller = createVoiceProfileController({{
+            elements, requests,
+            callbacks: {{
+              supportsProfiles: () => true, currentEngineId: () => 'zipvoice', getSelectedVoice: () => selected,
+              setSelectedVoice: value => {{ selected = value; }}, getPromptAudioFile: () => ({{ name: 'reference.wav' }}),
+              onProfilesChanged: value => changes.push([value.selectedVoice, value.forcePreview]),
+              onProgress: value => progress.push(value.key),
+            }},
+            environment: {{ document: fakeDocument, setTimeout: () => 1, clearTimeout: () => {{}} }},
+          }});
+          return {{ controller, elements, progress, changes, selected: () => selected }};
+        }};
+        const saved = {{ voice_id: 'saved-id', name: 'Saved name', revision: 'r1' }};
+        const failedRefresh = create({{
+          save: async () => new Response(JSON.stringify({{ profile: saved }})),
+          list: async () => new Response('server error', {{ status: 500 }}),
+        }});
+        const failedResult = await failedRefresh.controller.save();
+        const listResolvers = [];
+        const superseded = create({{
+          save: async () => new Response(JSON.stringify({{ profile: saved }})),
+          list: () => new Promise(resolve => listResolvers.push(resolve)),
+        }});
+        const saving = superseded.controller.save();
+        await new Promise(resolve => setTimeout(resolve, 0));
+        const latest = superseded.controller.load();
+        listResolvers[1](new Response(JSON.stringify({{ profiles: [saved] }})));
+        await latest;
+        listResolvers[0](new Response(JSON.stringify({{ profiles: [] }})));
+        const supersededResult = await saving;
+        const summarize = fixture => ({{
+          selected: fixture.selected(), profiles: fixture.controller.profiles.map(profile => profile.voice_id),
+          selectValue: fixture.elements.profileSelect.value,
+          options: fixture.elements.profileSelect.children.map(option => option.value),
+          progress: fixture.progress, changes: fixture.changes,
+        }});
+        console.log(JSON.stringify({{ failedResult, failed: summarize(failedRefresh), supersededResult, superseded: summarize(superseded) }}));
+        """
+    )
+    assert result["failedResult"] is True
+    assert result["failed"] == {
+        "selected": "saved-id",
+        "profiles": ["saved-id"],
+        "selectValue": "saved-id",
+        "options": ["", "saved-id"],
+        "progress": ["profile.saved"],
+        "changes": [["saved-id", True]],
+    }
+    assert result["supersededResult"] is True
+    assert result["superseded"]["selected"] == "saved-id"
+    assert result["superseded"]["profiles"] == ["saved-id"]
+    assert result["superseded"]["selectValue"] == "saved-id"
+    assert result["superseded"]["progress"] == ["profile.saved"]
+
+
+def test_voice_profile_delete_missing_keeps_local_state_and_uses_its_dedicated_copy() -> None:
+    result = _node(
+        f"""
+        import {{ createVoiceProfileController }} from {json.dumps(MODULE.as_uri())};
+        {ELEMENT_FIXTURE}
+        let selected = 'voice_a';
+        const events = [];
+        const elements = {{
+          profileSelect: new FakeElement(), profileId: new FakeElement(), profileName: new FakeElement('Voice A'),
+          promptText: new FakeElement(), recommendedPrompts: new FakeElement(), recommendButton: new FakeElement(),
+          saveButton: new FakeElement(), updateButton: new FakeElement(), deleteButton: new FakeElement(),
+        }};
+        const controller = createVoiceProfileController({{
+          elements,
+          requests: {{
+            list: async () => new Response(JSON.stringify({{ profiles: [{{ voice_id: 'voice_a', name: 'Voice A', revision: 'r1' }}] }})),
+            delete: async () => new Response(JSON.stringify({{ deleted: false }})),
+          }},
+          callbacks: {{
+            supportsProfiles: () => true, currentEngineId: () => 'zipvoice', getSelectedVoice: () => selected,
+            setSelectedVoice: value => {{ selected = value; }},
+            onProfilesChanged: () => events.push('profiles'), onSelection: () => events.push('selection'),
+            onProgress: copy => events.push(copy.key), onError: (_, copy) => events.push(copy.key),
+          }},
+          environment: {{ document: fakeDocument, setTimeout: () => 1, clearTimeout: () => {{}} }},
+        }});
+        await controller.load();
+        events.length = 0;
+        await controller.remove();
+        const removed = await controller.remove();
+        console.log(JSON.stringify({{
+          removed, selected, profiles: controller.profiles.map(profile => profile.voice_id), events,
+          confirmation: controller.deleteConfirmation, selectValue: elements.profileSelect.value, deleteDisabled: elements.deleteButton.disabled,
+        }}));
+        """
+    )
+    assert result == {
+        "removed": False,
+        "selected": "voice_a",
+        "profiles": ["voice_a"],
+        "events": ["profile.confirm_delete", "profile.delete_missing"],
+        "confirmation": "",
+        "selectValue": "voice_a",
+        "deleteDisabled": False,
+    }
+
+
+def test_voice_profile_controller_dispose_invalidates_all_pending_async_entrypoints() -> None:
+    result = _node(
+        f"""
+        import {{ createVoiceProfileController }} from {json.dumps(MODULE.as_uri())};
+        {ELEMENT_FIXTURE}
+        const run = async operation => {{
+          let selected = 'voice_a';
+          const deferred = {{}};
+          const wait = name => new Promise(resolve => {{ deferred[name] = resolve; }});
+          const events = [];
+          const elements = {{
+            profileSelect: new FakeElement(), profileId: new FakeElement('voice_b'), profileName: new FakeElement('Voice B'),
+            promptText: new FakeElement('reference text'), recommendedPrompts: new FakeElement(), recommendButton: new FakeElement(),
+            saveButton: new FakeElement(), updateButton: new FakeElement(), deleteButton: new FakeElement(),
+          }};
+          const controller = createVoiceProfileController({{
+            elements,
+            requests: {{
+              list: () => wait('load'), recommended: () => wait('recommended'), save: () => wait('save'),
+              update: () => wait('update'), delete: () => wait('delete'),
+            }},
+            callbacks: {{
+              supportsProfiles: () => true, currentEngineId: () => 'zipvoice', getSelectedVoice: () => selected,
+              setSelectedVoice: value => {{ selected = value; }}, getPromptAudioFile: () => ({{ name: 'reference.wav' }}),
+              onProfilesChanged: () => events.push('profiles'), onSelection: () => events.push('selection'),
+              onProgress: () => events.push('progress'), onError: () => events.push('error'),
+            }},
+            environment: {{ document: fakeDocument, setTimeout: () => 1, clearTimeout: () => {{}} }},
+          }});
+          let pending;
+          if (operation === 'load') pending = controller.load();
+          if (operation === 'recommended') pending = controller.loadRecommendedPrompts();
+          if (operation === 'save') pending = controller.save();
+          if (operation === 'update') pending = controller.updateName();
+          if (operation === 'delete') {{ await controller.remove(); events.length = 0; pending = controller.remove(); }}
+          const before = {{ selected, profiles: controller.profiles, options: elements.profileSelect.children.length,
+            prompts: elements.recommendedPrompts.children.length, events: [...events] }};
+          controller.dispose();
+          deferred[operation === 'recommended' ? 'recommended' : operation](new Response(JSON.stringify(
+            operation === 'load' ? {{ profiles: [{{ voice_id: 'late' }}] }}
+              : operation === 'recommended' ? {{ items: ['late prompt'] }}
+              : operation === 'save' ? {{ profile: {{ voice_id: 'late' }} }}
+              : operation === 'delete' ? {{ deleted: true }} : {{ profile: {{ voice_id: 'voice_a', name: 'Late' }} }}
+          )));
+          const returned = await pending;
+          return {{ returned, before, after: {{ selected, profiles: controller.profiles, options: elements.profileSelect.children.length,
+            prompts: elements.recommendedPrompts.children.length, events }} }};
+        }};
+        console.log(JSON.stringify({{
+          load: await run('load'), recommended: await run('recommended'), save: await run('save'),
+          update: await run('update'), delete: await run('delete'),
+        }}));
+        """
+    )
+    for operation in result.values():
+        assert operation["returned"] is False
+        assert operation["after"] == operation["before"]
+
+
 def test_profile_voice_id_placeholder_is_locale_invariant() -> None:
     template = (PACKAGE_ROOT / "templates" / "index.html").read_text(encoding="utf-8")
     assert '<input id="zipvoice-profile-id" placeholder="voice_001"' in template

@@ -66,6 +66,18 @@ export function createVoiceProfileController({
     return profiles.find(profile => profile.voice_id === voiceId) || null;
   }
 
+  function upsertProfile(profile) {
+    const voiceId = String(profile?.voice_id || '').trim();
+    if (!voiceId) return false;
+    const nextProfile = { ...profile, voice_id: voiceId };
+    const index = profiles.findIndex(item => item.voice_id === voiceId);
+    if (index < 0) profiles = [...profiles, nextProfile];
+    else profiles = profiles.map((item, itemIndex) => itemIndex === index ? nextProfile : item);
+    profilesLoaded = true;
+    signature = profileSignature(profiles);
+    return true;
+  }
+
   function displayName(voiceId) {
     return findProfile(voiceId)?.name || voiceId;
   }
@@ -242,22 +254,28 @@ export function createVoiceProfileController({
       if (!current()) return false;
       const data = await response.json();
       if (!current()) return false;
-      const savedVoiceId = data.profile?.voice_id;
-      if (!savedVoiceId) throw new Error('');
+      const savedProfile = data.profile;
+      const savedVoiceId = String(savedProfile?.voice_id || '').trim();
+      if (!savedVoiceId || !upsertProfile(savedProfile)) throw new Error('');
       setSelectedVoice(savedVoiceId);
-      await load({ forcePreview: true });
-      if (!current()) return false;
+      renderCopy();
       selectVoice(savedVoiceId, { notify: false });
+      onProfilesChanged({
+        profiles: profiles.map(profile => ({ ...profile })),
+        selectedVoice: savedVoiceId,
+        changed: true,
+        forcePreview: true,
+      });
       onProgress(descriptor('profile.saved', { name: data.profile?.name || savedVoiceId }));
-      return true;
+      await load({ forcePreview: true });
+      return isActive(lifecycle) && generation === saveGeneration;
     } catch (error) {
       if (current()) onError(error, descriptor('profile.save_failed'));
       return false;
     } finally {
       if (generation === saveGeneration) {
         saveInFlight = false;
-        if (current() && elements.saveButton) elements.saveButton.disabled = false;
-        if (current()) clearDeleteConfirmation();
+        if (!disposed && elements.saveButton) elements.saveButton.disabled = false;
       }
     }
   }
@@ -295,6 +313,7 @@ export function createVoiceProfileController({
     } finally {
       if (generation === updateGeneration) {
         updateInFlight = false;
+        if (!disposed) setButtonState();
         if (current()) clearDeleteConfirmation();
       }
     }
@@ -332,7 +351,10 @@ export function createVoiceProfileController({
       if (!current()) return false;
       const result = await response.json();
       if (!current()) return false;
-      if (!result.deleted) throw new Error('');
+      if (!result.deleted) {
+        onError(new Error(''), descriptor('profile.delete_missing'));
+        return false;
+      }
       const deletedSelectedVoice = getSelectedVoice() === voiceId;
       if (deletedSelectedVoice) setSelectedVoice('');
       profiles = profiles.filter(profile => profile.voice_id !== voiceId);
@@ -354,6 +376,7 @@ export function createVoiceProfileController({
     } finally {
       if (generation === deleteGeneration) {
         deleteInFlight = false;
+        if (!disposed) setButtonState();
         if (current()) clearDeleteConfirmation();
       }
     }

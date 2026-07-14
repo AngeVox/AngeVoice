@@ -118,6 +118,7 @@ PRODUCTION_DYNAMIC_ALLOWLIST: Mapping[str, tuple[DynamicKeyAllowance, ...]] = {
                     "studio.reference_audio.upload_ready",
                     "profile.confirm_delete",
                     "profile.delete_failed",
+                    "profile.delete_missing",
                     "profile.deleted",
                     "profile.name_required",
                     "profile.name_updated",
@@ -485,7 +486,7 @@ def scan_i18n_references(
 
 
 def test_zh_and_en_catalogs_have_identical_keys_and_placeholders() -> None:
-    expected_counts = {"common": 15, "studio": 149, "admin": 7}
+    expected_counts = {"common": 15, "studio": 150, "admin": 7}
     for domain, expected in expected_counts.items():
         zh_domain = _domain_catalog(domain, "zh-cn")
         en_domain = _domain_catalog(domain, "en")
@@ -498,7 +499,7 @@ def test_zh_and_en_catalogs_have_identical_keys_and_placeholders() -> None:
 
     zh = _catalog("zh-cn")
     en = _catalog("en")
-    assert len(zh) == len(en) == sum(expected_counts.values()) == 171
+    assert len(zh) == len(en) == sum(expected_counts.values()) == 172
     assert set(zh) == set(en)
     for key in zh:
         assert PLACEHOLDER.findall(zh[key]) == PLACEHOLDER.findall(en[key]), key

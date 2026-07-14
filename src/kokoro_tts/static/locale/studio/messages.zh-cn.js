@@ -145,6 +145,7 @@ export const messages = Object.freeze({
     'profile.save_failed': '保存音色失败',
     'profile.update_failed': '更新音色名称失败',
     'profile.delete_failed': '删除音色失败',
+    'profile.delete_missing': '删除音色失败：音色不存在或已被删除',
     'action.expand': '展开',
     'action.collapse': '收起',
     'toast.close': '关闭通知'

@@ -145,6 +145,7 @@ export const messages = Object.freeze({
     'profile.save_failed': 'Saving the voice failed',
     'profile.update_failed': 'Updating the voice name failed',
     'profile.delete_failed': 'Deleting the voice failed',
+    'profile.delete_missing': 'Deleting the voice failed: the voice does not exist or was already deleted',
     'action.expand': 'Expand',
     'action.collapse': 'Collapse',
     'toast.close': 'Dismiss notification'
