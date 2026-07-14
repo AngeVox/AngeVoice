@@ -194,6 +194,113 @@ def test_voice_profile_controller_validates_and_serializes_save_update_and_two_s
     ]
 
 
+def test_voice_profile_controller_latest_load_delete_identity_and_temporary_copy_refresh() -> None:
+    result = _node(
+        f"""
+        import {{ createVoiceProfileController }} from {json.dumps(MODULE.as_uri())};
+        {ELEMENT_FIXTURE}
+        let selected = '';
+        let uploaded = null;
+        const listResolvers = [];
+        let resolveDelete;
+        const selections = [];
+        const profileEvents = [];
+        const elements = {{
+          profileSelect: new FakeElement(), profileId: new FakeElement('draft-id'), profileName: new FakeElement('Draft'),
+          promptText: new FakeElement('draft prompt'), recommendedPrompts: new FakeElement(), recommendButton: new FakeElement(),
+          saveButton: new FakeElement(), updateButton: new FakeElement(), deleteButton: new FakeElement(),
+        }};
+        const controller = createVoiceProfileController({{
+          elements,
+          requests: {{
+            list: () => new Promise(resolve => listResolvers.push(resolve)),
+            delete: () => new Promise(resolve => {{ resolveDelete = resolve; }}),
+          }},
+          callbacks: {{
+            supportsProfiles: () => true, currentEngineId: () => 'zipvoice', getSelectedVoice: () => selected,
+            setSelectedVoice: value => {{ selected = value; }}, getPromptAudioFile: () => uploaded,
+            onSelection: value => selections.push(value), onProfilesChanged: value => profileEvents.push([value.selectedVoice, value.changed]),
+          }},
+          translate: key => `t:${{key}}`,
+          environment: {{ document: fakeDocument, setTimeout: () => 1, clearTimeout: () => {{}} }},
+        }});
+        const first = controller.load();
+        const second = controller.load();
+        listResolvers[1](new Response(JSON.stringify({{ profiles: [{{ voice_id: 'b', name: 'B', revision: '2' }}] }})));
+        await second;
+        listResolvers[0](new Response(JSON.stringify({{ profiles: [{{ voice_id: 'a', name: 'A', revision: '1' }}] }})));
+        await first;
+        const afterLatest = controller.profiles.map(profile => profile.voice_id);
+        const refresh = controller.load();
+        listResolvers[2](new Response(JSON.stringify({{ profiles: [{{ voice_id: 'a', name: 'A', revision: '1' }}, {{ voice_id: 'b', name: 'B', revision: '2' }}] }})));
+        await refresh;
+        controller.selectVoice('b');
+        await controller.remove();
+        const pendingDelete = controller.remove();
+        controller.selectVoice('a');
+        resolveDelete(new Response(JSON.stringify({{ deleted: true }})));
+        const deleted = await pendingDelete;
+        const afterDelete = {{ selected, profiles: controller.profiles.map(profile => profile.voice_id), selections }};
+        const preserved = {{ id: elements.profileId.value, name: elements.profileName.value, prompt: elements.promptText.value }};
+        uploaded = {{ name: 'fresh.wav' }};
+        controller.renderCopy();
+        const uploadedLabel = elements.profileSelect.children[0].textContent;
+        uploaded = null;
+        controller.renderCopy();
+        const emptyLabel = elements.profileSelect.children[0].textContent;
+        console.log(JSON.stringify({{ afterLatest, deleted, afterDelete, profileEvents, preserved, uploadedLabel, emptyLabel }}));
+        """
+    )
+    assert result["afterLatest"] == ["b"]
+    assert result["deleted"] is True
+    assert result["afterDelete"] == {"selected": "a", "profiles": ["a"], "selections": ["b", "a"]}
+    assert result["preserved"] == {"id": "draft-id", "name": "A", "prompt": "draft prompt"}
+    assert result["uploadedLabel"] == "t:profile.temporary_clone_uploaded"
+    assert result["emptyLabel"] == "t:profile.temporary_clone"
+
+
+def test_voice_profile_controller_dispose_invalidates_every_pending_operation() -> None:
+    result = _node(
+        f"""
+        import {{ createVoiceProfileController }} from {json.dumps(MODULE.as_uri())};
+        {ELEMENT_FIXTURE}
+        let selected = 'voice_a';
+        const deferred = {{}};
+        const wait = name => new Promise(resolve => {{ deferred[name] = resolve; }});
+        const elements = {{
+          profileSelect: new FakeElement(), profileId: new FakeElement('voice_a'), profileName: new FakeElement('Name'),
+          promptText: new FakeElement('prompt'), recommendedPrompts: new FakeElement(), recommendButton: new FakeElement(),
+          saveButton: new FakeElement(), updateButton: new FakeElement(), deleteButton: new FakeElement(),
+        }};
+        const events = [];
+        const controller = createVoiceProfileController({{
+          elements,
+          requests: {{
+            list: () => wait('list'), recommended: () => wait('recommended'), save: () => wait('save'), update: () => wait('update'), delete: () => wait('delete'),
+          }},
+          callbacks: {{
+            supportsProfiles: () => true, currentEngineId: () => 'zipvoice', getSelectedVoice: () => selected,
+            setSelectedVoice: value => {{ selected = value; }}, getPromptAudioFile: () => ({{ name: 'ref.wav' }}),
+            onProfilesChanged: () => events.push('profiles'), onSelection: () => events.push('selection'), onProgress: () => events.push('progress'), onError: () => events.push('error'),
+          }},
+          environment: {{ document: fakeDocument, setTimeout: () => 1, clearTimeout: () => {{}} }},
+        }});
+        const load = controller.load();
+        controller.dispose();
+        deferred.list(new Response(JSON.stringify({{ profiles: [{{ voice_id: 'late' }}] }})));
+        const loadResult = await load;
+        console.log(JSON.stringify({{ loadResult, selected, profiles: controller.profiles, events, selectChildren: elements.profileSelect.children.length }}));
+        """
+    )
+    assert result == {"loadResult": False, "selected": "voice_a", "profiles": [], "events": [], "selectChildren": 0}
+
+
+def test_profile_voice_id_placeholder_is_locale_invariant() -> None:
+    template = (PACKAGE_ROOT / "templates" / "index.html").read_text(encoding="utf-8")
+    assert '<input id="zipvoice-profile-id" placeholder="voice_001"' in template
+    assert 'id="zipvoice-profile-id" data-i18n-placeholder' not in template
+
+
 def test_voice_profile_module_is_native_esm_and_app_only_composes_it() -> None:
     module = MODULE.read_text(encoding="utf-8")
     app = APP.read_text(encoding="utf-8")

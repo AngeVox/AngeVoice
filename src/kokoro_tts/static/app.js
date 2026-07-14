@@ -747,10 +747,9 @@ function initializeVoiceProfileController() {
         renderVoices();
         if (selectedVoice && (
           forcePreview
-          || changed
           || referenceAudioPreviewController?.sourceKey !== zipVoiceProfileKey(selectedVoice)
         )) {
-          void loadSavedZipVoicePreview(selectedVoice, { force: forcePreview || changed });
+          void loadSavedZipVoicePreview(selectedVoice, { force: forcePreview });
         }
       },
       onSelection: (voiceId, { deleted = false } = {}) => {
@@ -767,7 +766,13 @@ function initializeVoiceProfileController() {
         }
       },
       onProgress: setTranslatedDescriptor,
-      onError: (error, fallbackCopy) => setProgress(error.message || translateDescriptor(fallbackCopy), true),
+      onError: (error, fallbackCopy) => {
+        const message = String(error?.message || '').trim();
+        const fallback = translateDescriptor(fallbackCopy);
+        const isDeleteFailure = fallbackCopy?.key === 'profile.delete_failed';
+        const separator = document.documentElement.dataset.locale === 'en' ? ': ' : '：';
+        setProgress(isDeleteFailure && message ? `${fallback}${separator}${message}` : (message || fallback), true);
+      },
     },
     translate: t,
   });
@@ -775,15 +780,17 @@ function initializeVoiceProfileController() {
 
 function selectZipVoiceTemporaryReference() {
   if (!modelSupportsProfiles()) return;
-  voiceProfileController?.selectVoice('', { notify: false });
-  if (els.voice) els.voice.value = '';
-  renderVoices();
+  voiceProfileController?.selectVoice('');
 }
 
 function setPromptAudioFile(file, { loadPreview = true } = {}) {
   if (file && modelSupportsProfiles()) setZipVoiceExpanded(true);
   const changed = state.promptAudioFile !== (file || null);
   state.promptAudioFile = file || null;
+  if (modelSupportsProfiles()) {
+    voiceProfileController?.renderCopy();
+    renderVoiceSelect();
+  }
   if (changed) clearZipVoicePreview();
   if (els.cloneStatus) {
     if (state.promptAudioFile) {
@@ -1108,12 +1115,12 @@ function renderVoices() {
     text.append(name, kind);
     item.append(text, fav);
     item.addEventListener('click', () => {
+      if (modelSupportsProfiles()) {
+        voiceProfileController?.selectVoice(voice);
+        return;
+      }
       state.selectedVoice = voice;
       els.voice.value = voice;
-      if (modelSupportsProfiles() && els.zipvoiceProfileSelect) {
-        els.zipvoiceProfileSelect.value = voice;
-        loadSavedZipVoicePreview(voice);
-      }
       renderVoices();
       renderFavorite();
     });
@@ -1644,10 +1651,11 @@ function bindEvents() {
     switchModel(event.target.value);
   });
   els.voice.addEventListener('change', () => {
-    state.selectedVoice = els.voice.value;
-    if (els.zipvoiceProfileSelect && modelSupportsProfiles()) {
-      voiceProfileController?.selectVoice(state.selectedVoice);
+    if (modelSupportsProfiles()) {
+      voiceProfileController?.selectVoice(els.voice.value);
+      return;
     }
+    state.selectedVoice = els.voice.value;
     renderVoices();
   });
   els.zipvoiceToggle?.addEventListener('click', () => setZipVoiceExpanded(!state.zipvoiceExpanded));

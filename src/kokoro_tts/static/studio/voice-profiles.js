@@ -45,6 +45,22 @@ export function createVoiceProfileController({
   let updateInFlight = false;
   let deleteInFlight = false;
   let disposed = false;
+  let lifecycleGeneration = 0;
+  let listGeneration = 0;
+  let recommendedGeneration = 0;
+  let saveGeneration = 0;
+  let updateGeneration = 0;
+  let deleteGeneration = 0;
+
+  function isActive(lifecycle) {
+    return !disposed && lifecycle === lifecycleGeneration;
+  }
+
+  function isCurrent(lifecycle, generation, currentGeneration, engineId) {
+    if (!isActive(lifecycle) || generation !== currentGeneration()) return false;
+    if (currentEngineId() !== engineId) return false;
+    return true;
+  }
 
   function findProfile(voiceId) {
     return profiles.find(profile => profile.voice_id === voiceId) || null;
@@ -67,28 +83,30 @@ export function createVoiceProfileController({
   }
 
   function setButtonState() {
+    if (disposed) return;
     const selectedVoice = getSelectedVoice();
     if (elements.updateButton) elements.updateButton.disabled = !selectedVoice || updateInFlight;
     if (!elements.deleteButton) return;
     const confirming = Boolean(deleteConfirmation) && deleteConfirmation === selectedVoice;
     elements.deleteButton.disabled = !selectedVoice || deleteInFlight;
     elements.deleteButton.dataset.confirming = confirming ? selectedVoice : '';
-    const deleteLabel = translate(confirming ? 'profile.confirm_delete_button' : 'profile.delete');
+    const deleteLabel = confirming
+      ? translate('profile.confirm_delete_button')
+      : translate('profile.delete');
     elements.deleteButton.textContent = deleteLabel;
     elements.deleteButton.classList?.toggle?.('confirming', confirming);
   }
 
   function renderProfileSelect() {
-    const select = elements.profileSelect;
-    if (!select) return;
-    select.innerHTML = '';
+    if (disposed || !elements.profileSelect) return;
+    elements.profileSelect.innerHTML = '';
     const temporary = makeOption('', temporaryLabel());
-    if (temporary) select.appendChild(temporary);
+    if (temporary) elements.profileSelect.appendChild(temporary);
     profiles.forEach(profile => {
       const option = makeOption(profile.voice_id, profile.name || profile.voice_id);
-      if (option) select.appendChild(option);
+      if (option) elements.profileSelect.appendChild(option);
     });
-    select.value = findProfile(getSelectedVoice()) ? getSelectedVoice() : '';
+    elements.profileSelect.value = findProfile(getSelectedVoice()) ? getSelectedVoice() : '';
   }
 
   function renderCopy() {
@@ -97,13 +115,13 @@ export function createVoiceProfileController({
     setButtonState();
   }
 
-  function clearDeleteConfirmation() {
+  function clearDeleteConfirmation({ render = true } = {}) {
     if (deleteConfirmationTimer !== null) {
       env.cancelTimer?.(deleteConfirmationTimer);
       deleteConfirmationTimer = null;
     }
     deleteConfirmation = '';
-    setButtonState();
+    if (render) setButtonState();
   }
 
   function resetDeleteConfirmation() {
@@ -111,19 +129,21 @@ export function createVoiceProfileController({
   }
 
   function selectVoice(voiceId, { notify = true } = {}) {
+    if (disposed) return getSelectedVoice();
     const nextVoiceId = findProfile(voiceId) ? voiceId : '';
     const changed = nextVoiceId !== getSelectedVoice();
     setSelectedVoice(nextVoiceId);
     if (elements.profileSelect) elements.profileSelect.value = nextVoiceId;
     if (elements.profileName) elements.profileName.value = findProfile(nextVoiceId)?.name || '';
     clearDeleteConfirmation();
-    if (notify && (changed || nextVoiceId)) onSelection(nextVoiceId, { changed });
+    if (notify && changed) onSelection(nextVoiceId, { changed });
     return nextVoiceId;
   }
 
-  async function responseError(response) {
+  async function responseError(response, isOperationCurrent) {
     try {
-      return String(await readError(response) || '').trim();
+      const message = String(await readError(response) || '').trim();
+      return isOperationCurrent() ? message : '';
     } catch (_) {
       return '';
     }
@@ -131,12 +151,15 @@ export function createVoiceProfileController({
 
   async function load({ forcePreview = false } = {}) {
     if (disposed || !supportsProfiles() || typeof requestList !== 'function') return false;
+    const lifecycle = lifecycleGeneration;
+    const generation = ++listGeneration;
     const engineId = currentEngineId();
+    const current = () => isCurrent(lifecycle, generation, () => listGeneration, engineId);
     try {
       const response = await requestList({ engineId });
-      if (!response?.ok) return false;
+      if (!current() || !response?.ok) return false;
       const data = await response.json();
-      if (disposed || !supportsProfiles() || currentEngineId() !== engineId) return false;
+      if (!current() || !supportsProfiles()) return false;
       const nextProfiles = Array.isArray(data.profiles) ? data.profiles : [];
       const nextSignature = profileSignature(nextProfiles);
       const changed = !profilesLoaded || nextSignature !== signature;
@@ -157,7 +180,6 @@ export function createVoiceProfileController({
       }
       return true;
     } catch (_) {
-      // Existing app behavior treats profile-list availability as non-blocking.
       return false;
     }
   }
@@ -169,22 +191,31 @@ export function createVoiceProfileController({
       container.hidden = !container.hidden;
       return true;
     }
-    const response = await requestRecommended({ engineId: currentEngineId() });
-    if (!response?.ok) return false;
-    const data = await response.json();
-    (data.items || []).forEach(prompt => {
-      const button = env.document?.createElement?.('button');
-      if (!button) return;
-      button.type = 'button';
-      button.className = 'prompt-chip';
-      button.textContent = prompt;
-      button.addEventListener('click', () => {
-        if (elements.promptText) elements.promptText.value = prompt;
+    const lifecycle = lifecycleGeneration;
+    const generation = ++recommendedGeneration;
+    const engineId = currentEngineId();
+    const current = () => isCurrent(lifecycle, generation, () => recommendedGeneration, engineId);
+    try {
+      const response = await requestRecommended({ engineId });
+      if (!current() || !response?.ok) return false;
+      const data = await response.json();
+      if (!current()) return false;
+      (data.items || []).forEach(prompt => {
+        const button = env.document?.createElement?.('button');
+        if (!button) return;
+        button.type = 'button';
+        button.className = 'prompt-chip';
+        button.textContent = prompt;
+        button.addEventListener('click', () => {
+          if (!disposed && elements.promptText) elements.promptText.value = prompt;
+        });
+        container.appendChild(button);
       });
-      container.appendChild(button);
-    });
-    container.hidden = false;
-    return true;
+      container.hidden = false;
+      return true;
+    } catch (_) {
+      return false;
+    }
   }
 
   async function save() {
@@ -198,26 +229,36 @@ export function createVoiceProfileController({
       onProgress(descriptor('profile.save_requirements'), true);
       return false;
     }
+    const lifecycle = lifecycleGeneration;
+    const generation = ++saveGeneration;
+    const engineId = currentEngineId();
+    const current = () => isCurrent(lifecycle, generation, () => saveGeneration, engineId);
     saveInFlight = true;
     if (elements.saveButton) elements.saveButton.disabled = true;
     try {
-      const response = await requestSave({ file, promptText, voiceId, name, engineId: currentEngineId() });
-      if (!response?.ok) throw new Error(await responseError(response));
+      const response = await requestSave({ file, promptText, voiceId, name, engineId });
+      if (!current()) return false;
+      if (!response?.ok) throw new Error(await responseError(response, current));
+      if (!current()) return false;
       const data = await response.json();
+      if (!current()) return false;
       const savedVoiceId = data.profile?.voice_id;
       if (!savedVoiceId) throw new Error('');
       setSelectedVoice(savedVoiceId);
       await load({ forcePreview: true });
+      if (!current()) return false;
       selectVoice(savedVoiceId, { notify: false });
       onProgress(descriptor('profile.saved', { name: data.profile?.name || savedVoiceId }));
       return true;
     } catch (error) {
-      onError(error, descriptor('profile.save_failed'));
+      if (current()) onError(error, descriptor('profile.save_failed'));
       return false;
     } finally {
-      saveInFlight = false;
-      if (elements.saveButton) elements.saveButton.disabled = false;
-      clearDeleteConfirmation();
+      if (generation === saveGeneration) {
+        saveInFlight = false;
+        if (current() && elements.saveButton) elements.saveButton.disabled = false;
+        if (current()) clearDeleteConfirmation();
+      }
     }
   }
 
@@ -233,20 +274,29 @@ export function createVoiceProfileController({
       onProgress(descriptor('profile.name_required'), true);
       return false;
     }
+    const lifecycle = lifecycleGeneration;
+    const generation = ++updateGeneration;
+    const engineId = currentEngineId();
+    const current = () => isCurrent(lifecycle, generation, () => updateGeneration, engineId);
     updateInFlight = true;
     setButtonState();
     try {
-      const response = await requestUpdate({ engineId: currentEngineId(), voiceId, name });
-      if (!response?.ok) throw new Error(await responseError(response));
+      const response = await requestUpdate({ engineId, voiceId, name });
+      if (!current()) return false;
+      if (!response?.ok) throw new Error(await responseError(response, current));
+      if (!current()) return false;
       await load({ forcePreview: false });
+      if (!current()) return false;
       onProgress(descriptor('profile.name_updated'));
       return true;
     } catch (error) {
-      onError(error, descriptor('profile.update_failed'));
+      if (current()) onError(error, descriptor('profile.update_failed'));
       return false;
     } finally {
-      updateInFlight = false;
-      clearDeleteConfirmation();
+      if (generation === updateGeneration) {
+        updateInFlight = false;
+        if (current()) clearDeleteConfirmation();
+      }
     }
   }
 
@@ -263,31 +313,49 @@ export function createVoiceProfileController({
       deleteConfirmation = voiceId;
       if (deleteConfirmationTimer !== null) env.cancelTimer?.(deleteConfirmationTimer);
       deleteConfirmationTimer = env.schedule?.(() => {
-        if (deleteConfirmation === voiceId) clearDeleteConfirmation();
+        if (!disposed && deleteConfirmation === voiceId) clearDeleteConfirmation();
       }, 6000) ?? null;
       setButtonState();
       onProgress(descriptor('profile.confirm_delete', { name }), true);
       return false;
     }
+    const lifecycle = lifecycleGeneration;
+    const generation = ++deleteGeneration;
+    const engineId = currentEngineId();
+    const current = () => isCurrent(lifecycle, generation, () => deleteGeneration, engineId);
     deleteInFlight = true;
     setButtonState();
     try {
-      const response = await requestDelete({ engineId: currentEngineId(), voiceId });
-      if (!response?.ok) throw new Error(await responseError(response));
+      const response = await requestDelete({ engineId, voiceId, operation: generation });
+      if (!current()) return false;
+      if (!response?.ok) throw new Error(await responseError(response, current));
+      if (!current()) return false;
       const result = await response.json();
+      if (!current()) return false;
       if (!result.deleted) throw new Error('');
-      setSelectedVoice('');
-      clearDeleteConfirmation();
-      await load();
-      onSelection('', { changed: true, deleted: true });
+      const deletedSelectedVoice = getSelectedVoice() === voiceId;
+      if (deletedSelectedVoice) setSelectedVoice('');
+      profiles = profiles.filter(profile => profile.voice_id !== voiceId);
+      signature = profileSignature(profiles);
+      renderCopy();
+      const selectedVoice = getSelectedVoice();
+      onProfilesChanged({
+        profiles: profiles.map(profile => ({ ...profile })),
+        selectedVoice,
+        changed: true,
+        forcePreview: false,
+      });
+      if (deletedSelectedVoice) onSelection('', { changed: true, deleted: true });
       onProgress(descriptor('profile.deleted', { name }));
       return true;
     } catch (error) {
-      onError(error, descriptor('profile.delete_failed'));
+      if (current()) onError(error, descriptor('profile.delete_failed'));
       return false;
     } finally {
-      deleteInFlight = false;
-      clearDeleteConfirmation();
+      if (generation === deleteGeneration) {
+        deleteInFlight = false;
+        if (current()) clearDeleteConfirmation();
+      }
     }
   }
 
@@ -307,7 +375,8 @@ export function createVoiceProfileController({
   function dispose() {
     if (disposed) return;
     disposed = true;
-    clearDeleteConfirmation();
+    lifecycleGeneration += 1;
+    clearDeleteConfirmation({ render: false });
     elements.profileSelect?.removeEventListener?.('change', handlers.select);
     elements.recommendButton?.removeEventListener?.('click', handlers.recommend);
     elements.saveButton?.removeEventListener?.('click', handlers.save);

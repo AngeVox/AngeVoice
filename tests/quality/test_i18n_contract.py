@@ -578,21 +578,7 @@ def test_studio_hardcoded_user_copy_matches_the_classified_shrinking_debt_regist
         for finding in scan_studio_user_copy()
     }
     expected = {tuple(item.values()) for item in fingerprints}
-    migrated_profile_owners = {
-        "deleteSelectedVoiceProfile",
-        "loadZipVoiceProfiles",
-        "renderVoiceSelect",
-        "resetDeleteProfileConfirmation",
-        "saveZipVoiceProfile",
-        "updateSelectedVoiceProfileMetadata",
-    }
-    migrated_profile_copy = {
-        tuple(item[key] for key in ("path", "owner", "sink", "text"))
-        for item in registered
-        if item["owner"] in migrated_profile_owners
-        or (item["path"] == "templates/index.html" and item["target_phase"] == "1E-3A")
-    }
-    assert actual == expected - migrated_profile_copy
+    assert actual == expected
 
 
 def test_studio_copy_scanner_finds_natural_language_in_unimported_nested_module(tmp_path: Path) -> None:
