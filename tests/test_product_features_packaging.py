@@ -158,6 +158,7 @@ def test_studio_recording_and_profile_delete_are_capability_driven():
     root = Path(__file__).resolve().parents[1] / "src/kokoro_tts"
     html = (root / "templates/index.html").read_text(encoding="utf-8")
     js = (root / "static/app.js").read_text(encoding="utf-8")
+    profiles = (root / "static/studio/voice-profiles.js").read_text(encoding="utf-8")
     recording = (root / "static/studio/recording.js").read_text(encoding="utf-8")
     reference_preview = (root / "static/studio/reference-audio-preview.js").read_text(encoding="utf-8")
     imports = js[: js.index("const bootstrapEl")]
@@ -182,13 +183,14 @@ def test_studio_recording_and_profile_delete_are_capability_driven():
     assert "modelRequiresPromptText" in imports
     assert "modelRequiresPromptText(currentModel())" in js
     assert "modelSupportsVoiceClone(currentModel())" in js
-    assert "deleteSelectedVoiceProfile" in js
-    assert "updateSelectedVoiceProfileMetadata" in js
-    assert "/v1/reference-audio/${encodeURIComponent(profileEngineId())}/recommended-prompts" in js
+    assert "createVoiceProfileController" in js
+    assert "voiceProfileController?.remove" in js
+    assert "voiceProfileController?.updateName" in js
+    assert "/v1/reference-audio/${encodeURIComponent(engineId)}/recommended-prompts" in js
     assert "isZipVoice" not in js
-    assert "const engineId = profileEngineId();" in js
-    assert "profileEngineId() !== engineId" in js
-    assert js.count("state.voices = state.zipvoiceProfiles.map(profile => profile.voice_id);") >= 2
+    assert "const engineId = currentEngineId();" in profiles
+    assert "currentEngineId() !== engineId" in profiles
+    assert "state.voices = profiles.map(profile => profile.voice_id);" in js
 
 
 def test_update_checker_reports_new_release_without_auto_update():

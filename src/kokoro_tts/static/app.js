@@ -16,6 +16,7 @@ import {
   referenceAudioProfileKey,
   referenceAudioUploadKey
 } from './studio/reference-audio-preview.js';
+import { createVoiceProfileController } from './studio/voice-profiles.js';
 
 const bootstrapEl = document.getElementById('angevoice-bootstrap');
 const bootstrap = bootstrapEl ? JSON.parse(bootstrapEl.textContent || '{}') : {};
@@ -50,9 +51,6 @@ const state = {
   streamTerminalReceived: false,
   lastBlob: null,
   promptAudioFile: null,
-  zipvoiceProfiles: [],
-  zipvoiceProfilesLoaded: false,
-  zipvoiceProfilesSignature: '',
   lastAppliedModelId: '',
   authRejected: false,
   hasCookieSession: false,
@@ -144,6 +142,7 @@ const groups = [
 ];
 let referenceRecorderController = null;
 let referenceAudioPreviewController = null;
+let voiceProfileController = null;
 
 class StreamPlayer {
   constructor() {
@@ -484,7 +483,7 @@ function setZipVoiceExpanded(expanded) {
   if (!els.zipvoiceCard || !els.zipvoiceDetails || !els.zipvoiceToggle) return;
   els.zipvoiceCard.classList.toggle('collapsed', !state.zipvoiceExpanded);
   els.zipvoiceDetails.hidden = !state.zipvoiceExpanded;
-  els.zipvoiceToggle.textContent = state.zipvoiceExpanded ? t('stats.collapse') : t('stats.expand');
+  els.zipvoiceToggle.textContent = state.zipvoiceExpanded ? t('action.collapse') : t('action.expand');
   els.zipvoiceToggle.setAttribute('aria-expanded', String(state.zipvoiceExpanded));
 }
 
@@ -624,7 +623,7 @@ function currentTextNormalization() {
 
 function profileForVoiceId(voiceId) {
   if (!modelSupportsProfiles()) return null;
-  return state.zipvoiceProfiles.find(profile => profile.voice_id === voiceId) || null;
+  return voiceProfileController?.findProfile(voiceId) || null;
 }
 
 function displayVoiceName(voiceId) {
@@ -634,7 +633,9 @@ function displayVoiceName(voiceId) {
 
 function zipVoiceDescriptor(voiceId) {
   const profile = profileForVoiceId(voiceId);
-  return profile ? `${currentModel()?.name || '已保存音色'} · 音色 ID ${profile.voice_id}` : '已保存参考音色';
+  return profile
+    ? t('profile.saved_voice', { voice_id: profile.voice_id })
+    : t('profile.temporary_clone');
 }
 
 function zipVoiceProfileKey(voiceId) {
@@ -697,11 +698,85 @@ function initializeReferenceAudioPreview() {
   });
 }
 
+function initializeVoiceProfileController() {
+  voiceProfileController = createVoiceProfileController({
+    elements: {
+      profileSelect: els.zipvoiceProfileSelect,
+      profileId: els.zipvoiceProfileId,
+      profileName: els.zipvoiceProfileName,
+      promptText: els.promptText,
+      recommendedPrompts: els.zipvoiceRecommendedPrompts,
+      recommendButton: els.zipvoiceRecommendBtn,
+      saveButton: els.zipvoiceSaveProfile,
+      updateButton: els.zipvoiceUpdateProfile,
+      deleteButton: els.zipvoiceDeleteProfile,
+    },
+    requests: {
+      list: ({ engineId }) => apiFetch(`/v1/voice-profiles?engine=${encodeURIComponent(engineId)}`),
+      save: ({ file, promptText, voiceId, name, engineId }) => {
+        const form = new FormData();
+        form.append('reference_audio', file, file.name);
+        form.append('prompt_text', promptText);
+        form.append('voice_id', voiceId);
+        form.append('name', name);
+        return apiFetch(`/v1/voice-profiles/${encodeURIComponent(engineId)}`, { method: 'POST', body: form });
+      },
+      update: ({ engineId, voiceId, name }) => apiFetch(
+        `/v1/voice-profiles/${encodeURIComponent(engineId)}/${encodeURIComponent(voiceId)}`,
+        { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name }) },
+      ),
+      delete: ({ engineId, voiceId }) => apiFetch(
+        `/v1/voice-profiles/${encodeURIComponent(engineId)}/${encodeURIComponent(voiceId)}`,
+        { method: 'DELETE' },
+      ),
+      recommended: ({ engineId }) => apiFetch(`/v1/reference-audio/${encodeURIComponent(engineId)}/recommended-prompts`),
+      readError,
+    },
+    callbacks: {
+      supportsProfiles: modelSupportsProfiles,
+      currentEngineId: profileEngineId,
+      getSelectedVoice: () => state.selectedVoice,
+      setSelectedVoice: voiceId => { state.selectedVoice = voiceId; },
+      getPromptAudioFile: () => state.promptAudioFile,
+      ensureSaveAuthorized: ensureAuthToken,
+      ensureDeleteAuthorized: ensureAuthToken,
+      onProfilesChanged: ({ profiles, selectedVoice, changed, forcePreview }) => {
+        state.voices = profiles.map(profile => profile.voice_id);
+        if (!selectedVoice && state.selectedVoice) state.selectedVoice = '';
+        renderVoiceSelect();
+        renderVoices();
+        if (selectedVoice && (
+          forcePreview
+          || changed
+          || referenceAudioPreviewController?.sourceKey !== zipVoiceProfileKey(selectedVoice)
+        )) {
+          void loadSavedZipVoicePreview(selectedVoice, { force: forcePreview || changed });
+        }
+      },
+      onSelection: (voiceId, { deleted = false } = {}) => {
+        setZipVoiceExpanded(true);
+        if (els.voice) els.voice.value = voiceId;
+        renderVoices();
+        renderFavorite();
+        if (voiceId) {
+          void loadSavedZipVoicePreview(voiceId, { force: true });
+        } else if (state.promptAudioFile) {
+          setPromptAudioFile(state.promptAudioFile);
+        } else if (deleted || !voiceId) {
+          clearZipVoicePreview();
+        }
+      },
+      onProgress: setTranslatedDescriptor,
+      onError: (error, fallbackCopy) => setProgress(error.message || translateDescriptor(fallbackCopy), true),
+    },
+    translate: t,
+  });
+}
+
 function selectZipVoiceTemporaryReference() {
   if (!modelSupportsProfiles()) return;
-  state.selectedVoice = '';
+  voiceProfileController?.selectVoice('', { notify: false });
   if (els.voice) els.voice.value = '';
-  if (els.zipvoiceProfileSelect) els.zipvoiceProfileSelect.value = '';
   renderVoices();
 }
 
@@ -814,8 +889,9 @@ function applyModelUi() {
   const modelChanged = state.lastAppliedModelId !== model.id;
   state.lastAppliedModelId = model.id;
   if (modelChanged && modelSupportsProfiles(model)) {
-    state.voices = state.zipvoiceProfiles.map(profile => profile.voice_id);
-    const selectedProfileExists = state.zipvoiceProfiles.some(profile => profile.voice_id === state.selectedVoice);
+    const profiles = voiceProfileController?.profiles || [];
+    state.voices = profiles.map(profile => profile.voice_id);
+    const selectedProfileExists = profiles.some(profile => profile.voice_id === state.selectedVoice);
     if (!selectedProfileExists) {
       state.selectedVoice = '';
       if (els.voice) els.voice.value = '';
@@ -823,10 +899,10 @@ function applyModelUi() {
     }
     renderVoiceSelect();
     renderVoices();
-    resetDeleteProfileConfirmation();
+    voiceProfileController?.resetDeleteConfirmation();
   }
-  if (modelSupportsProfiles(model) && (modelChanged || !state.zipvoiceProfilesLoaded)) {
-    loadZipVoiceProfiles({ forcePreview: modelChanged });
+  if (modelSupportsProfiles(model) && (modelChanged || !voiceProfileController?.profilesLoaded)) {
+    void loadZipVoiceProfiles({ forcePreview: modelChanged });
   }
   if (!cloneSupported) {
     setPromptAudioFile(null, { loadPreview: modelChanged });
@@ -950,160 +1026,27 @@ function matchingVoices() {
 }
 
 async function loadZipVoiceProfiles({ forcePreview = false } = {}) {
-  if (!modelSupportsProfiles() || !els.zipvoiceProfileSelect) return;
-  const engineId = profileEngineId();
-  try {
-    const response = await apiFetch(`/v1/voice-profiles?engine=${encodeURIComponent(engineId)}`);
-    if (!response.ok) return;
-    const data = await response.json();
-    if (!modelSupportsProfiles() || profileEngineId() !== engineId) return;
-    const nextProfiles = Array.isArray(data.profiles) ? data.profiles : [];
-    const signature = JSON.stringify(nextProfiles.map(profile => [profile.voice_id, profile.name || '', profile.revision || '']));
-    const profilesChanged = signature !== state.zipvoiceProfilesSignature;
-    state.zipvoiceProfiles = nextProfiles;
-    state.zipvoiceProfilesLoaded = true;
-    state.zipvoiceProfilesSignature = signature;
-    els.zipvoiceProfileSelect.innerHTML = '<option value="">临时克隆（使用上传参考）</option>';
-    state.zipvoiceProfiles.forEach(profile => {
-      const option = document.createElement('option');
-      option.value = profile.voice_id;
-      option.textContent = profile.name || profile.voice_id;
-      els.zipvoiceProfileSelect.appendChild(option);
-    });
-    state.voices = state.zipvoiceProfiles.map(profile => profile.voice_id);
-    if (state.selectedVoice && state.voices.includes(state.selectedVoice)) {
-      els.zipvoiceProfileSelect.value = state.selectedVoice;
-      const selectedProfile = profileForVoiceId(state.selectedVoice);
-      if (selectedProfile && els.zipvoiceProfileName) els.zipvoiceProfileName.value = selectedProfile.name || '';
-    } else {
-      state.selectedVoice = '';
-      if (els.zipvoiceProfileName) els.zipvoiceProfileName.value = '';
-    }
-    renderVoiceSelect();
-    renderVoices();
-    resetDeleteProfileConfirmation();
-    if (state.selectedVoice && (
-      forcePreview
-      || profilesChanged
-      || referenceAudioPreviewController?.sourceKey !== zipVoiceProfileKey(state.selectedVoice)
-    )) {
-      await loadSavedZipVoicePreview(state.selectedVoice, { force: forcePreview || profilesChanged });
-    }
-  } catch (_) {
-    // 音色列表需要有效 API Key；生成时仍会给出明确错误。
-  }
+  return voiceProfileController?.load({ forcePreview });
 }
 
 async function loadRecommendedPrompts() {
-  if (!els.zipvoiceRecommendedPrompts) return;
-  if (els.zipvoiceRecommendedPrompts.childElementCount) {
-    els.zipvoiceRecommendedPrompts.hidden = !els.zipvoiceRecommendedPrompts.hidden;
-    return;
-  }
-  const response = await apiFetch(`/v1/reference-audio/${encodeURIComponent(profileEngineId())}/recommended-prompts`);
-  if (!response.ok) return;
-  const data = await response.json();
-  (data.items || []).forEach(prompt => {
-    const button = document.createElement('button');
-    button.type = 'button';
-    button.className = 'prompt-chip';
-    button.textContent = prompt;
-    button.addEventListener('click', () => { els.promptText.value = prompt; });
-    els.zipvoiceRecommendedPrompts.appendChild(button);
-  });
-  els.zipvoiceRecommendedPrompts.hidden = false;
+  return voiceProfileController?.loadRecommendedPrompts();
 }
 
 async function saveZipVoiceProfile() {
-  if (!ensureAuthToken()) return;
-  if (!state.promptAudioFile || !els.promptText.value.trim() || !els.zipvoiceProfileId.value.trim()) {
-    setProgress('保存音色需要 WAV 参考音频、参考文本和音色 ID', true);
-    return;
-  }
-  const form = new FormData();
-  form.append('reference_audio', state.promptAudioFile, state.promptAudioFile.name);
-  form.append('prompt_text', els.promptText.value.trim());
-  form.append('voice_id', els.zipvoiceProfileId.value.trim());
-  form.append('name', els.zipvoiceProfileName.value.trim());
-  const response = await apiFetch(`/v1/voice-profiles/${encodeURIComponent(profileEngineId())}`, { method: 'POST', body: form });
-  if (!response.ok) { setProgress(await readError(response), true); return; }
-  const data = await response.json();
-  state.selectedVoice = data.profile.voice_id;
-  await loadZipVoiceProfiles({ forcePreview: true });
-  els.zipvoiceProfileSelect.value = state.selectedVoice;
-  setProgress(`音色“${data.profile.name || state.selectedVoice}”已保存，可直接复用`);
-  resetDeleteProfileConfirmation();
+  if (ensureAuthToken()) return voiceProfileController?.save();
 }
 
 function resetDeleteProfileConfirmation() {
-  if (els.zipvoiceUpdateProfile) els.zipvoiceUpdateProfile.disabled = !state.selectedVoice;
-  if (!els.zipvoiceDeleteProfile) return;
-  els.zipvoiceDeleteProfile.disabled = !state.selectedVoice;
-  els.zipvoiceDeleteProfile.dataset.confirming = '';
-  els.zipvoiceDeleteProfile.textContent = '删除音色';
-  els.zipvoiceDeleteProfile.classList.remove('confirming');
+  voiceProfileController?.resetDeleteConfirmation();
 }
 
 async function updateSelectedVoiceProfileMetadata() {
-  if (!modelSupportsProfiles() || !state.selectedVoice) {
-    setProgress('请先选择已保存音色', true);
-    return;
-  }
-  const name = els.zipvoiceProfileName.value.trim();
-  if (!name) {
-    setProgress('请输入新的显示名称', true);
-    return;
-  }
-  if (els.zipvoiceUpdateProfile) els.zipvoiceUpdateProfile.disabled = true;
-  try {
-    const response = await apiFetch(`/v1/voice-profiles/${encodeURIComponent(profileEngineId())}/${encodeURIComponent(state.selectedVoice)}`, {
-      method: 'PATCH',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ name })
-    });
-    if (!response.ok) throw new Error(await readError(response));
-    setProgress('音色名称已更新');
-    await loadZipVoiceProfiles({ forcePreview: false });
-    renderVoices();
-  } catch (error) {
-    setProgress(error.message || '更新音色名称失败', true);
-  } finally {
-    resetDeleteProfileConfirmation();
-  }
+  return voiceProfileController?.updateName();
 }
 
 async function deleteSelectedVoiceProfile() {
-  if (!modelSupportsProfiles() || !state.selectedVoice || !ensureAuthToken()) return;
-  const voiceId = state.selectedVoice;
-  const profileName = displayVoiceName(voiceId);
-  if (els.zipvoiceDeleteProfile.dataset.confirming !== voiceId) {
-    els.zipvoiceDeleteProfile.dataset.confirming = voiceId;
-    els.zipvoiceDeleteProfile.textContent = '再次点击确认删除';
-    els.zipvoiceDeleteProfile.classList.add('confirming');
-    setProgress(`即将删除音色“${profileName}”。再次点击删除按钮确认，此操作不可撤销。`, true);
-    window.setTimeout(() => {
-      if (els.zipvoiceDeleteProfile?.dataset.confirming === voiceId) resetDeleteProfileConfirmation();
-    }, 6000);
-    return;
-  }
-  els.zipvoiceDeleteProfile.disabled = true;
-  try {
-    const response = await apiFetch(`/v1/voice-profiles/${encodeURIComponent(profileEngineId())}/${encodeURIComponent(voiceId)}`, { method: 'DELETE' });
-    if (!response.ok) throw new Error(await readError(response));
-    const result = await response.json();
-    if (!result.deleted) throw new Error('音色不存在或已被删除');
-    state.selectedVoice = '';
-    clearZipVoicePreview();
-    if (els.zipvoiceProfileSelect) els.zipvoiceProfileSelect.value = '';
-    if (els.voice) els.voice.value = '';
-    await loadZipVoiceProfiles();
-    if (state.promptAudioFile) setPromptAudioFile(state.promptAudioFile);
-    setProgress(`音色“${profileName}”已删除，持久化参考音频与元数据已清理`);
-  } catch (error) {
-    setProgress(`删除音色失败：${error.message || '未知错误'}`, true);
-  } finally {
-    resetDeleteProfileConfirmation();
-  }
+  if (ensureAuthToken()) return voiceProfileController?.remove();
 }
 
 function renderVoiceSelect() {
@@ -1111,7 +1054,9 @@ function renderVoiceSelect() {
   if (modelSupportsProfiles()) {
     const tempOption = document.createElement('option');
     tempOption.value = '';
-    tempOption.textContent = '临时克隆（上传参考音频）';
+    tempOption.textContent = state.promptAudioFile
+      ? t('profile.temporary_clone_uploaded')
+      : t('profile.temporary_clone');
     els.voice.appendChild(tempOption);
   }
   state.voices.forEach(voice => {
@@ -1701,41 +1646,11 @@ function bindEvents() {
   els.voice.addEventListener('change', () => {
     state.selectedVoice = els.voice.value;
     if (els.zipvoiceProfileSelect && modelSupportsProfiles()) {
-      els.zipvoiceProfileSelect.value = state.selectedVoice;
-      if (state.selectedVoice) {
-        const selectedProfile = profileForVoiceId(state.selectedVoice);
-        if (selectedProfile && els.zipvoiceProfileName) els.zipvoiceProfileName.value = selectedProfile.name || '';
-        resetDeleteProfileConfirmation();
-        loadSavedZipVoicePreview(state.selectedVoice, { force: true });
-      } else if (state.promptAudioFile) {
-        setPromptAudioFile(state.promptAudioFile);
-      } else {
-        clearZipVoicePreview();
-      }
+      voiceProfileController?.selectVoice(state.selectedVoice);
     }
     renderVoices();
-  });
-  els.zipvoiceProfileSelect?.addEventListener('change', () => {
-    setZipVoiceExpanded(true);
-    state.selectedVoice = els.zipvoiceProfileSelect.value;
-    const selectedProfile = profileForVoiceId(state.selectedVoice);
-    if (els.zipvoiceProfileName) els.zipvoiceProfileName.value = selectedProfile?.name || '';
-    resetDeleteProfileConfirmation();
-    els.voice.value = state.selectedVoice;
-    renderVoices();
-    if (state.selectedVoice) {
-      loadSavedZipVoicePreview(state.selectedVoice, { force: true });
-    } else if (state.promptAudioFile) {
-      setPromptAudioFile(state.promptAudioFile);
-    } else {
-      clearZipVoicePreview();
-    }
   });
   els.zipvoiceToggle?.addEventListener('click', () => setZipVoiceExpanded(!state.zipvoiceExpanded));
-  els.zipvoiceRecommendBtn?.addEventListener('click', loadRecommendedPrompts);
-  els.zipvoiceSaveProfile?.addEventListener('click', saveZipVoiceProfile);
-  els.zipvoiceUpdateProfile?.addEventListener('click', updateSelectedVoiceProfileMetadata);
-  els.zipvoiceDeleteProfile?.addEventListener('click', deleteSelectedVoiceProfile);
   els.voiceSearch.addEventListener('input', renderVoices);
   els.promptAudio?.addEventListener('change', () => {
     const file = els.promptAudio.files?.[0] || null;
@@ -1827,6 +1742,7 @@ function bindEvents() {
     }
     setMetricsCollapsed(state.metricsCollapsed);
     setZipVoiceExpanded(state.zipvoiceExpanded);
+    voiceProfileController?.renderCopy();
     applyModelUi();
     renderVoiceTabs();
     renderVoices();
@@ -1848,6 +1764,7 @@ function init() {
   }
   els.text.value = t('studio.compose.default_text');
   initializeReferenceAudioPreview();
+  initializeVoiceProfileController();
   initializeReferenceRecorder();
   applyStreamToggleState();
   applyTheme(state.theme);

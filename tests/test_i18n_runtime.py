@@ -353,10 +353,10 @@ def test_catalogs_are_frozen_side_effect_free_native_esm_modules() -> None:
     assert json.loads(completed.stdout) == {
         "exportsOnlyMessages": True,
         "allFrozen": True,
-        "zhDomainCounts": [15, 115, 7],
-        "enDomainCounts": [15, 115, 7],
-        "zhCount": 137,
-        "enCount": 137,
+            "zhDomainCounts": [15, 149, 7],
+            "enDomainCounts": [15, 149, 7],
+            "zhCount": 171,
+            "enCount": 171,
         "sameKeys": True,
     }
 

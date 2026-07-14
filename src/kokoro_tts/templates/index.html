@@ -103,24 +103,24 @@
           </div>
           <section class="zipvoice-card collapsed" id="zipvoice-card" hidden>
             <div class="zipvoice-title">
-              <div><p class="eyebrow">Voice Profile</p><h3>参考音色管理（可选）</h3></div>
-              <div class="zipvoice-title-actions"><span class="zipvoice-badge">官方建议少于 3 秒</span><button type="button" class="ghost-button small" id="zipvoice-toggle" aria-expanded="false" aria-controls="zipvoice-details">展开</button></div>
+              <div><p class="eyebrow" data-i18n="profile.eyebrow">Voice Profile</p><h3 data-i18n="profile.title">参考音色管理（可选）</h3></div>
+              <div class="zipvoice-title-actions"><span class="zipvoice-badge" data-i18n="profile.duration_badge">官方建议少于 3 秒</span><button type="button" class="ghost-button small" id="zipvoice-toggle" aria-expanded="false" aria-controls="zipvoice-details" data-i18n="action.expand">展开</button></div>
             </div>
-            <p class="zipvoice-summary">需要上传参考录音、选择或管理已保存音色时再展开。</p>
+            <p class="zipvoice-summary" data-i18n="profile.summary">需要上传参考录音、选择或管理已保存音色时再展开。</p>
             <div class="zipvoice-details" id="zipvoice-details" hidden>
-              <p class="zipvoice-tip">ZipVoice 官方建议单人参考音频少于 3 秒。较长录音仍可使用，但可能降低合成速度或质量；AngeVoice 最长允许 15 秒，不会自动截断。</p>
-              <p class="zipvoice-tip">请使用安静、自然的 WAV 参考录音，并填写完全对应的朗读文本；开头不要保留静音或杂音。</p>
-              <p class="zipvoice-tip">流式模式为分句流式：第一句生成后即可开始播放，不等同于字级实时输出。</p>
+              <p class="zipvoice-tip" data-i18n="profile.reference_duration_tip">ZipVoice 官方建议单人参考音频少于 3 秒。较长录音仍可使用，但可能降低合成速度或质量；AngeVoice 最长允许 15 秒，不会自动截断。</p>
+              <p class="zipvoice-tip" data-i18n="profile.reference_quality_tip">请使用安静、自然的 WAV 参考录音，并填写完全对应的朗读文本；开头不要保留静音或杂音。</p>
+              <p class="zipvoice-tip" data-i18n="profile.segmented_stream_tip">流式模式为分句流式：第一句生成后即可开始播放，不等同于字级实时输出。</p>
               <audio id="zipvoice-reference-preview" class="zipvoice-reference-preview" controls hidden></audio>
-              <label class="field full"><span>参考文本 <button type="button" class="inline-link" id="zipvoice-recommend-btn">推荐录音文本</button></span><textarea id="prompt-text" class="prompt-text" placeholder="请填写参考录音中实际朗读的文字"></textarea><small class="hint">参考文本仅用于描述参考录音和克隆音色，不会作为要生成的正文发送。正文请填写在上方“合成文本”区域。</small></label>
+              <label class="field full"><span><span data-i18n="profile.prompt_text">参考文本</span> <button type="button" class="inline-link" id="zipvoice-recommend-btn" data-i18n="profile.recommended_prompts">推荐录音文本</button></span><textarea id="prompt-text" class="prompt-text" data-i18n-placeholder="profile.prompt_text_placeholder"></textarea><small class="hint" data-i18n="profile.prompt_text_hint">参考文本仅用于描述参考录音和克隆音色，不会作为要生成的正文发送。正文请填写在上方“合成文本”区域。</small></label>
               <div class="recommended-prompts" id="zipvoice-recommended-prompts" hidden></div>
               <div class="zipvoice-profile-grid">
-                <label class="field"><span>已保存音色</span><select id="zipvoice-profile-select"><option value="">临时克隆（使用上传参考）</option></select></label>
-                <label class="field"><span>新音色 ID</span><input id="zipvoice-profile-id" placeholder="voice_001" /></label>
-                <label class="field"><span>显示名称</span><input id="zipvoice-profile-name" placeholder="我的音色" /></label>
-                <button type="button" class="secondary-button zipvoice-save" id="zipvoice-save-profile">保存音色</button>
-                <button type="button" class="ghost-button zipvoice-update" id="zipvoice-update-profile" disabled>更新名称</button>
-                <button type="button" class="danger-button zipvoice-delete" id="zipvoice-delete-profile" disabled>删除音色</button>
+                <label class="field"><span data-i18n="profile.saved_voice_label">已保存音色</span><select id="zipvoice-profile-select"><option value="" data-i18n="profile.temporary_clone">临时克隆（使用上传参考）</option></select></label>
+                <label class="field"><span data-i18n="profile.new_voice_id">新音色 ID</span><input id="zipvoice-profile-id" data-i18n-placeholder="profile.new_voice_id" placeholder="voice_001" /></label>
+                <label class="field"><span data-i18n="profile.display_name">显示名称</span><input id="zipvoice-profile-name" data-i18n-placeholder="profile.display_name_placeholder" /></label>
+                <button type="button" class="secondary-button zipvoice-save" id="zipvoice-save-profile" data-i18n="profile.save">保存音色</button>
+                <button type="button" class="ghost-button zipvoice-update" id="zipvoice-update-profile" disabled data-i18n="profile.update_name">更新名称</button>
+                <button type="button" class="danger-button zipvoice-delete" id="zipvoice-delete-profile" disabled data-i18n="profile.delete">删除音色</button>
               </div>
             </div>
           </section>
