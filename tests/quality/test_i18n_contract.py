@@ -494,6 +494,12 @@ def test_zh_and_en_catalogs_have_identical_keys_and_placeholders() -> None:
         assert PLACEHOLDER.findall(zh[key]) == PLACEHOLDER.findall(en[key]), key
 
 
+def test_english_settings_template_owns_spacing_before_the_session_notice() -> None:
+    english = _catalog("en")
+    assert english["settings.session_notice"] == english["settings.session_notice"].lstrip()
+    assert "{admin}. {session}" in english["settings.hint"]
+
+
 def test_current_static_and_javascript_translation_references_exist() -> None:
     report = scan_i18n_references()
     assert report.referenced

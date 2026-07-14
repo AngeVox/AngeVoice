@@ -61,9 +61,10 @@ export function createReferenceRecorderController({
   const supportsProfiles = callbacks.supportsProfiles ?? (() => false);
   const expandProfiles = callbacks.expandProfiles ?? (() => {});
   let recorder = null;
+  let startPromise = null;
 
-  function setControls(active) {
-    if (elements.startButton) elements.startButton.disabled = Boolean(active);
+  function setControls(active, starting = false) {
+    if (elements.startButton) elements.startButton.disabled = Boolean(active || starting);
     if (elements.stopButton) elements.stopButton.disabled = !active;
   }
 
@@ -122,7 +123,7 @@ export function createReferenceRecorderController({
     return file;
   }
 
-  async function start() {
+  async function startRecording() {
     if (!supportsVoiceClone()) return false;
     if (supportsProfiles()) expandProfiles();
     if (!env.isSecureContext()) {
@@ -136,6 +137,7 @@ export function createReferenceRecorderController({
     if (recorder) await stop({ discard: true });
 
     const pending = {};
+    setControls(false, true);
     try {
       pending.stream = await env.getUserMedia({
         audio: {
@@ -192,6 +194,21 @@ export function createReferenceRecorderController({
       onStatus(descriptor('studio.record.microphone_unavailable'), false);
       return false;
     }
+  }
+
+  function start() {
+    if (startPromise) return startPromise;
+    const operation = startRecording();
+    startPromise = operation;
+    void operation.then(
+      () => {
+        if (startPromise === operation) startPromise = null;
+      },
+      () => {
+        if (startPromise === operation) startPromise = null;
+      },
+    );
+    return operation;
   }
 
   return Object.freeze({

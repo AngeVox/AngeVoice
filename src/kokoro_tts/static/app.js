@@ -639,7 +639,11 @@ function zipVoiceDescriptor(voiceId) {
 
 function zipVoiceProfileKey(voiceId) {
   const profile = profileForVoiceId(voiceId);
-  return referenceAudioProfileKey(voiceId, profile?.revision);
+  return referenceAudioProfileKey({
+    engineId: profileEngineId(),
+    voiceId,
+    revision: profile?.revision,
+  });
 }
 
 function clearZipVoicePreview() {
@@ -651,7 +655,7 @@ async function normalizeUploadedZipVoicePreview(file, { force = false } = {}) {
   if (bootstrap.authRequired && !state.token && !state.hasCookieSession) return;
   await referenceAudioPreviewController?.previewUploaded({
     file,
-    key: referenceAudioUploadKey(file),
+    key: referenceAudioUploadKey({ engineId: profileEngineId(), file }),
     force,
   });
 }

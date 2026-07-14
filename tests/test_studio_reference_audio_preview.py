@@ -54,25 +54,27 @@ def test_reference_audio_identity_and_wav_response_normalization_are_portable() 
           referenceAudioProfileKey,
           responseAudioWavBlob,
         }} from {json.dumps(MODULE.as_uri())};
-        const file = {{ name: 'voice.wav', size: 42, lastModified: 99 }};
+        const file = {{ name: 'voice/clip.wav', size: 42, lastModified: 99 }};
         const normalized = await responseAudioWavBlob(new Response(
           new Blob([new Uint8Array([1, 2, 3])], {{ type: 'application/octet-stream' }}),
         ));
         const existing = new Blob([new Uint8Array([4, 5])], {{ type: 'audio/wav' }});
         const preserved = await responseAudioWavBlob(new Response(existing));
         console.log(JSON.stringify({{
-          uploadKey: referenceAudioUploadKey(file),
-          emptyUploadKey: referenceAudioUploadKey(null),
-          profileKey: referenceAudioProfileKey('voice/1', 'r2'),
+          uploadKey: referenceAudioUploadKey({{ engineId: ' ZipVoice ', file }}),
+          emptyUploadKey: referenceAudioUploadKey({{ engineId: 'zipvoice', file: null }}),
+          profileKey: referenceAudioProfileKey({{ engineId: 'ZIPVOICE', voiceId: 'voice/1', revision: 'r2' }}),
+          otherEngineKey: referenceAudioProfileKey({{ engineId: 'kokoro', voiceId: 'voice/1', revision: 'r2' }}),
           normalized: {{ type: normalized.type, size: normalized.size }},
           preserved: {{ type: preserved.type, size: preserved.size }},
         }}));
         """
     )
     assert result == {
-        "uploadKey": "upload:voice.wav:42:99",
+        "uploadKey": "upload:zipvoice:voice%2Fclip.wav:42:99",
         "emptyUploadKey": "",
-        "profileKey": "profile:voice/1:r2",
+        "profileKey": "profile:zipvoice:voice%2F1:r2",
+        "otherEngineKey": "profile:kokoro:voice%2F1:r2",
         "normalized": {"type": "audio/wav", "size": 3},
         "preserved": {"type": "audio/wav", "size": 2},
     }
@@ -269,6 +271,92 @@ def test_long_uploaded_preview_warns_once_and_same_source_is_not_refetched() -> 
     }
 
 
+def test_forced_same_source_refresh_replaces_its_object_url() -> None:
+    result = _node(
+        f"""
+        import {{ createReferenceAudioPreviewController }} from {json.dumps(MODULE.as_uri())};
+        {ELEMENT_FIXTURE}
+        const created = [];
+        const revoked = [];
+        let requests = 0;
+        const controller = createReferenceAudioPreviewController({{
+          element: new FakeElement(),
+          requests: {{
+            uploaded: async () => {{
+              requests += 1;
+              return new Response(new Blob([new Uint8Array(requests)], {{ type: 'audio/wav' }}));
+            }},
+          }},
+          environment: {{
+            URL: {{
+              createObjectURL: () => {{ const url = `blob:refresh-${{created.length + 1}}`; created.push(url); return url; }},
+              revokeObjectURL: url => revoked.push(url),
+            }},
+            setTimeout: callback => {{ callback(); return 1; }},
+            clearTimeout: () => {{}},
+          }},
+        }});
+        const file = {{ name: 'same.wav', size: 1, lastModified: 2 }};
+        const key = 'upload:zipvoice:same.wav:1:2';
+        const first = await controller.previewUploaded({{ file, key }});
+        const forced = await controller.previewUploaded({{ file, key, force: true }});
+        console.log(JSON.stringify({{ first, forced, requests, created, revoked, sourceKey: controller.sourceKey }}));
+        """
+    )
+    assert result == {
+        "first": True,
+        "forced": True,
+        "requests": 2,
+        "created": ["blob:refresh-1", "blob:refresh-2"],
+        "revoked": ["blob:refresh-1"],
+        "sourceKey": "upload:zipvoice:same.wav:1:2",
+    }
+
+
+def test_disposed_preview_does_not_replace_media_or_report_ready_after_a_late_response() -> None:
+    result = _node(
+        f"""
+        import {{ createReferenceAudioPreviewController }} from {json.dumps(MODULE.as_uri())};
+        {ELEMENT_FIXTURE}
+        const element = new FakeElement();
+        const progress = [];
+        let resolveResponse;
+        const response = new Promise(resolve => {{ resolveResponse = resolve; }});
+        const controller = createReferenceAudioPreviewController({{
+          element,
+          requests: {{ uploaded: () => response }},
+          environment: {{
+            URL: {{ createObjectURL: () => {{ throw new Error('must not create a URL'); }}, revokeObjectURL() {{}} }},
+          }},
+          callbacks: {{ onProgress: copy => progress.push(copy.key) }},
+        }});
+        const pending = controller.previewUploaded({{
+          file: {{ name: 'late.wav', size: 1, lastModified: 1 }},
+          key: 'upload:zipvoice:late.wav:1:1',
+        }});
+        controller.dispose();
+        resolveResponse(new Response(new Blob([new Uint8Array([1])], {{ type: 'audio/wav' }})));
+        const loaded = await pending;
+        console.log(JSON.stringify({{
+          loaded,
+          sourceKey: controller.sourceKey,
+          ready: controller.ready,
+          active: controller.active,
+          hasSrc: Boolean(element.getAttribute('src')),
+          progress,
+        }}));
+        """
+    )
+    assert result == {
+        "loaded": False,
+        "sourceKey": "",
+        "ready": False,
+        "active": False,
+        "hasSrc": False,
+        "progress": ["studio.reference_audio.preparing"],
+    }
+
+
 def test_replacing_preview_retires_previous_url_without_binding_timer_to_environment() -> None:
     result = _node(
         f"""
@@ -428,3 +516,6 @@ def test_reference_audio_preview_module_is_pure_and_app_only_composes_it() -> No
     assert "if (!event.persisted) referenceAudioPreviewController?.dispose();" in app
     assert "referenceAudioPreviewController?.dispose()" in app
     assert "signal," in app
+    assert "referenceAudioUploadKey({ engineId: profileEngineId(), file })" in app
+    assert "referenceAudioProfileKey({" in app
+    assert "engineId: profileEngineId()," in app

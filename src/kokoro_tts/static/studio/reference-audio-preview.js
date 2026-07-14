@@ -4,13 +4,21 @@ function descriptor(key, params = null) {
   return { key, params };
 }
 
-export function referenceAudioUploadKey(file) {
-  if (!file) return '';
-  return `upload:${file.name || 'reference.wav'}:${file.size || 0}:${file.lastModified || 0}`;
+function sourceKeyPart(value) {
+  return encodeURIComponent(String(value ?? ''));
 }
 
-export function referenceAudioProfileKey(voiceId, revision = '') {
-  return `profile:${voiceId}:${revision || ''}`;
+function normalizedEngineId(engineId) {
+  return String(engineId ?? '').trim().toLowerCase();
+}
+
+export function referenceAudioUploadKey({ engineId, file } = {}) {
+  if (!file) return '';
+  return `upload:${sourceKeyPart(normalizedEngineId(engineId))}:${sourceKeyPart(file.name || 'reference.wav')}:${sourceKeyPart(file.size || 0)}:${sourceKeyPart(file.lastModified || 0)}`;
+}
+
+export function referenceAudioProfileKey({ engineId, voiceId, revision = '' } = {}) {
+  return `profile:${sourceKeyPart(normalizedEngineId(engineId))}:${sourceKeyPart(voiceId)}:${sourceKeyPart(revision)}`;
 }
 
 export async function responseAudioWavBlob(response, BlobType = Blob) {
@@ -92,9 +100,9 @@ export function createReferenceAudioPreviewController({
     clearMedia();
   }
 
-  function replaceBlob(blob, nextSourceKey) {
+  function replaceBlob(blob, nextSourceKey, { force = false } = {}) {
     if (!element || !blob || disposed) return false;
-    if (nextSourceKey && nextSourceKey === sourceKey && element.getAttribute?.('src')) return false;
+    if (!force && nextSourceKey && nextSourceKey === sourceKey && element.getAttribute?.('src')) return false;
     const playableBlob = blob.type === 'audio/wav'
       ? blob
       : new env.Blob([blob], { type: 'audio/wav' });
@@ -144,7 +152,7 @@ export function createReferenceAudioPreviewController({
     }
   }
 
-  async function previewUploaded({ file, key = referenceAudioUploadKey(file), force = false } = {}) {
+  async function previewUploaded({ file, key = referenceAudioUploadKey({ file }), force = false } = {}) {
     if (!file || typeof requestUploaded !== 'function') return false;
     const request = begin(key, force);
     if (!request) return false;
@@ -155,9 +163,12 @@ export function createReferenceAudioPreviewController({
       if (!response.ok) throw new Error(await responseError(response));
       const blob = await responseAudioWavBlob(response, env.Blob);
       if (!isCurrent(request)) return false;
-      replaceBlob(blob, key);
+      if (!replaceBlob(blob, key, { force })) {
+        finish(request);
+        return false;
+      }
       const duration = Number(response.headers?.get?.('X-AngeVoice-Duration-Seconds'));
-      finish(request);
+      if (!finish(request)) return false;
       if (Number.isFinite(duration) && duration > REFERENCE_AUDIO_RECOMMENDED_SECONDS) {
         onDurationWarning(duration);
       } else {
@@ -190,8 +201,11 @@ export function createReferenceAudioPreviewController({
       if (!response.ok) throw new Error(await responseError(response));
       const blob = await responseAudioWavBlob(response, env.Blob);
       if (!isCurrent(request)) return false;
-      replaceBlob(blob, key);
-      finish(request);
+      if (!replaceBlob(blob, key, { force })) {
+        finish(request);
+        return false;
+      }
+      if (!finish(request)) return false;
       onProgress(descriptor('studio.reference_audio.saved_ready', { name }));
       return true;
     } catch (error) {

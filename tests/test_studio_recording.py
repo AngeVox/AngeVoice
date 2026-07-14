@@ -269,6 +269,132 @@ def test_recording_controller_ignores_queued_audio_from_a_released_session() -> 
     assert result == {"fileCount": 1, "wavBytes": 64}
 
 
+def test_recording_controller_coalesces_pending_starts_and_owns_one_session() -> None:
+    result = _node(
+        f"""
+        import {{ createReferenceRecorderController }} from {json.dumps(MODULE.as_uri())};
+        const tracks = [];
+        const nodes = [];
+        const contexts = [];
+        let resolveMedia;
+        let getUserMediaCalls = 0;
+        const media = new Promise(resolve => {{ resolveMedia = resolve; }});
+        const makeNode = kind => {{
+          const node = {{ kind, connects: 0, disconnects: 0, connect() {{ this.connects += 1; }}, disconnect() {{ this.disconnects += 1; }} }};
+          nodes.push(node);
+          return node;
+        }};
+        class FakeContext {{
+          constructor() {{ this.sampleRate = 10; this.destination = {{}}; this.closes = 0; contexts.push(this); }}
+          createMediaStreamSource() {{ return makeNode('source'); }}
+          createScriptProcessor() {{ return makeNode('processor'); }}
+          createGain() {{ const gain = makeNode('gain'); gain.gain = {{ value: 1 }}; return gain; }}
+          async close() {{ this.closes += 1; }}
+        }}
+        const startButton = {{ disabled: false }};
+        const stopButton = {{ disabled: true }};
+        const controller = createReferenceRecorderController({{
+          elements: {{ startButton, stopButton }},
+          environment: {{
+            isSecureContext: () => true,
+            getUserMedia: () => {{ getUserMediaCalls += 1; return media; }},
+            AudioContext: FakeContext,
+            Blob,
+            File: class {{}},
+          }},
+          callbacks: {{ supportsVoiceClone: () => true }},
+        }});
+        const first = controller.start();
+        const second = controller.start();
+        const pending = {{
+          samePromise: first === second,
+          getUserMediaCalls,
+          contexts: contexts.length,
+          startDisabled: startButton.disabled,
+          stopDisabled: stopButton.disabled,
+        }};
+        const track = {{ stops: 0, stop() {{ this.stops += 1; }} }};
+        tracks.push(track);
+        resolveMedia({{ getTracks: () => tracks }});
+        const started = await Promise.all([first, second]);
+        await controller.discard();
+        console.log(JSON.stringify({{
+          pending,
+          started,
+          activeAfterStart: contexts.length === 1 && nodes.length === 3,
+          activeAfterStop: controller.active,
+          controlsAfterStop: [startButton.disabled, stopButton.disabled],
+          trackStops: track.stops,
+          closes: contexts.map(context => context.closes),
+          disconnects: nodes.map(node => node.disconnects),
+        }}));
+        """
+    )
+    assert result == {
+        "pending": {
+            "samePromise": True,
+            "getUserMediaCalls": 1,
+            "contexts": 0,
+            "startDisabled": True,
+            "stopDisabled": True,
+        },
+        "started": [True, True],
+        "activeAfterStart": True,
+        "activeAfterStop": False,
+        "controlsAfterStop": [False, True],
+        "trackStops": 1,
+        "closes": [1],
+        "disconnects": [1, 1, 1],
+    }
+
+
+def test_recording_controller_clears_pending_start_after_failure_and_allows_retry() -> None:
+    result = _node(
+        f"""
+        import {{ createReferenceRecorderController }} from {json.dumps(MODULE.as_uri())};
+        const startButton = {{ disabled: false }};
+        const stopButton = {{ disabled: true }};
+        let calls = 0;
+        class FakeContext {{
+          constructor() {{ this.sampleRate = 10; this.destination = {{}}; }}
+          createMediaStreamSource() {{ return {{ connect() {{}}, disconnect() {{}} }}; }}
+          createScriptProcessor() {{ return {{ connect() {{}}, disconnect() {{}} }}; }}
+          createGain() {{ return {{ gain: {{ value: 1 }}, connect() {{}}, disconnect() {{}} }}; }}
+          async close() {{}}
+        }}
+        const controller = createReferenceRecorderController({{
+          elements: {{ startButton, stopButton }},
+          environment: {{
+            isSecureContext: () => true,
+            getUserMedia: async () => {{
+              calls += 1;
+              if (calls === 1) {{ const error = new Error('denied'); error.name = 'NotAllowedError'; throw error; }}
+              return {{ getTracks: () => [{{ stop() {{}} }}] }};
+            }},
+            AudioContext: FakeContext,
+            Blob,
+            File: class {{}},
+          }},
+          callbacks: {{ supportsVoiceClone: () => true }},
+        }});
+        const failed = await controller.start();
+        const controlsAfterFailure = [startButton.disabled, stopButton.disabled];
+        const retried = await controller.start();
+        const controlsWhileActive = [startButton.disabled, stopButton.disabled];
+        await controller.discard();
+        console.log(JSON.stringify({{ failed, retried, calls, controlsAfterFailure, controlsWhileActive, active: controller.active }}));
+        """
+    )
+    assert result == {
+        "failed": False,
+        "retried": True,
+        "calls": 2,
+        "controlsAfterFailure": [False, True],
+        "controlsWhileActive": [True, False],
+        "active": False,
+    }
+
+
 def test_recording_controller_reports_environment_failures_and_cleans_partial_stream() -> None:
     result = _node(
         f"""
