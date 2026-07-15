@@ -559,15 +559,22 @@ def test_zipvoice_frontend_preview_is_not_reloaded_by_status_poll_and_saved_voic
     """播放器不得被状态轮询反复重载，保存音色不得携带页面临时参考文本。"""
     static = Path(__file__).resolve().parents[1] / "src" / "kokoro_tts" / "static"
     js = (static / "app.js").read_text(encoding="utf-8")
+    stream_synthesis = (static / "studio" / "stream-synthesis.js").read_text(encoding="utf-8")
     preview = (static / "studio" / "reference-audio-preview.js").read_text(encoding="utf-8")
     assert "state.lastAppliedModelId !== model.id" in js
     assert "loadZipVoiceProfiles({ forcePreview: modelChanged })" in js
     assert "nextSourceKey === sourceKey" in preview
     assert "activeRequest?.sourceKey === nextSourceKey" in preview
-    assert "if (modelRequiresPromptText(currentModel()) && !voice && promptAudio)" in js
-    assert "payload.prompt_text = els.promptText.value.trim()" in js
+    assert "streamSynthesisSnapshot" in js
+    assert "createStreamSynthesisController" in js
+    assert "promptText: els.promptText.value.trim()" in js
+    assert "snapshot.requiresPromptText" in stream_synthesis
+    assert "!snapshot.voice" in stream_synthesis
+    assert "promptAudio" in stream_synthesis
+    assert "payload.prompt_text = snapshot.promptText" in stream_synthesis
+    assert "modelRequiresPromptText(currentModel()) && !voice && promptAudio" not in js
+    assert "payload.prompt_text = els.promptText.value.trim()" not in js
     assert "isZipVoice" not in js
-    assert "临时克隆才发送参考文本" in js
     assert "t('studio.preview.generate')" in js
     assert _catalog("zh-cn")["studio.preview.generate"] == "生成示例音频"
     assert _catalog("en")["studio.preview.generate"] == "Generate sample audio"

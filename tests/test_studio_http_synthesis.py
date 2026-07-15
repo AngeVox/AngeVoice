@@ -433,6 +433,44 @@ def test_http_module_is_pure_esm_and_app_is_only_the_composition_player_and_erro
     assert "httpSynthesisController?.dispose()" in app
 
 
+def test_app_refresh_authority_is_claimed_before_each_controller_start() -> None:
+    app = APP.read_text(encoding="utf-8")
+    authority = re.search(
+        r"let latestSynthesisRefreshOwner = '';(?P<body>.*?)\n\}\n\nfunction readList",
+        app,
+        re.DOTALL,
+    )
+    assert authority
+    assert authority.group("body").count("latestSynthesisRefreshOwner") == 2
+    assert "refreshServiceState()" in authority.group("body")
+    assert "if (httpSynthesisController?.active) return;" not in app
+
+    http_body = re.search(
+        r"function synthesizeHttp\([^)]*\) \{(?P<body>.*?)\n\}", app, re.DOTALL
+    )
+    stream_body = re.search(
+        r"function synthesizeStream\([^)]*\) \{(?P<body>.*?)\n\}", app, re.DOTALL
+    )
+    assert http_body and stream_body
+    http_source = http_body.group("body")
+    stream_source = stream_body.group("body")
+    assert "onRefresh: () => refreshForSynthesisOwner('http')" in http_source
+    assert http_source.index("claimSynthesisRefresh('http')") < http_source.index(
+        "httpSynthesisController.start("
+    )
+    assert stream_source.index("claimSynthesisRefresh('stream')") < stream_source.index(
+        "streamSynthesisController.start("
+    )
+    assert app.count("claimSynthesisRefresh('http')") == 1
+    assert app.count("claimSynthesisRefresh('stream')") == 1
+    stop_body = re.search(
+        r"async function stopCurrent\(\) \{(?P<body>.*?)\n\}", app, re.DOTALL
+    )
+    assert stop_body
+    assert "claimSynthesisRefresh" not in stop_body.group("body")
+    assert "latestSynthesisRefreshOwner" not in stop_body.group("body")
+
+
 def test_http_debt_ratchet_removes_exactly_the_eight_1e_3b_fingerprints() -> None:
     registered = json.loads(DEBT.read_text(encoding="utf-8"))
     fingerprints = {
@@ -451,6 +489,6 @@ def test_http_debt_ratchet_removes_exactly_the_eight_1e_3b_fingerprints() -> Non
         "f972f5561ba0fe26",
         "d521a12a1c9693ab",
     }
-    assert len(registered) == 30
+    assert len(registered) == 19
     assert fingerprints.isdisjoint(removed)
-    assert Counter(item["target_phase"] for item in registered) == Counter({"1E-3C": 11, "1H": 19})
+    assert Counter(item["target_phase"] for item in registered) == Counter({"1H": 19})

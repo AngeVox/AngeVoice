@@ -19,6 +19,8 @@ import {
 import { createVoiceProfileController } from './studio/voice-profiles.js';
 import { createHttpSynthesisController } from './studio/http-synthesis.js';
 import { createAudioOutputController } from './studio/audio-output.js';
+import { createStreamPlayer } from './studio/stream-player.js';
+import { createStreamSynthesisController } from './studio/stream-synthesis.js';
 
 const bootstrapEl = document.getElementById('angevoice-bootstrap');
 const bootstrap = bootstrapEl ? JSON.parse(bootstrapEl.textContent || '{}') : {};
@@ -45,17 +47,10 @@ const state = {
   favorites: readList('angevoice.favoriteVoices.v2'),
   recent: readList('angevoice.recentVoices.v2'),
   busy: false,
-  streamPlaying: false,
-  currentRequestId: '',
-  currentWs: null,
-  currentPlayer: null,
-  streamTerminalReceived: false,
   promptAudioFile: null,
   lastAppliedModelId: '',
   authRejected: false,
   hasCookieSession: false,
-  totalSegments: 0,
-  totalAudioChunks: 0,
   engineParams: {},
   toastTimer: null,
   progressTranslation: null,
@@ -145,142 +140,16 @@ let referenceAudioPreviewController = null;
 let voiceProfileController = null;
 let httpSynthesisController = null;
 let audioOutputController = null;
+let streamSynthesisController = null;
+let latestSynthesisRefreshOwner = '';
 
-class StreamPlayer {
-  constructor() {
-    this.ctx = null;
-    this.nextStartTime = 0;
-    this.sources = [];
-    this.pcmChunks = [];
-    this.sampleRate = Number(bootstrap.sampleRate) || 24000;
-    this.channels = 1;
-    this.prebufferSeconds = 0.25;
-    this.audioChunks = 0;
-    this.underrunCount = 0;
-  }
+function claimSynthesisRefresh(owner) {
+  latestSynthesisRefreshOwner = owner;
+}
 
-  setPrebuffer(seconds) {
-    const value = Number(seconds);
-    if (Number.isFinite(value)) {
-      this.prebufferSeconds = Math.max(0, Math.min(12, value));
-    }
-    if (this.ctx && this.audioChunks === 0) {
-      this.nextStartTime = Math.max(this.nextStartTime, this.ctx.currentTime + this.prebufferSeconds);
-    }
-  }
-
-  init(sampleRate = this.sampleRate, channels = this.channels) {
-    const AudioContextCtor = window.AudioContext || window.webkitAudioContext;
-    this.ctx = new AudioContextCtor({ sampleRate });
-    this.sampleRate = this.ctx.sampleRate;
-    this.channels = Math.max(1, Number(channels) || 1);
-    this.nextStartTime = this.ctx.currentTime + this.prebufferSeconds;
-    this.pcmChunks = [];
-    this.audioChunks = 0;
-    this.underrunCount = 0;
-  }
-
-  resume() {
-    if (this.ctx?.state === 'suspended') {
-      this.ctx.resume();
-    }
-  }
-
-  stop() {
-    this.sources.forEach(source => {
-      try {
-        source.stop();
-      } catch (_) {
-        // 音频源可能已经播放结束。
-      }
-    });
-    this.sources = [];
-    this.nextStartTime = this.ctx ? this.ctx.currentTime : 0;
-    this.audioChunks = 0;
-  }
-
-  bufferedSeconds() {
-    if (!this.ctx) return 0;
-    return Math.max(0, this.nextStartTime - this.ctx.currentTime);
-  }
-
-  enqueuePCM(base64Data, sampleRate = this.sampleRate, channels = this.channels) {
-    if (!this.ctx) {
-      this.init(sampleRate, channels);
-    }
-    this.resume();
-    this.channels = Math.max(1, Number(channels) || 1);
-    const bytes = decodeBase64(base64Data);
-    this.pcmChunks.push(bytes);
-    const samples = new Int16Array(bytes.buffer, bytes.byteOffset, bytes.byteLength / 2);
-    const frameCount = Math.floor(samples.length / this.channels);
-
-    const buffer = this.ctx.createBuffer(this.channels, frameCount, this.sampleRate);
-    for (let channel = 0; channel < this.channels; channel += 1) {
-      const target = buffer.getChannelData(channel);
-      for (let frame = 0; frame < frameCount; frame += 1) {
-        target[frame] = samples[(frame * this.channels) + channel] / 32767;
-      }
-    }
-    const source = this.ctx.createBufferSource();
-    source.buffer = buffer;
-    source.connect(this.ctx.destination);
-    const underrun = this.audioChunks > 0 && this.nextStartTime <= this.ctx.currentTime + 0.02;
-    if (underrun) {
-      this.underrunCount += 1;
-    }
-    const start = Math.max(this.ctx.currentTime + (this.audioChunks === 0 ? this.prebufferSeconds : 0), this.nextStartTime);
-    source.start(start);
-    this.nextStartTime = start + buffer.duration;
-    this.audioChunks += 1;
-    this.sources.push(source);
-    state.streamPlaying = true;
-    source.onended = () => {
-      this.sources = this.sources.filter(item => item !== source);
-      if (this.sources.length === 0) {
-        state.streamPlaying = false;
-        updateButtons();
-      }
-    };
-    updateButtons();
-  }
-
-  buildWavBlob() {
-    if (!this.pcmChunks.length) {
-      return null;
-    }
-    const total = this.pcmChunks.reduce((sum, chunk) => sum + chunk.byteLength, 0);
-    const pcm = new Uint8Array(total);
-    let offset = 0;
-    this.pcmChunks.forEach(chunk => {
-      pcm.set(chunk, offset);
-      offset += chunk.byteLength;
-    });
-
-    const wav = new ArrayBuffer(44 + pcm.byteLength);
-    const view = new DataView(wav);
-    const write = (pos, text) => {
-      for (let i = 0; i < text.length; i += 1) {
-        view.setUint8(pos + i, text.charCodeAt(i));
-      }
-    };
-
-    write(0, 'RIFF');
-    view.setUint32(4, 36 + pcm.byteLength, true);
-    write(8, 'WAVE');
-    write(12, 'fmt ');
-    view.setUint32(16, 16, true);
-    view.setUint16(20, 1, true);
-    view.setUint16(22, this.channels, true);
-    view.setUint32(24, this.sampleRate, true);
-    view.setUint32(28, this.sampleRate * this.channels * 2, true);
-    view.setUint16(32, this.channels * 2, true);
-    view.setUint16(34, 16, true);
-    write(36, 'data');
-    view.setUint32(40, pcm.byteLength, true);
-    new Uint8Array(wav, 44).set(pcm);
-    return new Blob([wav], { type: 'audio/wav' });
-  }
+function refreshForSynthesisOwner(owner) {
+  if (latestSynthesisRefreshOwner !== owner) return;
+  return refreshServiceState();
 }
 
 function readList(key) {
@@ -294,15 +163,6 @@ function readList(key) {
 
 function writeList(key, value) {
   localStorage.setItem(key, JSON.stringify(value));
-}
-
-function decodeBase64(value) {
-  const raw = atob(value);
-  const bytes = new Uint8Array(raw.length);
-  for (let i = 0; i < raw.length; i += 1) {
-    bytes[i] = raw.charCodeAt(i);
-  }
-  return bytes;
 }
 
 function authHeaders(extra = {}) {
@@ -545,14 +405,14 @@ function updateButtons() {
   }
   els.stopBtn.disabled = !(
     state.busy
-    || state.streamPlaying
+    || Boolean(streamSynthesisController?.player?.playing)
     || audioOutputController?.playing
-    || state.currentWs
+    || streamSynthesisController?.active
     || replaceableHttpOperation
   );
   els.downloadBtn.disabled = !(
     audioOutputController?.downloadableBlob
-    || state.currentPlayer?.pcmChunks.length
+    || streamSynthesisController?.player?.hasAudio
   );
 }
 
@@ -725,6 +585,32 @@ function initializeAudioOutput() {
     schedule: globalThis.setTimeout.bind(globalThis),
     cancelSchedule: globalThis.clearTimeout.bind(globalThis),
     callbacks: { onStateChange: updateButtons },
+  });
+}
+
+function createStudioStreamPlayer(callbacks = {}) {
+  return createStreamPlayer({
+    createAudioContext: options => {
+      const AudioContextCtor = window.AudioContext || window.webkitAudioContext;
+      return new AudioContextCtor(options);
+    },
+    decodeBase64: value => {
+      const raw = atob(value);
+      const bytes = new Uint8Array(raw.length);
+      for (let index = 0; index < raw.length; index += 1) {
+        bytes[index] = raw.charCodeAt(index);
+      }
+      return bytes;
+    },
+    createBlob: (parts, options) => new Blob(parts, options),
+    callbacks: {
+      onPlayingChange: () => callbacks.onStateChange?.(),
+    },
+    defaults: {
+      sampleRate: Number(bootstrap.sampleRate) || 24000,
+      channels: 1,
+      prebufferSeconds: 0.25,
+    },
   });
 }
 
@@ -1314,6 +1200,8 @@ function synthesizeHttp(text, voice, speed, autoplay = true) {
       callbacks: {
         onBusyChange: setBusy,
         onStart: () => {
+          const retirement = streamSynthesisController.retirePlayer();
+          if (retirement.completion) void retirement.completion;
           audioOutputController.beginResult();
         },
         onProgress: setTranslatedDescriptor,
@@ -1327,14 +1215,15 @@ function synthesizeHttp(text, voice, speed, autoplay = true) {
         onBlob: (blob, { autoplay: shouldAutoplay }) => {
           audioOutputController.setBlob(blob, { autoplay: shouldAutoplay });
         },
-        onRefresh: refreshServiceState,
+        onRefresh: () => refreshForSynthesisOwner('http'),
       },
     });
   }
+  claimSynthesisRefresh('http');
   return httpSynthesisController.start(httpSynthesisSnapshot(text, voice, speed, autoplay));
 }
 
-function readFileAsBase64(file) {
+function readPromptAudioFile(file) {
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
     reader.onerror = () => reject(new Error('参考音频读取失败'));
@@ -1346,179 +1235,67 @@ function readFileAsBase64(file) {
   });
 }
 
-async function buildPromptAudioPayload() {
-  if (!modelSupportsVoiceClone(currentModel()) || !state.promptAudioFile) {
-    return null;
-  }
-  const file = state.promptAudioFile;
-  return {
-    filename: file.name || 'prompt.wav',
-    mime_type: file.type || 'application/octet-stream',
-    data: await readFileAsBase64(file)
-  };
+function streamSynthesisSnapshot(text, voice, speed) {
+  const model = currentModel();
+  // Snapshot captures temporary-clone inputs before asynchronous preparation.
+  return Object.freeze({
+    text,
+    model: state.selectedModel,
+    voice,
+    speed: Number(speed),
+    textNormalization: currentTextNormalization(),
+    token: state.token,
+    engineParams: Object.freeze({ ...collectEngineParams(model) }),
+    promptAudioFile: state.promptAudioFile,
+    promptText: els.promptText.value.trim(),
+    supportsVoiceClone: modelSupportsVoiceClone(model),
+    supportsProfiles: modelSupportsProfiles(model),
+    requiresPromptText: modelRequiresPromptText(model),
+    modelId: model?.id || state.selectedModel,
+    prebufferSeconds: String(model?.id || state.selectedModel).startsWith('moss') ? 3.0 : 0.25,
+  });
 }
 
-async function synthesizeStream(text, voice, speed) {
-  setBusy(true);
-  setProgress(modelSupportsProfiles() ? '正在建立分句流式连接（参考文本仅用于音色条件）...' : '正在建立流式连接...');
-  let promptAudio = null;
-  try {
-    if (modelSupportsVoiceClone(currentModel()) && state.promptAudioFile && (!modelSupportsProfiles() || !voice)) {
-      setProgress('正在读取参考音频...');
-      promptAudio = await buildPromptAudioPayload();
-    }
-  } catch (error) {
-    setProgress(error.message || '参考音频读取失败', true);
-    setBusy(false);
-    return;
-  }
-
-  const protocol = location.protocol === 'https:' ? 'wss:' : 'ws:';
-  // 捕获当前 WebSocket 实例，让下面所有回调只处理本次连接。
-  // 如果用户停止后立刻开始新合成，state.currentWs 会指向新连接；
-  // `if (ws !== state.currentWs) return;` 可以防止旧连接回调误清理新任务。
-  audioOutputController.beginResult();
-  const ws = new WebSocket(`${protocol}//${location.host}/ws/v1/tts`);
-  state.currentWs = ws;
-  state.currentPlayer = new StreamPlayer();
-  state.streamTerminalReceived = false;
-  state.currentRequestId = '';
-  state.totalSegments = 0;
-  state.totalAudioChunks = 0;
-
-  ws.onopen = () => {
-    // 新合成可能已经替换了 state.currentWs。
-    if (ws !== state.currentWs) { try { ws.close(); } catch (_) {} return; }
-    const payload = {
-      text,
-      model: state.selectedModel,
-      voice,
-      speed: Number(speed),
-      format: 'pcm_s16le',
-      binary: false,
-      text_normalization: currentTextNormalization(),
-      token: state.token
-    };
-    const engineParams = collectEngineParams();
-    if (Object.keys(engineParams).length) {
-      payload.engine_params = engineParams;
-    }
-    if (promptAudio) {
-      payload.prompt_audio = promptAudio;
-    }
-    if (modelRequiresPromptText(currentModel()) && !voice && promptAudio) {
-      if (!els.promptText.value.trim()) {
-        setProgress('当前模型临时克隆需要填写参考文本', true);
-        cleanupWs(ws, true);
-        return;
-      }
-      // 临时克隆才发送参考文本；已保存音色仅由服务端读取其固化的参考条件。
-      payload.prompt_text = els.promptText.value.trim();
-    }
-    ws.send(JSON.stringify(payload));
-  };
-
-  ws.onmessage = event => {
-    if (ws !== state.currentWs) return;
-    if (typeof event.data !== 'string') return;
-    let msg;
-    try {
-      msg = JSON.parse(event.data);
-    } catch (_) {
-      setProgress('流式消息格式异常，已停止本次合成', true);
-      cleanupWs(ws, true);
-      return;
-    }
-    try {
-      if (msg.request_id) {
-        state.currentRequestId = msg.request_id;
-      }
-      if (msg.type === 'started') {
-        state.totalSegments = msg.segments || 0;
-        state.totalAudioChunks = 0;
-        state.currentPlayer.setPrebuffer(msg.recommended_prebuffer_seconds || (state.selectedModel.startsWith('moss') ? 3.0 : 0.25));
-        setProgress(`流式合成开始：文本 ${state.totalSegments} 段，预缓冲 ${state.currentPlayer.prebufferSeconds.toFixed(2)}s`);
-      } else if (msg.type === 'audio') {
-        const doneCount = msg.index + 1;
-        state.totalAudioChunks = doneCount;
-        state.currentPlayer.enqueuePCM(msg.data, msg.sample_rate, msg.channels);
-        const buffered = state.currentPlayer.bufferedSeconds().toFixed(2);
-        const underruns = state.currentPlayer.underrunCount ? `，补帧 ${state.currentPlayer.underrunCount} 次` : '';
-        setProgress(`已接收音频块 ${doneCount}，文本 ${state.totalSegments || '-'} 段，缓冲 ${buffered}s${underruns}`);
-      } else if (msg.type === 'progress') {
-        if (msg.stage === 'waiting_audio') {
-          const elapsed = Number(msg.elapsed_seconds || 0);
-          setProgress(`模型正在生成音频，请稍候${elapsed ? `（已等待 ${elapsed.toFixed(1)}s）` : ''}`);
-        }
-      } else if (msg.type === 'done') {
-        state.streamTerminalReceived = true;
-        const finalBlob = state.currentPlayer.buildWavBlob();
-        if (finalBlob) audioOutputController.setBlob(finalBlob, { autoplay: false });
-        setProgress(`合成完成：文本 ${msg.total_segments || state.totalSegments} 段，音频块 ${msg.total_audio_chunks || state.totalAudioChunks}`);
-        cleanupWs(ws, false);
-      } else if (msg.type === 'cancelled') {
-        state.streamTerminalReceived = true;
-        setProgress('已停止', true);
-        cleanupWs(ws, false);
-      } else if (msg.type === 'error' || msg.type === 'segment_error') {
-        state.streamTerminalReceived = true;
-        setProgress(userFacingErrorMessage(msg, '流式合成失败'), true);
-        cleanupWs(ws, true);
-      }
-    } catch (error) {
-      setProgress(userFacingErrorMessage(error, '流式播放处理失败，已停止本次合成'), true);
-      cleanupWs(ws, true);
-    }
-  };
-
-  ws.onerror = () => {
-    if (ws !== state.currentWs) return;
-    setProgress('WebSocket 连接失败', true);
-    cleanupWs(ws, true);
-  };
-
-  ws.onclose = (event) => {
-    if (ws !== state.currentWs) return;
-    if (event.code === 1008) {
-      state.hasCookieSession = false;
-      state.authRejected = true;
-      setProgress('访问会话已失效，请在设置中重新输入 API Key。', true);
-      els.settingsDialog.showModal();
-      cleanupWs(ws, true);
-      return;
-    }
-    if (!state.streamTerminalReceived && state.currentPlayer?.pcmChunks.length) {
-      const partialBlob = state.currentPlayer.buildWavBlob();
-      if (partialBlob) audioOutputController.setBlob(partialBlob, { autoplay: false });
-      setProgress('流式连接提前结束，已保留已接收音频；请查看服务日志中的终止原因', true, { kind: 'warning' });
-    }
-    cleanupWs(ws, !state.streamTerminalReceived);
-  };
+function initializeStreamSynthesis() {
+  streamSynthesisController = createStreamSynthesisController({
+    createSocket: () => {
+      const protocol = location.protocol === 'https:' ? 'wss:' : 'ws:';
+      return new WebSocket(`${protocol}//${location.host}/ws/v1/tts`);
+    },
+    readPromptAudio: readPromptAudioFile,
+    cancelRequest: cancelRequestById,
+    createPlayer: callbacks => createStudioStreamPlayer(callbacks),
+    callbacks: {
+      onBusyChange: setBusy,
+      onProgress: (copy, options = {}) => {
+        const { isError = false, ...progressOptions } = options;
+        setTranslatedDescriptor(copy, Boolean(isError), progressOptions);
+      },
+      onOutputBegin: () => audioOutputController.beginResult(),
+      onBlob: (blob, options) => audioOutputController.setBlob(blob, options),
+      onServerError: payload => {
+        setProgress(userFacingErrorMessage(payload, '流式合成失败'), true);
+      },
+      onPlaybackError: error => {
+        setProgress(userFacingErrorMessage(error, '流式播放处理失败，已停止本次合成'), true);
+      },
+      onSocketError: () => setProgress('WebSocket 连接失败', true),
+      onPromptReadError: error => setProgress(error.message || '参考音频读取失败', true),
+      onSessionInvalid: () => {
+        state.hasCookieSession = false;
+        state.authRejected = true;
+        setProgress('访问会话已失效，请在设置中重新输入 API Key。', true);
+        els.settingsDialog.showModal();
+      },
+      onRefresh: () => refreshForSynthesisOwner('stream'),
+      onStateChange: updateButtons,
+    },
+  });
 }
 
-function cleanupWs(ws, hadError) {
-  // 只有当前连接仍是活跃连接时才清理状态。
-  // 如果新合成已经开始，state.currentWs 会指向新连接，旧连接不能再改状态。
-  if (ws !== state.currentWs) {
-    // 调用方连接已经过期，只确保关闭后返回。
-    try { ws.close(); } catch (_) {}
-    return;
-  }
-  // 关闭前先解绑回调，避免 ws.close() 通过 onclose 再次触发本函数。
-  ws.onopen = null;
-  ws.onmessage = null;
-  ws.onerror = null;
-  ws.onclose = null;
-  try {
-    ws.close();
-  } catch (_) {
-    // 连接已经关闭。
-  }
-  state.currentWs = null;
-  setBusy(false);
-  if (!hadError) {
-    refreshServiceState();
-  }
+function synthesizeStream(text, voice, speed) {
+  claimSynthesisRefresh('stream');
+  return streamSynthesisController.start(streamSynthesisSnapshot(text, voice, speed));
 }
 
 async function readError(response) {
@@ -1531,47 +1308,17 @@ async function readError(response) {
 }
 
 async function stopCurrent() {
-  const requestId = state.currentWs ? state.currentRequestId : '';
-  if (state.currentPlayer) {
-    state.currentPlayer.stop();
-  }
-  state.streamPlaying = false;
   audioOutputController.stopPlayback();
   const httpStop = httpSynthesisController?.stop();
   if (httpStop?.completion) void httpStop.completion;
-  if (requestId) {
-    cancelRequestById(requestId).then(() => refreshServiceState()).catch(() => {});
-  }
-  // 先通知当前 WebSocket 取消，再隔离旧连接事件。
-  // 避免旧连接的 onclose 回调清理掉刚刚开始的新合成。
-  const ws = state.currentWs;
-  if (ws) {
-    const cancelAndClose = () => {
-      try { ws.send(JSON.stringify({ type: 'cancel' })); } catch (_) {}
-      try { ws.close(); } catch (_) {}
-    };
-    if (ws.readyState === WebSocket.OPEN) {
-      cancelAndClose();
-      ws.onopen = null;
-    } else if (ws.readyState === WebSocket.CONNECTING) {
-      ws.onopen = cancelAndClose;
-    } else {
-      ws.onopen = null;
-    }
-    ws.onmessage = null;
-    ws.onerror = null;
-    ws.onclose = null;
-    state.currentWs = null;
-  }
-  state.currentRequestId = '';
-  // 立即恢复空闲状态，让用户可以马上开始下一次合成。
-  setBusy(false);
+  const streamStop = streamSynthesisController.stop();
+  if (streamStop.completion) void streamStop.completion;
   setTranslatedProgress('studio.synthesis.stopped', null, true);
   updateButtons();
 }
 
 function downloadAudio() {
-  const blob = audioOutputController.downloadableBlob || state.currentPlayer?.buildWavBlob();
+  const blob = audioOutputController.downloadableBlob || streamSynthesisController.player?.buildWavBlob();
   if (!blob) return;
   audioOutputController.download({
     blob,
@@ -1594,6 +1341,7 @@ function bindEvents() {
     if (!event.persisted) referenceAudioPreviewController?.dispose();
     if (!event.persisted) httpSynthesisController?.dispose();
     if (!event.persisted) audioOutputController?.dispose();
+    if (!event.persisted) streamSynthesisController?.dispose();
   });
   els.form.addEventListener('submit', async event => {
     event.preventDefault();
@@ -1614,7 +1362,7 @@ function bindEvents() {
     state.selectedVoice = els.voice.value;
     addRecent(state.selectedVoice);
     renderVoices();
-    if (state.currentWs || (httpSynthesisController?.active && els.streamToggle.checked)) {
+    if (streamSynthesisController.active || (httpSynthesisController?.active && els.streamToggle.checked)) {
       await stopCurrent();
     }
     const speed = currentModelSpeedValue();
@@ -1760,6 +1508,7 @@ function init() {
   }
   els.text.value = t('studio.compose.default_text');
   initializeAudioOutput();
+  initializeStreamSynthesis();
   initializeReferenceAudioPreview();
   initializeVoiceProfileController();
   initializeReferenceRecorder();

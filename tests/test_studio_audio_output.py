@@ -406,36 +406,20 @@ def test_module_is_pure_esm_and_app_is_only_the_composition_root() -> None:
     assert not re.search(r"els\.audio\.src\s*=", app)
     assert not re.search(r"els\.audio\.(?:play|pause)\s*\(", app)
     assert "audioOutputController.beginResult();" in app
-    assert app.count("audioOutputController.setBlob(") == 3
+    assert app.count("audioOutputController.setBlob(") == 2
     assert "audioOutputController.stopPlayback();" in app
-    assert "audioOutputController.downloadableBlob || state.currentPlayer?.buildWavBlob()" in app
+    assert "audioOutputController.downloadableBlob || streamSynthesisController.player?.buildWavBlob()" in app
     assert "audioOutputController?.dispose();" in app
-    assert "state.streamPlaying = true;" in app
-    assert "state.streamPlaying = false;" in app
-
-    stream = re.search(
-        r"async function synthesizeStream\(.*?\n}\n\nfunction cleanupWs",
-        app,
-        re.DOTALL,
-    )
-    assert stream
-    body = stream.group(0)
-    assert body.index("promptAudio = await buildPromptAudioPayload();") < body.index(
-        "audioOutputController.beginResult();"
-    )
-    assert body.index("audioOutputController.beginResult();") < body.index(
-        "const ws = new WebSocket("
-    )
-    started = re.search(
-        r"if \(msg\.type === 'started'\) \{(?P<body>.*?)\} else if \(msg\.type === 'audio'\)",
-        body,
-        re.DOTALL,
-    )
-    assert started
-    assert "audioOutputController.beginResult()" not in started.group("body")
+    assert "state.streamPlaying" not in app
+    assert "Boolean(streamSynthesisController?.player?.playing)" in app
+    assert "onOutputBegin: () => audioOutputController.beginResult()" in app
+    assert "onBlob: (blob, options) => audioOutputController.setBlob(blob, options)" in app
+    assert "audioOutputController.beginResult()" not in re.search(
+        r"function synthesizeStream\(.*?\n}", app, re.DOTALL
+    ).group(0)
 
 
-def test_copy_debt_is_unchanged_at_the_p1_1a_ratchet() -> None:
+def test_copy_debt_reflects_the_p1_2b_ratchet() -> None:
     registered = json.loads(DEBT.read_text(encoding="utf-8"))
-    assert len(registered) == 30
-    assert Counter(item["target_phase"] for item in registered) == Counter({"1E-3C": 11, "1H": 19})
+    assert len(registered) == 19
+    assert Counter(item["target_phase"] for item in registered) == Counter({"1H": 19})

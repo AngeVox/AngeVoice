@@ -181,7 +181,7 @@ def test_studio_recording_and_profile_delete_are_capability_driven():
     assert "/v1/voice-profiles/${encodeURIComponent(profileEngineId())}" in js
     assert "modelSupportsProfiles()" in js
     assert "modelRequiresPromptText" in imports
-    assert "modelRequiresPromptText(currentModel())" in js
+    assert "requiresPromptText: modelRequiresPromptText(model)" in js
     assert "modelSupportsVoiceClone(currentModel())" in js
     assert "createVoiceProfileController" in js
     assert "voiceProfileController?.remove" in js

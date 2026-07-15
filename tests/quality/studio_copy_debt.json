@@ -109,7 +109,7 @@
   },
   {
     "path": "static/app.js",
-    "owner": "synthesizeStream",
+    "owner": "initializeStreamSynthesis",
     "sink": "progress",
     "text": "WebSocket 连接失败",
     "classification": "error_policy_defer_1H",
@@ -118,7 +118,7 @@
   },
   {
     "path": "static/app.js",
-    "owner": "synthesizeStream",
+    "owner": "initializeStreamSynthesis",
     "sink": "progress",
     "text": "参考音频读取失败",
     "classification": "error_policy_defer_1H",
@@ -127,79 +127,7 @@
   },
   {
     "path": "static/app.js",
-    "owner": "synthesizeStream",
-    "sink": "progress",
-    "text": "合成完成：文本 ${msg.total_segments || state.totalSegments} 段，音频块 ${msg.total_audio_chunks || state.totalAudioChunks}",
-    "classification": "lifecycle_high_risk",
-    "target_phase": "1E-3C",
-    "reason": "WebSocket/StreamPlayer copy must migrate with protocol, cancellation, and cleanup contracts."
-  },
-  {
-    "path": "static/app.js",
-    "owner": "synthesizeStream",
-    "sink": "progress",
-    "text": "已停止",
-    "classification": "lifecycle_high_risk",
-    "target_phase": "1E-3C",
-    "reason": "WebSocket/StreamPlayer copy must migrate with protocol, cancellation, and cleanup contracts."
-  },
-  {
-    "path": "static/app.js",
-    "owner": "synthesizeStream",
-    "sink": "progress",
-    "text": "已接收音频块 ${doneCount}，文本 ${state.totalSegments || '-'} 段，缓冲 ${buffered}s${underruns}",
-    "classification": "lifecycle_high_risk",
-    "target_phase": "1E-3C",
-    "reason": "WebSocket/StreamPlayer copy must migrate with protocol, cancellation, and cleanup contracts."
-  },
-  {
-    "path": "static/app.js",
-    "owner": "synthesizeStream",
-    "sink": "progress",
-    "text": "当前模型临时克隆需要填写参考文本",
-    "classification": "lifecycle_high_risk",
-    "target_phase": "1E-3C",
-    "reason": "WebSocket/StreamPlayer copy must migrate with protocol, cancellation, and cleanup contracts."
-  },
-  {
-    "path": "static/app.js",
-    "owner": "synthesizeStream",
-    "sink": "progress",
-    "text": "模型正在生成音频，请稍候${elapsed ?",
-    "classification": "lifecycle_high_risk",
-    "target_phase": "1E-3C",
-    "reason": "WebSocket/StreamPlayer copy must migrate with protocol, cancellation, and cleanup contracts."
-  },
-  {
-    "path": "static/app.js",
-    "owner": "synthesizeStream",
-    "sink": "progress",
-    "text": "正在建立分句流式连接（参考文本仅用于音色条件）...",
-    "classification": "lifecycle_high_risk",
-    "target_phase": "1E-3C",
-    "reason": "WebSocket/StreamPlayer copy must migrate with protocol, cancellation, and cleanup contracts."
-  },
-  {
-    "path": "static/app.js",
-    "owner": "synthesizeStream",
-    "sink": "progress",
-    "text": "正在建立流式连接...",
-    "classification": "lifecycle_high_risk",
-    "target_phase": "1E-3C",
-    "reason": "WebSocket/StreamPlayer copy must migrate with protocol, cancellation, and cleanup contracts."
-  },
-  {
-    "path": "static/app.js",
-    "owner": "synthesizeStream",
-    "sink": "progress",
-    "text": "正在读取参考音频...",
-    "classification": "lifecycle_high_risk",
-    "target_phase": "1E-3C",
-    "reason": "WebSocket/StreamPlayer copy must migrate with protocol, cancellation, and cleanup contracts."
-  },
-  {
-    "path": "static/app.js",
-    "owner": "synthesizeStream",
+    "owner": "initializeStreamSynthesis",
     "sink": "progress",
     "text": "流式合成失败",
     "classification": "error_policy_defer_1H",
@@ -208,16 +136,7 @@
   },
   {
     "path": "static/app.js",
-    "owner": "synthesizeStream",
-    "sink": "progress",
-    "text": "流式合成开始：文本 ${state.totalSegments} 段，预缓冲 ${state.currentPlayer.prebufferSeconds.toFixed(2)}s",
-    "classification": "lifecycle_high_risk",
-    "target_phase": "1E-3C",
-    "reason": "WebSocket/StreamPlayer copy must migrate with protocol, cancellation, and cleanup contracts."
-  },
-  {
-    "path": "static/app.js",
-    "owner": "synthesizeStream",
+    "owner": "initializeStreamSynthesis",
     "sink": "progress",
     "text": "流式播放处理失败，已停止本次合成",
     "classification": "error_policy_defer_1H",
@@ -226,25 +145,7 @@
   },
   {
     "path": "static/app.js",
-    "owner": "synthesizeStream",
-    "sink": "progress",
-    "text": "流式消息格式异常，已停止本次合成",
-    "classification": "lifecycle_high_risk",
-    "target_phase": "1E-3C",
-    "reason": "WebSocket/StreamPlayer copy must migrate with protocol, cancellation, and cleanup contracts."
-  },
-  {
-    "path": "static/app.js",
-    "owner": "synthesizeStream",
-    "sink": "progress",
-    "text": "流式连接提前结束，已保留已接收音频；请查看服务日志中的终止原因",
-    "classification": "lifecycle_high_risk",
-    "target_phase": "1E-3C",
-    "reason": "WebSocket/StreamPlayer copy must migrate with protocol, cancellation, and cleanup contracts."
-  },
-  {
-    "path": "static/app.js",
-    "owner": "synthesizeStream",
+    "owner": "initializeStreamSynthesis",
     "sink": "progress",
     "text": "访问会话已失效，请在设置中重新输入 API Key。",
     "classification": "error_policy_defer_1H",
