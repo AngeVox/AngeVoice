@@ -17,6 +17,7 @@ import {
   referenceAudioUploadKey
 } from './studio/reference-audio-preview.js';
 import { createVoiceProfileController } from './studio/voice-profiles.js';
+import { createHttpSynthesisController } from './studio/http-synthesis.js';
 
 const bootstrapEl = document.getElementById('angevoice-bootstrap');
 const bootstrap = bootstrapEl ? JSON.parse(bootstrapEl.textContent || '{}') : {};
@@ -46,7 +47,6 @@ const state = {
   playing: false,
   currentRequestId: '',
   currentWs: null,
-  currentAbort: null,
   currentPlayer: null,
   streamTerminalReceived: false,
   lastBlob: null,
@@ -143,6 +143,7 @@ const groups = [
 let referenceRecorderController = null;
 let referenceAudioPreviewController = null;
 let voiceProfileController = null;
+let httpSynthesisController = null;
 
 class StreamPlayer {
   constructor() {
@@ -533,13 +534,15 @@ function cancelRequestById(requestId) {
 }
 
 function updateButtons() {
-  els.generateBtn.disabled = state.busy;
+  const replaceableHttpOperation = Boolean(httpSynthesisController?.active);
+  const controlsBusy = state.busy && !replaceableHttpOperation;
+  els.generateBtn.disabled = controlsBusy;
   els.generateBtn.textContent = state.busy ? t('action.processing') : (modelNeedsWake(currentModel()) ? t('action.wake') : t('action.generate'));
-  els.previewBtn.disabled = state.busy;
+  els.previewBtn.disabled = controlsBusy;
   if (els.model) {
     els.model.disabled = state.busy || bootstrap.modelSwitchEnabled === false;
   }
-  els.stopBtn.disabled = !(state.busy || state.playing || state.currentWs || state.currentAbort);
+  els.stopBtn.disabled = !(state.busy || state.playing || state.currentWs || replaceableHttpOperation);
   els.downloadBtn.disabled = !(state.lastBlob || state.currentPlayer?.pcmChunks.length);
 }
 
@@ -1255,74 +1258,62 @@ async function refreshServiceState() {
   }
 }
 
-async function synthesizeHttp(text, voice, speed, autoplay = true) {
-  state.currentAbort = new AbortController();
-  state.currentRequestId = makeClientRequestId();
-  state.lastBlob = null;
-  updateButtons();
-  setBusy(true);
-  setProgress(modelRequiresPromptText(currentModel()) ? '正在生成正文音频（参考文本仅用于音色条件）...' : '正在生成 WAV...');
+function httpSynthesisSnapshot(text, voice, speed, autoplay = true) {
+  const model = currentModel();
+  return Object.freeze({
+    model: state.selectedModel,
+    text,
+    voice,
+    speed,
+    textNormalization: currentTextNormalization(),
+    engineParams: Object.freeze({ ...collectEngineParams(model) }),
+    promptAudioFile: state.promptAudioFile,
+    promptText: els.promptText.value.trim(),
+    supportsVoiceClone: modelSupportsVoiceClone(model),
+    supportsProfiles: modelSupportsProfiles(model),
+    requiresPromptText: modelRequiresPromptText(model),
+    requiresPromptAudio: modelRequiresPromptAudio(model),
+    autoplay,
+  });
+}
 
-  try {
-    const form = new FormData();
-    form.append('model', state.selectedModel);
-    form.append('text', text);
-    form.append('voice', voice);
-    form.append('speed', speed);
-    form.append('response_format', 'wav');
-    form.append('text_normalization', currentTextNormalization());
-    Object.entries(collectEngineParams()).forEach(([key, value]) => form.append(key, String(value)));
-    const useUploadedReference = modelSupportsVoiceClone(currentModel()) && state.promptAudioFile && (!modelSupportsProfiles() || !voice);
-    if (useUploadedReference) {
-      form.append('prompt_audio', state.promptAudioFile, state.promptAudioFile.name);
-    }
-    if (useUploadedReference && modelRequiresPromptText(currentModel()) && !els.promptText.value.trim()) {
-      throw new Error('当前模型临时克隆需要填写参考文本');
-    }
-    if (modelRequiresPromptAudio(currentModel()) && !useUploadedReference && !voice) {
-      throw new Error('请上传参考音频，或选择已保存音色');
-    }
-    if (useUploadedReference && modelRequiresPromptText(currentModel())) {
-      form.append('prompt_text', els.promptText.value.trim());
-    }
-    const response = await apiFetch('/api/tts', {
-      method: 'POST',
-      body: form,
-      headers: { 'X-Client-Request-ID': state.currentRequestId },
-      signal: state.currentAbort.signal
+function synthesizeHttp(text, voice, speed, autoplay = true) {
+  if (!httpSynthesisController) {
+    httpSynthesisController = createHttpSynthesisController({
+      request: apiFetch,
+      cancelRequest: cancelRequestById,
+      readError,
+      createRequestId: makeClientRequestId,
+      callbacks: {
+        onBusyChange: setBusy,
+        onStart: () => {
+          state.lastBlob = null;
+          updateButtons();
+        },
+        onProgress: setTranslatedDescriptor,
+        onAuthRequired: () => {
+          state.hasCookieSession = false;
+          state.authRejected = true;
+          setProgress('访问会话已失效，请在设置中重新输入 API Key。', true);
+          els.settingsDialog.showModal();
+        },
+        onRequestError: error => setProgress(error.message || '生成失败', true),
+        onBlob: (blob, { autoplay: shouldAutoplay }) => {
+          state.lastBlob = blob;
+          els.audio.src = URL.createObjectURL(blob);
+          if (shouldAutoplay) {
+            state.playing = true;
+            els.audio.play().catch(() => {
+              state.playing = false;
+              updateButtons();
+            });
+          }
+        },
+        onRefresh: refreshServiceState,
+      },
     });
-    state.currentRequestId = response.headers.get('X-Request-ID') || state.currentRequestId;
-    if (response.status === 401) {
-      state.hasCookieSession = false;
-      state.authRejected = true;
-      setProgress('访问会话已失效，请在设置中重新输入 API Key。', true);
-      els.settingsDialog.showModal();
-      return;
-    }
-    if (!response.ok) {
-      throw new Error(await readError(response));
-    }
-    state.lastBlob = await response.blob();
-    els.audio.src = URL.createObjectURL(state.lastBlob);
-    setProgress('生成完成');
-    if (autoplay) {
-      state.playing = true;
-      els.audio.play().catch(() => {
-        state.playing = false;
-        updateButtons();
-      });
-    }
-  } catch (error) {
-    if (error.name !== 'AbortError') {
-      setProgress(error.message || '生成失败', true);
-    } else {
-      setProgress('已停止', true);
-    }
-  } finally {
-    state.currentAbort = null;
-    setBusy(false);
-    refreshServiceState();
   }
+  return httpSynthesisController.start(httpSynthesisSnapshot(text, voice, speed, autoplay));
 }
 
 function readFileAsBase64(file) {
@@ -1526,7 +1517,7 @@ async function readError(response) {
 }
 
 async function stopCurrent() {
-  const requestId = state.currentRequestId;
+  const requestId = state.currentWs ? state.currentRequestId : '';
   if (state.currentPlayer) {
     state.currentPlayer.stop();
   }
@@ -1537,10 +1528,8 @@ async function stopCurrent() {
   } catch (_) {
     // 播放器当前可能没有音频来源。
   }
-  if (state.currentAbort) {
-    state.currentAbort.abort();
-    state.currentAbort = null;
-  }
+  const httpStop = httpSynthesisController?.stop();
+  if (httpStop?.completion) void httpStop.completion;
   if (requestId) {
     cancelRequestById(requestId).then(() => refreshServiceState()).catch(() => {});
   }
@@ -1568,7 +1557,7 @@ async function stopCurrent() {
   state.currentRequestId = '';
   // 立即恢复空闲状态，让用户可以马上开始下一次合成。
   setBusy(false);
-  setProgress('已停止', true);
+  setTranslatedProgress('studio.synthesis.stopped', null, true);
   updateButtons();
 }
 
@@ -1596,14 +1585,15 @@ function bindSpotlights() {
 function bindEvents() {
   window.addEventListener('pagehide', event => {
     if (!event.persisted) referenceAudioPreviewController?.dispose();
+    if (!event.persisted) httpSynthesisController?.dispose();
   });
   els.form.addEventListener('submit', async event => {
     event.preventDefault();
-    // 合成处理中禁止重复提交。按钮已禁用，但键盘回车仍可能触发表单提交。
-    if (state.busy) return;
+    // WebSocket remains single-owner; an active HTTP operation may be replaced.
+    if (state.busy && !httpSynthesisController?.active) return;
     const text = els.text.value.trim();
     if (!text) {
-      setProgress('请输入文本', true);
+      setTranslatedProgress('studio.compose.text_required', null, true);
       return;
     }
     if (!ensureAuthToken()) {
@@ -1616,7 +1606,7 @@ function bindEvents() {
     state.selectedVoice = els.voice.value;
     addRecent(state.selectedVoice);
     renderVoices();
-    if (state.currentWs || state.currentAbort) {
+    if (state.currentWs || (httpSynthesisController?.active && els.streamToggle.checked)) {
       await stopCurrent();
     }
     const speed = currentModelSpeedValue();
@@ -1628,6 +1618,7 @@ function bindEvents() {
   });
 
   els.previewBtn.addEventListener('click', () => {
+    if (state.busy && !httpSynthesisController?.active) return;
     if (!ensureAuthToken()) {
       return;
     }

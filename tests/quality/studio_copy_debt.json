@@ -46,15 +46,6 @@
   },
   {
     "path": "static/app.js",
-    "owner": "bindEvents",
-    "sink": "progress",
-    "text": "请输入文本",
-    "classification": "lifecycle_high_risk",
-    "target_phase": "1E-3B",
-    "reason": "Playback or HTTP synthesis copy must migrate with its owned lifecycle and cleanup contract."
-  },
-  {
-    "path": "static/app.js",
     "owner": "createApiSession",
     "sink": "error",
     "text": "API Key 无效或已失效",
@@ -91,15 +82,6 @@
   },
   {
     "path": "static/app.js",
-    "owner": "stopCurrent",
-    "sink": "progress",
-    "text": "已停止",
-    "classification": "lifecycle_high_risk",
-    "target_phase": "1E-3B",
-    "reason": "Playback or HTTP synthesis copy must migrate with its owned lifecycle and cleanup contract."
-  },
-  {
-    "path": "static/app.js",
     "owner": "switchModel",
     "sink": "progress",
     "text": "模型切换失败",
@@ -110,65 +92,11 @@
   {
     "path": "static/app.js",
     "owner": "synthesizeHttp",
-    "sink": "error",
-    "text": "当前模型临时克隆需要填写参考文本",
-    "classification": "lifecycle_high_risk",
-    "target_phase": "1E-3B",
-    "reason": "Playback or HTTP synthesis copy must migrate with its owned lifecycle and cleanup contract."
-  },
-  {
-    "path": "static/app.js",
-    "owner": "synthesizeHttp",
-    "sink": "error",
-    "text": "请上传参考音频，或选择已保存音色",
-    "classification": "lifecycle_high_risk",
-    "target_phase": "1E-3B",
-    "reason": "Playback or HTTP synthesis copy must migrate with its owned lifecycle and cleanup contract."
-  },
-  {
-    "path": "static/app.js",
-    "owner": "synthesizeHttp",
-    "sink": "progress",
-    "text": "已停止",
-    "classification": "lifecycle_high_risk",
-    "target_phase": "1E-3B",
-    "reason": "Playback or HTTP synthesis copy must migrate with its owned lifecycle and cleanup contract."
-  },
-  {
-    "path": "static/app.js",
-    "owner": "synthesizeHttp",
-    "sink": "progress",
-    "text": "正在生成 WAV...",
-    "classification": "lifecycle_high_risk",
-    "target_phase": "1E-3B",
-    "reason": "Playback or HTTP synthesis copy must migrate with its owned lifecycle and cleanup contract."
-  },
-  {
-    "path": "static/app.js",
-    "owner": "synthesizeHttp",
-    "sink": "progress",
-    "text": "正在生成正文音频（参考文本仅用于音色条件）...",
-    "classification": "lifecycle_high_risk",
-    "target_phase": "1E-3B",
-    "reason": "Playback or HTTP synthesis copy must migrate with its owned lifecycle and cleanup contract."
-  },
-  {
-    "path": "static/app.js",
-    "owner": "synthesizeHttp",
     "sink": "progress",
     "text": "生成失败",
     "classification": "error_policy_defer_1H",
     "target_phase": "1H",
     "reason": "Error wording or raw-message fallback remains coupled to the stable error_code + params policy."
-  },
-  {
-    "path": "static/app.js",
-    "owner": "synthesizeHttp",
-    "sink": "progress",
-    "text": "生成完成",
-    "classification": "lifecycle_high_risk",
-    "target_phase": "1E-3B",
-    "reason": "Playback or HTTP synthesis copy must migrate with its owned lifecycle and cleanup contract."
   },
   {
     "path": "static/app.js",

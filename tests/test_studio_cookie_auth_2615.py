@@ -32,6 +32,7 @@ from kokoro_tts.server import create_app
 
 ROOT = Path(__file__).resolve().parent.parent
 APP_JS = ROOT / "src" / "kokoro_tts" / "static" / "app.js"
+HTTP_SYNTHESIS_JS = ROOT / "src" / "kokoro_tts" / "static" / "studio" / "http-synthesis.js"
 
 
 def _fake_engine():
@@ -214,12 +215,19 @@ def test_app_js_has_cookie_session_state():
     assert "state.hasCookieSession" in content
 
 
-def test_app_js_401_handling_clears_cookie_session():
-    """app.js 在收到 401 时应清除 hasCookieSession。"""
-    content = APP_JS.read_text(encoding="utf-8")
-    # 检查 synthesizeHttp 中的 401 处理
-    assert "response.status === 401" in content
-    assert "state.hasCookieSession = false" in content
+def test_http_controller_routes_401_to_the_composition_root_cookie_cleanup():
+    """HTTP 模块识别 401，app.js callback 保留 Cookie/Settings 行为。"""
+    module = HTTP_SYNTHESIS_JS.read_text(encoding="utf-8")
+    app = APP_JS.read_text(encoding="utf-8")
+    assert "response.status === 401" in module
+    assert "onAuthRequired(response)" in module
+    synthesize = re.search(r"function synthesizeHttp\([^)]*\) \{(?P<body>.*?)\n\}", app, re.DOTALL)
+    assert synthesize
+    body = synthesize.group("body")
+    assert "onAuthRequired: () =>" in body
+    assert "state.hasCookieSession = false" in body
+    assert "state.authRejected = true" in body
+    assert "els.settingsDialog.showModal()" in body
 
 
 def test_bootstrap_injects_cookie_session_when_valid(tmp_path):
