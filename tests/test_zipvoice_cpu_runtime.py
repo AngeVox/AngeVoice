@@ -489,7 +489,7 @@ def test_zipvoice_frontend_skips_protected_polling_without_token_and_resets_audi
     assert "bootstrap.authRequired && ((!state.token && !state.hasCookieSession) || state.authRejected)" in js
     assert "const blob = await response.blob();" in preview
     assert "element.removeAttribute?.('src');" in preview
-    assert "API Key 无效或已轮换" in js
+    assert "descriptor('studio.error.api_key_rotated')" in js
 
 
 def test_zipvoice_preview_route_downmixes_and_resamples_48khz_stereo_for_browser(tmp_path):

@@ -227,7 +227,26 @@ def test_http_controller_routes_401_to_the_composition_root_cookie_cleanup():
     assert "onAuthRequired: () =>" in body
     assert "state.hasCookieSession = false" in body
     assert "state.authRejected = true" in body
+    assert "descriptor('studio.error.session_expired')" in body
+    assert "showErrorPresentation(" in body
     assert "els.settingsDialog.showModal()" in body
+
+
+def test_session_local_failures_use_descriptors_and_preserve_status_parameters() -> None:
+    app = APP_JS.read_text(encoding="utf-8")
+    create_session = re.search(
+        r"async function createApiSession\(token\) \{(?P<body>.*?)\n\}",
+        app,
+        re.DOTALL,
+    )
+    assert create_session
+    body = create_session.group("body")
+    assert "descriptor('studio.error.api_key_invalid')" in body
+    assert "descriptor('studio.error.session_save_failed_status', { status: response.status })" in body
+    assert "throw presentationError(localErrorPresentation(copy))" in body
+    assert "API Key 无效或已失效" not in body
+    assert "会话保存失败" not in body
+    assert "showPresentationError(err, descriptor('studio.error.session_save_failed'))" in app
 
 
 def test_bootstrap_injects_cookie_session_when_valid(tmp_path):

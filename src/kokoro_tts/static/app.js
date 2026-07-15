@@ -19,6 +19,7 @@ import {
 import { createVoiceProfileController } from './studio/voice-profiles.js';
 import { createHttpSynthesisController } from './studio/http-synthesis.js';
 import { createAudioOutputController } from './studio/audio-output.js';
+import { createErrorPresentationPolicy } from './studio/error-presentation.js';
 import { createStreamPlayer } from './studio/stream-player.js';
 import { createStreamSynthesisController } from './studio/stream-synthesis.js';
 
@@ -185,7 +186,10 @@ async function createApiSession(token) {
     credentials: 'same-origin'
   });
   if (!response.ok) {
-    throw new Error(response.status === 401 ? 'API Key 无效或已失效' : `会话保存失败 (${response.status})`);
+    const copy = response.status === 401
+      ? descriptor('studio.error.api_key_invalid')
+      : descriptor('studio.error.session_save_failed_status', { status: response.status });
+    throw presentationError(localErrorPresentation(copy));
   }
   return response.json().catch(() => ({ ok: true }));
 }
@@ -243,6 +247,32 @@ function descriptor(key, params = null) {
   return { key, params };
 }
 
+function isTranslationDescriptor(value) {
+  return Boolean(value && typeof value === 'object' && typeof value.key === 'string');
+}
+
+function localErrorPresentation(copy) {
+  return Object.freeze({
+    value: copy,
+    source: 'fallback',
+    code: '',
+    backendMessage: '',
+    rawBackend: false,
+  });
+}
+
+function presentationError(presentation) {
+  const value = presentation?.value;
+  const error = new Error(typeof value === 'string' ? value : '');
+  Object.defineProperty(error, 'presentation', {
+    configurable: false,
+    enumerable: false,
+    value: presentation,
+    writable: false,
+  });
+  return error;
+}
+
 function localizeTransientCopy() {
   localizeToastAccessibility();
   if (state.progressTranslation && els.progress) {
@@ -261,24 +291,35 @@ function localizeTransientCopy() {
 }
 
 const USER_ERROR_MESSAGES = {
-  NO_SYNTHESIZABLE_TEXT: '未检测到可合成的中文或英文文本\n当前内容包含代码、数字或符号，暂不适合直接语音合成\n请修改为自然语言后重试',
-  FFMPEG_DISABLED: '当前未启用 FFmpeg 转码。请在管理后台启用后，再请求 mp3、ogg_opus、telegram_voice 或 m4a。',
-  FFMPEG_UNAVAILABLE: 'FFmpeg 不可用。请确认服务环境已安装 ffmpeg，或在管理后台配置正确的 ffmpeg 路径。',
-  FFMPEG_CONVERSION_FAILED: '音频转码失败。请检查 ffmpeg 编码器支持，或改用 wav 格式。'
+  NO_SYNTHESIZABLE_TEXT: descriptor('studio.error.no_synthesizable_text'),
+  FFMPEG_DISABLED: descriptor('studio.error.ffmpeg_disabled'),
+  FFMPEG_UNAVAILABLE: descriptor('studio.error.ffmpeg_unavailable'),
+  FFMPEG_CONVERSION_FAILED: descriptor('studio.error.ffmpeg_conversion_failed')
 };
 
 function looksLikeRawBackendError(message) {
   return /integer division|ZeroDivisionError|Traceback|TypeError:|ValueError:|tokens_lens|No English or Chinese characters/i.test(String(message || ''));
 }
 
-function userFacingErrorMessage(payload, fallback = '请求失败') {
-  if (!payload) return fallback;
-  const detail = payload.detail && typeof payload.detail === 'object' ? payload.detail : null;
-  const code = payload.code || payload.error_code || (detail && detail.code);
-  if (code && USER_ERROR_MESSAGES[code]) return USER_ERROR_MESSAGES[code];
-  const message = payload.message || (detail && detail.message) || (typeof payload.detail === 'string' ? payload.detail : '') || payload.error || '';
-  if (looksLikeRawBackendError(message)) return fallback === '流式合成失败' ? USER_ERROR_MESSAGES.NO_SYNTHESIZABLE_TEXT : '合成失败，请检查输入内容后重试';
-  return message || fallback;
+const DEFAULT_RAW_BACKEND_FALLBACK = descriptor('studio.error.synthesis_safe_fallback');
+const errorPresentationPolicy = createErrorPresentationPolicy({
+  resolveKnownCode: code => (
+    Object.prototype.hasOwnProperty.call(USER_ERROR_MESSAGES, code)
+      ? USER_ERROR_MESSAGES[code]
+      : undefined
+  ),
+  isRawBackendError: looksLikeRawBackendError,
+});
+
+function userFacingErrorPresentation(
+  payload,
+  fallback = descriptor('studio.error.request_failed'),
+  options = {},
+) {
+  const rawFallback = options.rawFallback === undefined
+    ? DEFAULT_RAW_BACKEND_FALLBACK
+    : options.rawFallback;
+  return errorPresentationPolicy.present(payload, { fallback, rawFallback });
 }
 
 function showToast(text, kind = 'success', { sticky = false, translation = null } = {}) {
@@ -338,6 +379,21 @@ function setTranslatedProgress(key, params = null, isError = false, options = {}
 function setTranslatedDescriptor(copy, isError = false, options = {}) {
   const translation = { key: copy.key, params: copy.params ? { ...copy.params } : null };
   setProgress(translateDescriptor(translation), isError, { ...options, translation });
+}
+
+function showErrorPresentation(presentation, options = {}) {
+  const value = presentation?.value;
+  if (isTranslationDescriptor(value)) {
+    setTranslatedDescriptor(value, true, options);
+    return;
+  }
+  setProgress(typeof value === 'string' ? value : '', true, options);
+}
+
+function showPresentationError(error, fallback, options = {}) {
+  const presentation = error?.presentation
+    || userFacingErrorPresentation(error, fallback);
+  showErrorPresentation(presentation, options);
 }
 
 function setZipVoiceExpanded(expanded) {
@@ -562,7 +618,7 @@ function initializeReferenceAudioPreview() {
         `/v1/voice-profiles/${encodeURIComponent(profileEngineId())}/${encodeURIComponent(voiceId)}/reference.wav`,
         { signal },
       ),
-      readError,
+      readError: readErrorText,
     },
     callbacks: {
       onProgress: setTranslatedDescriptor,
@@ -646,7 +702,7 @@ function initializeVoiceProfileController() {
         { method: 'DELETE' },
       ),
       recommended: ({ engineId }) => apiFetch(`/v1/reference-audio/${encodeURIComponent(engineId)}/recommended-prompts`),
-      readError,
+      readError: readErrorText,
     },
     callbacks: {
       supportsProfiles: modelSupportsProfiles,
@@ -884,7 +940,7 @@ async function wakeCurrentModel() {
   try {
     const response = await apiFetch(`/v1/models/${encodeURIComponent(model.id)}/load`, { method: 'POST' });
     if (!response.ok) {
-      throw new Error(await readError(response));
+      throw presentationError(await readError(response));
     }
     const result = await response.json().catch(() => ({}));
     if (result.message) {
@@ -895,7 +951,7 @@ async function wakeCurrentModel() {
     await refreshServiceState();
     return true;
   } catch (error) {
-    setProgress(error.message || '模型唤醒失败', true);
+    showPresentationError(error, descriptor('studio.error.model_wake_failed'));
     return false;
   } finally {
     setBusy(false);
@@ -917,14 +973,14 @@ async function switchModel(modelId) {
       body: JSON.stringify({ model: modelId, unload_previous: true })
     });
     if (!response.ok) {
-      throw new Error(await readError(response));
+      throw presentationError(await readError(response));
     }
     const result = await response.json();
     state.selectedModel = result.current_model || modelId;
     setTranslatedProgress('studio.model.switched', { model_id: state.selectedModel });
     await refreshServiceState();
   } catch (error) {
-    setProgress(error.message || '模型切换失败', true);
+    showPresentationError(error, descriptor('studio.error.model_switch_failed'));
     renderModelSelect();
   } finally {
     setBusy(false);
@@ -1149,7 +1205,7 @@ async function refreshServiceState() {
     if (statsResp.status === 401) {
       state.authRejected = true;
       state.hasCookieSession = false;
-      setProgress('API Key 无效或已轮换，请在设置中重新填写后再操作音色与试听。', true);
+      showErrorPresentation(localErrorPresentation(descriptor('studio.error.api_key_rotated')));
       return;
     }
     if (statsResp.ok) {
@@ -1208,10 +1264,13 @@ function synthesizeHttp(text, voice, speed, autoplay = true) {
         onAuthRequired: () => {
           state.hasCookieSession = false;
           state.authRejected = true;
-          setProgress('访问会话已失效，请在设置中重新输入 API Key。', true);
+          showErrorPresentation(localErrorPresentation(descriptor('studio.error.session_expired')));
           els.settingsDialog.showModal();
         },
-        onRequestError: error => setProgress(error.message || '生成失败', true),
+        onRequestError: error => showPresentationError(
+          error,
+          descriptor('studio.error.generation_failed'),
+        ),
         onBlob: (blob, { autoplay: shouldAutoplay }) => {
           audioOutputController.setBlob(blob, { autoplay: shouldAutoplay });
         },
@@ -1226,7 +1285,7 @@ function synthesizeHttp(text, voice, speed, autoplay = true) {
 function readPromptAudioFile(file) {
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
-    reader.onerror = () => reject(new Error('参考音频读取失败'));
+    reader.onerror = () => reject(reader.error || new Error());
     reader.onload = () => {
       const value = String(reader.result || '');
       resolve(value.includes(',') ? value.split(',', 2)[1] : value);
@@ -1274,17 +1333,30 @@ function initializeStreamSynthesis() {
       onOutputBegin: () => audioOutputController.beginResult(),
       onBlob: (blob, options) => audioOutputController.setBlob(blob, options),
       onServerError: payload => {
-        setProgress(userFacingErrorMessage(payload, '流式合成失败'), true);
+        showErrorPresentation(userFacingErrorPresentation(
+          payload,
+          descriptor('studio.error.stream_synthesis_failed'),
+          {
+            rawFallback: USER_ERROR_MESSAGES.NO_SYNTHESIZABLE_TEXT,
+          },
+        ));
       },
       onPlaybackError: error => {
-        setProgress(userFacingErrorMessage(error, '流式播放处理失败，已停止本次合成'), true);
+        showErrorPresentation(userFacingErrorPresentation(
+          error,
+          descriptor('studio.error.stream_playback_failed'),
+        ));
       },
-      onSocketError: () => setProgress('WebSocket 连接失败', true),
-      onPromptReadError: error => setProgress(error.message || '参考音频读取失败', true),
+      onSocketError: () => showErrorPresentation(
+        localErrorPresentation(descriptor('studio.error.websocket_failed')),
+      ),
+      onPromptReadError: () => showErrorPresentation(
+        localErrorPresentation(descriptor('studio.error.reference_audio_read_failed')),
+      ),
       onSessionInvalid: () => {
         state.hasCookieSession = false;
         state.authRejected = true;
-        setProgress('访问会话已失效，请在设置中重新输入 API Key。', true);
+        showErrorPresentation(localErrorPresentation(descriptor('studio.error.session_expired')));
         els.settingsDialog.showModal();
       },
       onRefresh: () => refreshForSynthesisOwner('stream'),
@@ -1299,12 +1371,17 @@ function synthesizeStream(text, voice, speed) {
 }
 
 async function readError(response) {
-  try {
-    const data = await response.json();
-    return userFacingErrorMessage(data, response.statusText || '请求失败');
-  } catch (_) {
-    return response.statusText || '请求失败';
-  }
+  return errorPresentationPolicy.readResponseError(response, {
+    fallback: descriptor('studio.error.request_failed'),
+    rawFallback: DEFAULT_RAW_BACKEND_FALLBACK,
+  });
+}
+
+async function readErrorText(response) {
+  const presentation = await readError(response);
+  return isTranslationDescriptor(presentation.value)
+    ? translateDescriptor(presentation.value)
+    : presentation.value;
 }
 
 async function stopCurrent() {
@@ -1461,7 +1538,7 @@ function bindEvents() {
       setTranslatedProgress('studio.session.saved');
       refreshServiceState();
     } catch (err) {
-      setProgress(err.message || '会话保存失败，请检查 API Key。', true);
+      showPresentationError(err, descriptor('studio.error.session_save_failed'));
     }
   });
   els.clearTokenBtn.addEventListener('click', async () => {

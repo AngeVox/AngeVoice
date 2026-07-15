@@ -1,11 +1,9 @@
 from __future__ import annotations
 
-import hashlib
 import json
 from pathlib import Path
 import re
 import subprocess
-from collections import Counter
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -251,6 +249,68 @@ def test_http_controller_routes_401_and_non_2xx_without_changing_error_policy() 
     }
 
 
+def test_http_controller_preserves_structured_presentations_and_native_errors() -> None:
+    result = _node(
+        f"""
+        import {{ createHttpSynthesisController }} from {json.dumps(MODULE.as_uri())};
+        {NODE_FIXTURE}
+        const copy = {{ key: 'studio.error.request_failed', params: null }};
+        const presentation = Object.freeze({{
+          value: copy, source: 'fallback', code: 'UNKNOWN',
+          backendMessage: '', rawBackend: false,
+        }});
+        let mode = 'structured';
+        let id = 0;
+        const errors = [];
+        const controller = createHttpSynthesisController({{
+          request: async () => {{
+            if (mode === 'native') throw new Error('native network failure');
+            return response([], {{ status: 422 }});
+          }},
+          cancelRequest: async () => null,
+          readError: async () => presentation,
+          createRequestId: () => `client-${{++id}}`,
+          callbacks: {{
+            onRequestError: error => errors.push({{
+              message: error.message,
+              hasPresentation: Boolean(error.presentation),
+              presentationIdentity: error.presentation === presentation,
+              valueIdentity: error.presentation?.value === copy,
+              renderedObject: String(error.message).includes('[object Object]'),
+            }}),
+          }},
+          environment: {{ FormData: FakeFormData, AbortController }},
+        }});
+        const structured = await controller.start(snapshot());
+        mode = 'native';
+        const native = await controller.start(snapshot());
+        await new Promise(resolve => setImmediate(resolve));
+        console.log(JSON.stringify({{
+          statuses: [structured.status, native.status], errors,
+        }}));
+        """
+    )
+    assert result == {
+        "statuses": ["error", "error"],
+        "errors": [
+            {
+                "message": "",
+                "hasPresentation": True,
+                "presentationIdentity": True,
+                "valueIdentity": True,
+                "renderedObject": False,
+            },
+            {
+                "message": "native network failure",
+                "hasPresentation": False,
+                "presentationIdentity": False,
+                "valueIdentity": False,
+                "renderedObject": False,
+            },
+        ],
+    }
+
+
 def test_http_controller_latest_start_wins_without_stale_busy_blob_progress_or_refresh() -> None:
     result = _node(
         f"""
@@ -428,7 +488,8 @@ def test_http_module_is_pure_esm_and_app_is_only_the_composition_player_and_erro
     assert "state.hasCookieSession = false" in body.group("body")
     assert "state.authRejected = true" in body.group("body")
     assert "els.settingsDialog.showModal()" in body.group("body")
-    assert "error.message || '生成失败'" in body.group("body")
+    assert "showPresentationError(" in body.group("body")
+    assert "descriptor('studio.error.generation_failed')" in body.group("body")
     assert "httpSynthesisController?.stop()" in app
     assert "httpSynthesisController?.dispose()" in app
 
@@ -471,24 +532,23 @@ def test_app_refresh_authority_is_claimed_before_each_controller_start() -> None
     assert "latestSynthesisRefreshOwner" not in stop_body.group("body")
 
 
-def test_http_debt_ratchet_removes_exactly_the_eight_1e_3b_fingerprints() -> None:
+def test_error_copy_debt_ratchet_is_empty_after_descriptor_migration() -> None:
     registered = json.loads(DEBT.read_text(encoding="utf-8"))
-    fingerprints = {
-        hashlib.sha256(
-            f"{item['path']}\0{item['owner']}\0{item['text']}".encode()
-        ).hexdigest()[:16]
-        for item in registered
-    }
-    removed = {
-        "5d70da1b2674b384",
-        "acb1f5af1ab95cab",
-        "cf4768d81a9e2778",
-        "bca0dc8cd7dc9539",
-        "79cedc8d225de968",
-        "7b3d4eb0224d608b",
-        "f972f5561ba0fe26",
-        "d521a12a1c9693ab",
-    }
-    assert len(registered) == 19
-    assert fingerprints.isdisjoint(removed)
-    assert Counter(item["target_phase"] for item in registered) == Counter({"1H": 19})
+    assert registered == []
+    app = APP.read_text(encoding="utf-8")
+    for legacy in (
+        "会话保存失败，请检查 API Key。",
+        "API Key 无效或已失效",
+        "请求失败",
+        "API Key 无效或已轮换",
+        "模型切换失败",
+        "生成失败",
+        "访问会话已失效",
+        "WebSocket 连接失败",
+        "参考音频读取失败",
+        "流式合成失败",
+        "流式播放处理失败",
+        "模型唤醒失败",
+        "合成失败，请检查输入内容后重试",
+    ):
+        assert legacy not in app

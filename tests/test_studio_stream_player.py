@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-from collections import Counter
 import json
 from pathlib import Path
 import re
@@ -594,5 +593,4 @@ def test_app_composes_player_through_the_stream_lifecycle_controller() -> None:
     ).index("audioOutputController.beginResult();")
 
     registered = json.loads(DEBT.read_text(encoding="utf-8"))
-    assert len(registered) == 19
-    assert Counter(item["target_phase"] for item in registered) == Counter({"1H": 19})
+    assert registered == []

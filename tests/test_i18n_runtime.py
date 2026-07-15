@@ -353,12 +353,104 @@ def test_catalogs_are_frozen_side_effect_free_native_esm_modules() -> None:
     assert json.loads(completed.stdout) == {
         "exportsOnlyMessages": True,
         "allFrozen": True,
-            "zhDomainCounts": [15, 169, 7],
-            "enDomainCounts": [15, 169, 7],
-            "zhCount": 191,
-            "enCount": 191,
+            "zhDomainCounts": [15, 187, 7],
+            "enDomainCounts": [15, 187, 7],
+            "zhCount": 209,
+            "enCount": 209,
         "sameKeys": True,
     }
+
+
+def test_studio_error_catalog_is_exact_bilingual_and_placeholder_compatible() -> None:
+    keys = [
+        "studio.error.no_synthesizable_text",
+        "studio.error.ffmpeg_disabled",
+        "studio.error.ffmpeg_unavailable",
+        "studio.error.ffmpeg_conversion_failed",
+        "studio.error.session_save_failed",
+        "studio.error.api_key_invalid",
+        "studio.error.session_save_failed_status",
+        "studio.error.request_failed",
+        "studio.error.api_key_rotated",
+        "studio.error.model_switch_failed",
+        "studio.error.generation_failed",
+        "studio.error.session_expired",
+        "studio.error.websocket_failed",
+        "studio.error.reference_audio_read_failed",
+        "studio.error.stream_synthesis_failed",
+        "studio.error.stream_playback_failed",
+        "studio.error.model_wake_failed",
+        "studio.error.synthesis_safe_fallback",
+    ]
+    paths = {
+        locale: LOCALE_ROOT / "studio" / f"messages.{locale}.js"
+        for locale in ("zh-cn", "en")
+    }
+    script = f"""
+      const zh = (await import({json.dumps(paths['zh-cn'].as_uri())})).messages;
+      const en = (await import({json.dumps(paths['en'].as_uri())})).messages;
+      const keys = {json.dumps(keys)};
+      console.log(JSON.stringify({{
+        zh: Object.fromEntries(keys.map(key => [key, zh[key]])),
+        en: Object.fromEntries(keys.map(key => [key, en[key]])),
+        zhErrorKeys: Object.keys(zh).filter(key => key.startsWith('studio.error.')).sort(),
+        enErrorKeys: Object.keys(en).filter(key => key.startsWith('studio.error.')).sort(),
+      }}));
+    """
+    completed = subprocess.run(
+        ["node", "--input-type=module", "--eval", script],
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+    result = json.loads(completed.stdout)
+    expected_zh = {
+        "studio.error.no_synthesizable_text": "未检测到可合成的中文或英文文本\n当前内容包含代码、数字或符号，暂不适合直接语音合成\n请修改为自然语言后重试",
+        "studio.error.ffmpeg_disabled": "当前未启用 FFmpeg 转码。请在管理后台启用后，再请求 mp3、ogg_opus、telegram_voice 或 m4a。",
+        "studio.error.ffmpeg_unavailable": "FFmpeg 不可用。请确认服务环境已安装 ffmpeg，或在管理后台配置正确的 ffmpeg 路径。",
+        "studio.error.ffmpeg_conversion_failed": "音频转码失败。请检查 ffmpeg 编码器支持，或改用 wav 格式。",
+        "studio.error.session_save_failed": "会话保存失败，请检查 API Key。",
+        "studio.error.api_key_invalid": "API Key 无效或已失效",
+        "studio.error.session_save_failed_status": "会话保存失败 ({status})",
+        "studio.error.request_failed": "请求失败",
+        "studio.error.api_key_rotated": "API Key 无效或已轮换，请在设置中重新填写后再操作音色与试听。",
+        "studio.error.model_switch_failed": "模型切换失败",
+        "studio.error.generation_failed": "生成失败",
+        "studio.error.session_expired": "访问会话已失效，请在设置中重新输入 API Key。",
+        "studio.error.websocket_failed": "WebSocket 连接失败",
+        "studio.error.reference_audio_read_failed": "参考音频读取失败",
+        "studio.error.stream_synthesis_failed": "流式合成失败",
+        "studio.error.stream_playback_failed": "流式播放处理失败，已停止本次合成",
+        "studio.error.model_wake_failed": "模型唤醒失败",
+        "studio.error.synthesis_safe_fallback": "合成失败，请检查输入内容后重试",
+    }
+    expected_en = {
+        "studio.error.no_synthesizable_text": "No synthesizable Chinese or English text was detected.\nThe current content contains code, numbers, or symbols and is not suitable for direct speech synthesis.\nRewrite it as natural language and try again.",
+        "studio.error.ffmpeg_disabled": "FFmpeg transcoding is disabled. Enable it in Admin before requesting mp3, ogg_opus, telegram_voice, or m4a.",
+        "studio.error.ffmpeg_unavailable": "FFmpeg is unavailable. Confirm that ffmpeg is installed, or configure the correct ffmpeg path in Admin.",
+        "studio.error.ffmpeg_conversion_failed": "Audio transcoding failed. Check FFmpeg encoder support, or use WAV instead.",
+        "studio.error.session_save_failed": "Could not save the session. Check the API key.",
+        "studio.error.api_key_invalid": "The API key is invalid or has expired.",
+        "studio.error.session_save_failed_status": "Could not save the session ({status}).",
+        "studio.error.request_failed": "Request failed",
+        "studio.error.api_key_rotated": "The API key is invalid or has been rotated. Enter it again in Settings before managing voices or previews.",
+        "studio.error.model_switch_failed": "Model switch failed",
+        "studio.error.generation_failed": "Generation failed",
+        "studio.error.session_expired": "The access session has expired. Enter the API key again in Settings.",
+        "studio.error.websocket_failed": "WebSocket connection failed",
+        "studio.error.reference_audio_read_failed": "Could not read the reference audio",
+        "studio.error.stream_synthesis_failed": "Streaming synthesis failed",
+        "studio.error.stream_playback_failed": "Streaming playback failed and this synthesis was stopped",
+        "studio.error.model_wake_failed": "Model wake failed",
+        "studio.error.synthesis_safe_fallback": "Synthesis failed. Check the input and try again.",
+    }
+    assert result["zh"] == expected_zh
+    assert result["en"] == expected_en
+    assert result["zhErrorKeys"] == result["enErrorKeys"] == sorted(keys)
+    placeholders = lambda value: sorted(re.findall(r"\{([a-zA-Z_][a-zA-Z0-9_]*)\}", value))
+    for key in keys:
+        assert placeholders(result["zh"][key]) == placeholders(result["en"][key])
+        assert result["zh"][key].count("\n") == result["en"][key].count("\n")
 
 
 def test_consumers_use_relative_imports_and_templates_use_the_asset_manifest() -> None:

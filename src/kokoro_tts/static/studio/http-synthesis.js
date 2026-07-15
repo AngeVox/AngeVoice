@@ -9,6 +9,26 @@ function requireFunction(value, name) {
   return value;
 }
 
+function decodedResponseError(decoded) {
+  if (decoded instanceof Error) return decoded;
+  const isPresentation = Boolean(
+    decoded
+    && typeof decoded === 'object'
+    && Object.prototype.hasOwnProperty.call(decoded, 'value')
+  );
+  const value = isPresentation ? decoded.value : decoded;
+  const error = new Error(typeof value === 'string' ? value : '');
+  if (isPresentation) {
+    Object.defineProperty(error, 'presentation', {
+      configurable: false,
+      enumerable: false,
+      value: decoded,
+      writable: false,
+    });
+  }
+  return error;
+}
+
 function normalizedSnapshot(snapshot = {}) {
   const engineParams = Object.freeze({ ...(snapshot.engineParams || {}) });
   return Object.freeze({
@@ -172,7 +192,7 @@ export function createHttpSynthesisController({
           return { status: 'auth_required', requestId: operation.serverRequestId };
         }
         if (!response.ok) {
-          throw new Error(await decodeError(response));
+          throw decodedResponseError(await decodeError(response));
         }
         const blob = await response.blob();
         if (!current(operation)) return { status: 'superseded' };

@@ -87,6 +87,24 @@ PRODUCTION_DYNAMIC_ALLOWLIST: Mapping[str, tuple[DynamicKeyAllowance, ...]] = {
                     "studio.auth.required_admin",
                     "studio.auth.required_file",
                     "studio.compose.text_required",
+                    "studio.error.api_key_invalid",
+                    "studio.error.api_key_rotated",
+                    "studio.error.ffmpeg_conversion_failed",
+                    "studio.error.ffmpeg_disabled",
+                    "studio.error.ffmpeg_unavailable",
+                    "studio.error.generation_failed",
+                    "studio.error.model_switch_failed",
+                    "studio.error.model_wake_failed",
+                    "studio.error.no_synthesizable_text",
+                    "studio.error.reference_audio_read_failed",
+                    "studio.error.request_failed",
+                    "studio.error.session_expired",
+                    "studio.error.session_save_failed",
+                    "studio.error.session_save_failed_status",
+                    "studio.error.stream_playback_failed",
+                    "studio.error.stream_synthesis_failed",
+                    "studio.error.synthesis_safe_fallback",
+                    "studio.error.websocket_failed",
                     "studio.model.switching",
                     "studio.model.switched",
                     "studio.model.wake_success",
@@ -280,6 +298,8 @@ def _javascript_copy_findings(root: Path) -> set[StudioCopyFinding]:
             if in_error_map:
                 sink = "error_policy"
             if not sink:
+                continue
+            if in_error_map and "descriptor(" in line:
                 continue
             if "setTranslatedProgress(" in line or re.search(r"\bt\s*\(", line):
                 continue
@@ -493,7 +513,7 @@ def scan_i18n_references(
 
 
 def test_zh_and_en_catalogs_have_identical_keys_and_placeholders() -> None:
-    expected_counts = {"common": 15, "studio": 169, "admin": 7}
+    expected_counts = {"common": 15, "studio": 187, "admin": 7}
     for domain, expected in expected_counts.items():
         zh_domain = _domain_catalog(domain, "zh-cn")
         en_domain = _domain_catalog(domain, "en")
@@ -506,7 +526,7 @@ def test_zh_and_en_catalogs_have_identical_keys_and_placeholders() -> None:
 
     zh = _catalog("zh-cn")
     en = _catalog("en")
-    assert len(zh) == len(en) == sum(expected_counts.values()) == 191
+    assert len(zh) == len(en) == sum(expected_counts.values()) == 209
     assert set(zh) == set(en)
     for key in zh:
         assert PLACEHOLDER.findall(zh[key]) == PLACEHOLDER.findall(en[key]), key
@@ -572,7 +592,7 @@ def test_pages_load_the_explicit_runtime_before_consumers_without_catalog_tags()
 
 def test_studio_hardcoded_user_copy_matches_the_classified_shrinking_debt_registry() -> None:
     registered = json.loads(STUDIO_COPY_DEBT.read_text(encoding="utf-8"))
-    assert isinstance(registered, list)
+    assert registered == []
     fingerprints = []
     for item in registered:
         assert set(item) == {"path", "owner", "sink", "text", "classification", "target_phase", "reason"}

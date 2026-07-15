@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-from collections import Counter
 import json
 from pathlib import Path
 import re
@@ -568,8 +567,18 @@ def test_app_has_single_controller_truth_and_copy_debt_ratchet() -> None:
     assert "onRefresh: () => refreshForSynthesisOwner('stream')" in app
     assert "modelRequiresPromptText(currentModel()) && !voice && promptAudio" not in app
     assert "payload.prompt_text = els.promptText.value.trim()" not in app
+    for key in (
+        "studio.error.websocket_failed",
+        "studio.error.reference_audio_read_failed",
+        "studio.error.stream_synthesis_failed",
+        "studio.error.stream_playback_failed",
+        "studio.error.session_expired",
+        "studio.error.no_synthesizable_text",
+    ):
+        assert f"descriptor('{key}')" in app
+    assert "reader.onerror = () => reject(reader.error || new Error());" in app
+    assert "new Error('参考音频读取失败')" not in app
 
     debt = json.loads(DEBT.read_text(encoding="utf-8"))
-    assert len(debt) == 19
-    assert Counter(item["target_phase"] for item in debt) == Counter({"1H": 19})
+    assert debt == []
     assert not any(item["target_phase"] == "1E-3C" for item in debt)

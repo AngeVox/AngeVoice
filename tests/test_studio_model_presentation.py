@@ -384,10 +384,10 @@ def test_scanner_reports_stale_dynamic_allowlist(tmp_path: Path) -> None:
     assert any("Stale dynamic-key allowance" in error and "unused.key" in error for error in report.errors)
 
 
-def test_catalogs_remain_191_key_symmetric_with_matching_placeholders() -> None:
+def test_catalogs_remain_209_key_symmetric_with_matching_placeholders() -> None:
     placeholder = re.compile(r"\{([a-zA-Z_][a-zA-Z0-9_]*)\}")
     catalogs = [_catalog(locale) for locale in ("zh-cn", "en")]
-    assert len(catalogs[0]) == len(catalogs[1]) == 191
+    assert len(catalogs[0]) == len(catalogs[1]) == 209
     assert catalogs[0].keys() == catalogs[1].keys()
     assert all(placeholder.findall(catalogs[0][key]) == placeholder.findall(catalogs[1][key]) for key in catalogs[0])
 
@@ -424,6 +424,19 @@ def test_locale_change_rerenders_dynamic_studio_copy_without_overwriting_edited_
     assert "state.composeTextEdited = true" in source
     assert '<textarea id="text"' in INDEX.read_text(encoding="utf-8")
     assert '>你好，欢迎使用 AngeVoice。</textarea>' not in INDEX.read_text(encoding="utf-8")
+
+
+def test_model_wake_and_switch_failures_preserve_backend_presentations_with_local_fallbacks() -> None:
+    source = APP.read_text(encoding="utf-8")
+    wake = re.search(r"async function wakeCurrentModel\(\) \{(?P<body>.*?)\n\}", source, re.DOTALL)
+    switch = re.search(r"async function switchModel\(modelId\) \{(?P<body>.*?)\n\}", source, re.DOTALL)
+    assert wake and switch
+    assert "throw presentationError(await readError(response))" in wake.group("body")
+    assert "showPresentationError(error, descriptor('studio.error.model_wake_failed'))" in wake.group("body")
+    assert "throw presentationError(await readError(response))" in switch.group("body")
+    assert "showPresentationError(error, descriptor('studio.error.model_switch_failed'))" in switch.group("body")
+    assert "error.message || '模型唤醒失败'" not in source
+    assert "error.message || '模型切换失败'" not in source
 
 
 def test_translated_transient_copy_retains_key_and_params_for_locale_changes() -> None:

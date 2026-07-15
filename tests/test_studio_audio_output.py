@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-from collections import Counter
 import json
 from pathlib import Path
 import re
@@ -421,5 +420,4 @@ def test_module_is_pure_esm_and_app_is_only_the_composition_root() -> None:
 
 def test_copy_debt_reflects_the_p1_2b_ratchet() -> None:
     registered = json.loads(DEBT.read_text(encoding="utf-8"))
-    assert len(registered) == 19
-    assert Counter(item["target_phase"] for item in registered) == Counter({"1H": 19})
+    assert registered == []
