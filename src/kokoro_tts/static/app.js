@@ -18,6 +18,7 @@ import {
 } from './studio/reference-audio-preview.js';
 import { createVoiceProfileController } from './studio/voice-profiles.js';
 import { createHttpSynthesisController } from './studio/http-synthesis.js';
+import { createAudioOutputController } from './studio/audio-output.js';
 
 const bootstrapEl = document.getElementById('angevoice-bootstrap');
 const bootstrap = bootstrapEl ? JSON.parse(bootstrapEl.textContent || '{}') : {};
@@ -44,12 +45,11 @@ const state = {
   favorites: readList('angevoice.favoriteVoices.v2'),
   recent: readList('angevoice.recentVoices.v2'),
   busy: false,
-  playing: false,
+  streamPlaying: false,
   currentRequestId: '',
   currentWs: null,
   currentPlayer: null,
   streamTerminalReceived: false,
-  lastBlob: null,
   promptAudioFile: null,
   lastAppliedModelId: '',
   authRejected: false,
@@ -144,6 +144,7 @@ let referenceRecorderController = null;
 let referenceAudioPreviewController = null;
 let voiceProfileController = null;
 let httpSynthesisController = null;
+let audioOutputController = null;
 
 class StreamPlayer {
   constructor() {
@@ -233,11 +234,11 @@ class StreamPlayer {
     this.nextStartTime = start + buffer.duration;
     this.audioChunks += 1;
     this.sources.push(source);
-    state.playing = true;
+    state.streamPlaying = true;
     source.onended = () => {
       this.sources = this.sources.filter(item => item !== source);
       if (this.sources.length === 0) {
-        state.playing = false;
+        state.streamPlaying = false;
         updateButtons();
       }
     };
@@ -542,8 +543,17 @@ function updateButtons() {
   if (els.model) {
     els.model.disabled = state.busy || bootstrap.modelSwitchEnabled === false;
   }
-  els.stopBtn.disabled = !(state.busy || state.playing || state.currentWs || replaceableHttpOperation);
-  els.downloadBtn.disabled = !(state.lastBlob || state.currentPlayer?.pcmChunks.length);
+  els.stopBtn.disabled = !(
+    state.busy
+    || state.streamPlaying
+    || audioOutputController?.playing
+    || state.currentWs
+    || replaceableHttpOperation
+  );
+  els.downloadBtn.disabled = !(
+    audioOutputController?.downloadableBlob
+    || state.currentPlayer?.pcmChunks.length
+  );
 }
 
 function currentModel() {
@@ -698,6 +708,23 @@ function initializeReferenceAudioPreview() {
       onProgress: setTranslatedDescriptor,
       onDurationWarning: warnReferenceDuration,
     },
+  });
+}
+
+function initializeAudioOutput() {
+  audioOutputController = createAudioOutputController({
+    element: els.audio,
+    createObjectURL: globalThis.URL['createObjectURL'].bind(globalThis.URL),
+    revokeObjectURL: globalThis.URL['revokeObjectURL'].bind(globalThis.URL),
+    triggerDownload: ({ url, filename }) => {
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = filename;
+      link.click();
+    },
+    schedule: globalThis.setTimeout.bind(globalThis),
+    cancelSchedule: globalThis.clearTimeout.bind(globalThis),
+    callbacks: { onStateChange: updateButtons },
   });
 }
 
@@ -1287,8 +1314,7 @@ function synthesizeHttp(text, voice, speed, autoplay = true) {
       callbacks: {
         onBusyChange: setBusy,
         onStart: () => {
-          state.lastBlob = null;
-          updateButtons();
+          audioOutputController.beginResult();
         },
         onProgress: setTranslatedDescriptor,
         onAuthRequired: () => {
@@ -1299,15 +1325,7 @@ function synthesizeHttp(text, voice, speed, autoplay = true) {
         },
         onRequestError: error => setProgress(error.message || '生成失败', true),
         onBlob: (blob, { autoplay: shouldAutoplay }) => {
-          state.lastBlob = blob;
-          els.audio.src = URL.createObjectURL(blob);
-          if (shouldAutoplay) {
-            state.playing = true;
-            els.audio.play().catch(() => {
-              state.playing = false;
-              updateButtons();
-            });
-          }
+          audioOutputController.setBlob(blob, { autoplay: shouldAutoplay });
         },
         onRefresh: refreshServiceState,
       },
@@ -1359,12 +1377,12 @@ async function synthesizeStream(text, voice, speed) {
   // 捕获当前 WebSocket 实例，让下面所有回调只处理本次连接。
   // 如果用户停止后立刻开始新合成，state.currentWs 会指向新连接；
   // `if (ws !== state.currentWs) return;` 可以防止旧连接回调误清理新任务。
+  audioOutputController.beginResult();
   const ws = new WebSocket(`${protocol}//${location.host}/ws/v1/tts`);
   state.currentWs = ws;
   state.currentPlayer = new StreamPlayer();
   state.streamTerminalReceived = false;
   state.currentRequestId = '';
-  state.lastBlob = null;
   state.totalSegments = 0;
   state.totalAudioChunks = 0;
 
@@ -1434,10 +1452,8 @@ async function synthesizeStream(text, voice, speed) {
         }
       } else if (msg.type === 'done') {
         state.streamTerminalReceived = true;
-        state.lastBlob = state.currentPlayer.buildWavBlob();
-        if (state.lastBlob) {
-          els.audio.src = URL.createObjectURL(state.lastBlob);
-        }
+        const finalBlob = state.currentPlayer.buildWavBlob();
+        if (finalBlob) audioOutputController.setBlob(finalBlob, { autoplay: false });
         setProgress(`合成完成：文本 ${msg.total_segments || state.totalSegments} 段，音频块 ${msg.total_audio_chunks || state.totalAudioChunks}`);
         cleanupWs(ws, false);
       } else if (msg.type === 'cancelled') {
@@ -1472,10 +1488,8 @@ async function synthesizeStream(text, voice, speed) {
       return;
     }
     if (!state.streamTerminalReceived && state.currentPlayer?.pcmChunks.length) {
-      state.lastBlob = state.currentPlayer.buildWavBlob();
-      if (state.lastBlob) {
-        els.audio.src = URL.createObjectURL(state.lastBlob);
-      }
+      const partialBlob = state.currentPlayer.buildWavBlob();
+      if (partialBlob) audioOutputController.setBlob(partialBlob, { autoplay: false });
       setProgress('流式连接提前结束，已保留已接收音频；请查看服务日志中的终止原因', true, { kind: 'warning' });
     }
     cleanupWs(ws, !state.streamTerminalReceived);
@@ -1521,13 +1535,8 @@ async function stopCurrent() {
   if (state.currentPlayer) {
     state.currentPlayer.stop();
   }
-  state.playing = false;
-  try {
-    els.audio.pause();
-    els.audio.currentTime = 0;
-  } catch (_) {
-    // 播放器当前可能没有音频来源。
-  }
+  state.streamPlaying = false;
+  audioOutputController.stopPlayback();
   const httpStop = httpSynthesisController?.stop();
   if (httpStop?.completion) void httpStop.completion;
   if (requestId) {
@@ -1562,14 +1571,12 @@ async function stopCurrent() {
 }
 
 function downloadAudio() {
-  const blob = state.lastBlob || state.currentPlayer?.buildWavBlob();
+  const blob = audioOutputController.downloadableBlob || state.currentPlayer?.buildWavBlob();
   if (!blob) return;
-  const url = URL.createObjectURL(blob);
-  const link = document.createElement('a');
-  link.href = url;
-  link.download = `angevoice_${new Date().toISOString().replace(/[:.]/g, '-')}.wav`;
-  link.click();
-  setTimeout(() => URL.revokeObjectURL(url), 500);
+  audioOutputController.download({
+    blob,
+    filename: `angevoice_${new Date().toISOString().replace(/[:.]/g, '-')}.wav`,
+  });
 }
 
 function bindSpotlights() {
@@ -1586,6 +1593,7 @@ function bindEvents() {
   window.addEventListener('pagehide', event => {
     if (!event.persisted) referenceAudioPreviewController?.dispose();
     if (!event.persisted) httpSynthesisController?.dispose();
+    if (!event.persisted) audioOutputController?.dispose();
   });
   els.form.addEventListener('submit', async event => {
     event.preventDefault();
@@ -1678,17 +1686,6 @@ function bindEvents() {
     state.composeTextEdited = true;
     updateCounter();
   });
-  els.audio.addEventListener('ended', () => {
-    state.playing = false;
-    updateButtons();
-  });
-  els.audio.addEventListener('pause', () => {
-    if (els.audio.currentTime === 0 || els.audio.ended) {
-      state.playing = false;
-      updateButtons();
-    }
-  });
-
   els.themeBtn.addEventListener('click', () => {
     applyTheme(state.theme === 'dark' ? 'light' : 'dark');
   });
@@ -1762,6 +1759,7 @@ function init() {
     els.textNormalization.value = currentTextNormalization();
   }
   els.text.value = t('studio.compose.default_text');
+  initializeAudioOutput();
   initializeReferenceAudioPreview();
   initializeVoiceProfileController();
   initializeReferenceRecorder();
