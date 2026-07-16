@@ -65,6 +65,14 @@ def test_manifest_versions_the_error_presentation_module_by_content() -> None:
     assert manifest.import_map()["imports"][f"/static/{name}"] == manifest.url(name)
 
 
+def test_manifest_versions_the_admin_presentation_module_by_content() -> None:
+    manifest = StaticAssetManifest(STATIC_ROOT)
+    name = "admin/presentation.js"
+    path = STATIC_ROOT / name
+    assert manifest.versions[name] == StaticAssetManifest.portable_hash(path)
+    assert manifest.import_map()["imports"][f"/static/{name}"] == manifest.url(name)
+
+
 def test_templates_use_one_manifest_for_css_entries_and_import_maps() -> None:
     for name in ("index.html", "admin.html", "api_docs.html"):
         source = (PACKAGE_ROOT / "templates" / name).read_text(encoding="utf-8")

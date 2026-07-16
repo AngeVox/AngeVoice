@@ -41,9 +41,10 @@ def test_admin_config_exposes_text_dictionary_group_and_tn_engine():
 def test_admin_frontend_uses_mib_and_shared_i18n_module_graph():
     root = Path(__file__).resolve().parents[1] / "src" / "kokoro_tts"
     admin_js = (root / "static" / "admin.js").read_text(encoding="utf-8")
+    presentation_js = (root / "static" / "admin" / "presentation.js").read_text(encoding="utf-8")
     admin_html = (root / "templates" / "admin.html").read_text(encoding="utf-8")
-    assert "data-config-unit=\"mib\"" in admin_js
-    assert "Number(input.value) * MIB" in admin_js
+    assert "data-config-unit=\"mib\"" in presentation_js
+    assert "miBToBytes(input.value)" in admin_js
     assert "/static/locale/messages.zh-cn.js" not in admin_html
     assert "/static/locale/messages.en.js" not in admin_html
     assert "asset_url('common/i18n.js')" in admin_html
