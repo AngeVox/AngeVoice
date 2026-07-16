@@ -353,10 +353,10 @@ def test_catalogs_are_frozen_side_effect_free_native_esm_modules() -> None:
     assert json.loads(completed.stdout) == {
         "exportsOnlyMessages": True,
         "allFrozen": True,
-            "zhDomainCounts": [15, 187, 7],
-            "enDomainCounts": [15, 187, 7],
-            "zhCount": 209,
-            "enCount": 209,
+            "zhDomainCounts": [15, 187, 114],
+            "enDomainCounts": [15, 187, 114],
+            "zhCount": 316,
+            "enCount": 316,
         "sameKeys": True,
     }
 
@@ -510,8 +510,25 @@ def test_consumers_use_relative_imports_and_templates_use_the_asset_manifest() -
 def test_admin_removes_lite_map_and_rerenders_only_locale_dependent_dynamic_regions() -> None:
     source = ADMIN.read_text(encoding="utf-8")
     assert "const messages =" not in source
-    assert "labelKey: 'nav.config.text'" in source
+    for key in (
+        "subnav.config.runtime",
+        "subnav.config.quality",
+        "nav.config.text",
+        "subnav.security.auth",
+        "subnav.security.deploy",
+        "subnav.api.diagnostics",
+        "subnav.api.raw",
+    ):
+        assert f"labelKey: '{key}'" in source
     assert "tab.labelKey ? t(tab.labelKey) : tab.label" in source
+    copy_source = source[source.index("function currentAdminPresentationCopy") : source.index("const $ =")]
+    passive_keys = re.findall(r"t\('presentation\.([a-z0-9_]+)'", copy_source)
+    assert len(passive_keys) == len(set(passive_keys)) == 68
+    for action in ("load", "switch", "unload", "forceStop", "checkAssets", "repairAssets"):
+        assert re.search(rf"\b{action}: (?!t\('presentation\.)", copy_source)
+    assert "healthErrors: count => t('presentation.health_errors', { count })" in copy_source
+    assert "itemCount: count => t('presentation.item_count', { count })" in copy_source
+    assert "apiKeyStatus: (state, source, preview) => t('presentation.api_key_status', { state, source, preview })" in copy_source
     assert "function renderRuntimeConfigNote(payload)" in source
     runtime_note = source[source.index("function renderRuntimeConfigNote") : source.index("function renderConfigForms")]
     assert "renderTranslationTemplate(note, 'config.runtime.has_overrides', { count: countNode, path: pathNode })" in runtime_note
@@ -527,10 +544,11 @@ def test_admin_removes_lite_map_and_rerenders_only_locale_dependent_dynamic_regi
     )
     assert listener
     body = listener.group("body")
-    assert "renderAdminSubnav()" in body
-    assert "if (lastData) renderModels(lastData)" in body
-    assert "if (lastConfigPayload) renderRuntimeConfigNote(lastConfigPayload)" in body
-    assert "renderConfigForms" not in body
+    calls = re.findall(r"\b(render[A-Za-z]+)\s*\(", body)
+    assert calls == ["renderAdminSubnav", "renderModels", "renderRuntimeConfigNote"]
+    assert re.findall(r"if \(([^)]+)\)", body) == ["lastData", "lastConfigPayload"]
+    for forbidden in ("refresh", "fetch", "api", "renderConfigForms", "renderSecurity", "renderUpdate"):
+        assert not re.search(rf"\b{forbidden}\s*\(", body)
 
 
 def test_security_notice_module_prefers_shared_translation_and_rerenders() -> None:

@@ -1,0 +1,650 @@
+[
+  {
+    "path": "static/admin.js",
+    "owner": "applyProfile",
+    "sink": "confirm",
+    "text": "将应用“公网加固”预设：会收紧公开接口并启用限流，是否继续？",
+    "classification": "action_or_transient",
+    "target_phase": "P1-4B2",
+    "reason": "Deferred local Admin action or transient copy; B1A catalogs passive copy only."
+  },
+  {
+    "path": "static/admin.js",
+    "owner": "applyProfile",
+    "sink": "toast",
+    "text": "已应用预设：${result.profile}",
+    "classification": "action_or_transient",
+    "target_phase": "P1-4B2",
+    "reason": "Deferred local Admin action or transient copy; B1A catalogs passive copy only."
+  },
+  {
+    "path": "static/admin.js",
+    "owner": "checkAsset",
+    "sink": "toast",
+    "text": "${modelId} 模型文件：${asset.ready ? '完整' : '缺失或需要修复'}",
+    "classification": "action_or_transient",
+    "target_phase": "P1-4B2",
+    "reason": "Deferred local Admin action or transient copy; B1A catalogs passive copy only."
+  },
+  {
+    "path": "static/admin.js",
+    "owner": "checkUpdate",
+    "sink": "textContent",
+    "text": "检查中…",
+    "classification": "action_or_transient",
+    "target_phase": "P1-4B3",
+    "reason": "Deferred local Admin action or transient copy; B1A catalogs passive copy only."
+  },
+  {
+    "path": "static/admin.js",
+    "owner": "checkUpdate",
+    "sink": "textContent",
+    "text": "检查更新",
+    "classification": "action_or_transient",
+    "target_phase": "P1-4B3",
+    "reason": "Deferred local Admin action or transient copy; B1A catalogs passive copy only."
+  },
+  {
+    "path": "static/admin.js",
+    "owner": "checkUpdate",
+    "sink": "toast",
+    "text": "发现新版本 v${data.latest_version}",
+    "classification": "action_or_transient",
+    "target_phase": "P1-4B3",
+    "reason": "Deferred local Admin action or transient copy; B1A catalogs passive copy only."
+  },
+  {
+    "path": "static/admin.js",
+    "owner": "checkUpdate",
+    "sink": "toast",
+    "text": "检查更新失败：${err.message}",
+    "classification": "action_or_transient",
+    "target_phase": "P1-4B3",
+    "reason": "Deferred local Admin action or transient copy; B1A catalogs passive copy only."
+  },
+  {
+    "path": "static/admin.js",
+    "owner": "currentAdminPresentationCopy",
+    "sink": "presentation_action",
+    "text": "下载/修复模型文件",
+    "classification": "action_or_transient",
+    "target_phase": "P1-4B2",
+    "reason": "Deferred local Admin action or transient copy; B1A catalogs passive copy only."
+  },
+  {
+    "path": "static/admin.js",
+    "owner": "currentAdminPresentationCopy",
+    "sink": "presentation_action",
+    "text": "切换",
+    "classification": "action_or_transient",
+    "target_phase": "P1-4B2",
+    "reason": "Deferred local Admin action or transient copy; B1A catalogs passive copy only."
+  },
+  {
+    "path": "static/admin.js",
+    "owner": "currentAdminPresentationCopy",
+    "sink": "presentation_action",
+    "text": "加载",
+    "classification": "action_or_transient",
+    "target_phase": "P1-4B2",
+    "reason": "Deferred local Admin action or transient copy; B1A catalogs passive copy only."
+  },
+  {
+    "path": "static/admin.js",
+    "owner": "currentAdminPresentationCopy",
+    "sink": "presentation_action",
+    "text": "检测模型文件",
+    "classification": "action_or_transient",
+    "target_phase": "P1-4B2",
+    "reason": "Deferred local Admin action or transient copy; B1A catalogs passive copy only."
+  },
+  {
+    "path": "static/admin.js",
+    "owner": "currentAdminPresentationCopy",
+    "sink": "presentation_action",
+    "text": "释放",
+    "classification": "action_or_transient",
+    "target_phase": "P1-4B2",
+    "reason": "Deferred local Admin action or transient copy; B1A catalogs passive copy only."
+  },
+  {
+    "path": "static/admin.js",
+    "owner": "document.click",
+    "sink": "toast",
+    "text": "操作失败：${err.message}",
+    "classification": "action_or_transient",
+    "target_phase": "P1-4B2",
+    "reason": "Deferred local Admin action or transient copy; B1A catalogs passive copy only."
+  },
+  {
+    "path": "static/admin.js",
+    "owner": "loadModel",
+    "sink": "toast",
+    "text": "模型已加载",
+    "classification": "action_or_transient",
+    "target_phase": "P1-4B2",
+    "reason": "Deferred local Admin action or transient copy; B1A catalogs passive copy only."
+  },
+  {
+    "path": "static/admin.js",
+    "owner": "loadModel",
+    "sink": "toast",
+    "text": "正在加载 ${modelId}",
+    "classification": "action_or_transient",
+    "target_phase": "P1-4B2",
+    "reason": "Deferred local Admin action or transient copy; B1A catalogs passive copy only."
+  },
+  {
+    "path": "static/admin.js",
+    "owner": "onclick:cancel-admin-credentials-btn",
+    "sink": "credential_feedback",
+    "text": "已取消保存，未修改管理员凭据。",
+    "classification": "action_or_transient",
+    "target_phase": "P1-4B3",
+    "reason": "Deferred local Admin action or transient copy; B1A catalogs passive copy only."
+  },
+  {
+    "path": "static/admin.js",
+    "owner": "onclick:clear-cache-btn",
+    "sink": "toast",
+    "text": "缓存已清空",
+    "classification": "action_or_transient",
+    "target_phase": "P1-4B2",
+    "reason": "Deferred local Admin action or transient copy; B1A catalogs passive copy only."
+  },
+  {
+    "path": "static/admin.js",
+    "owner": "onclick:confirm-admin-credentials-btn",
+    "sink": "credential_feedback",
+    "text": "保存失败：${err.message}",
+    "classification": "action_or_transient",
+    "target_phase": "P1-4B3",
+    "reason": "Deferred local Admin action or transient copy; B1A catalogs passive copy only."
+  },
+  {
+    "path": "static/admin.js",
+    "owner": "onclick:confirm-admin-credentials-btn",
+    "sink": "credential_feedback",
+    "text": "正在安全保存管理员凭据…",
+    "classification": "action_or_transient",
+    "target_phase": "P1-4B3",
+    "reason": "Deferred local Admin action or transient copy; B1A catalogs passive copy only."
+  },
+  {
+    "path": "static/admin.js",
+    "owner": "onclick:confirm-admin-credentials-btn",
+    "sink": "credential_feedback",
+    "text": "管理员凭据已安全保存。请刷新页面并使用新账号密码重新登录。",
+    "classification": "action_or_transient",
+    "target_phase": "P1-4B3",
+    "reason": "Deferred local Admin action or transient copy; B1A catalogs passive copy only."
+  },
+  {
+    "path": "static/admin.js",
+    "owner": "onclick:confirm-admin-credentials-btn",
+    "sink": "toast",
+    "text": "保存失败：${err.message}",
+    "classification": "action_or_transient",
+    "target_phase": "P1-4B3",
+    "reason": "Deferred local Admin action or transient copy; B1A catalogs passive copy only."
+  },
+  {
+    "path": "static/admin.js",
+    "owner": "onclick:confirm-admin-credentials-btn",
+    "sink": "toast",
+    "text": "管理员凭据已安全保存，请使用新账号密码重新登录",
+    "classification": "action_or_transient",
+    "target_phase": "P1-4B3",
+    "reason": "Deferred local Admin action or transient copy; B1A catalogs passive copy only."
+  },
+  {
+    "path": "static/admin.js",
+    "owner": "onclick:confirm-admin-credentials-btn",
+    "sink": "toast",
+    "text": "请输入新用户名和新密码",
+    "classification": "action_or_transient",
+    "target_phase": "P1-4B3",
+    "reason": "Deferred local Admin action or transient copy; B1A catalogs passive copy only."
+  },
+  {
+    "path": "static/admin.js",
+    "owner": "onclick:download-diagnostics-btn",
+    "sink": "toast",
+    "text": "诊断包已下载",
+    "classification": "action_or_transient",
+    "target_phase": "P1-4B2",
+    "reason": "Deferred local Admin action or transient copy; B1A catalogs passive copy only."
+  },
+  {
+    "path": "static/admin.js",
+    "owner": "onclick:refresh-btn",
+    "sink": "toast",
+    "text": "已刷新",
+    "classification": "action_or_transient",
+    "target_phase": "P1-4B2",
+    "reason": "Deferred local Admin action or transient copy; B1A catalogs passive copy only."
+  },
+  {
+    "path": "static/admin.js",
+    "owner": "onclick:reset-runtime-config-btn",
+    "sink": "confirm",
+    "text": "清除 /app/config/runtime-config.json？清除后需重启容器或重新加载服务，ENV 才会完全接管。",
+    "classification": "action_or_transient",
+    "target_phase": "P1-4B2",
+    "reason": "Deferred local Admin action or transient copy; B1A catalogs passive copy only."
+  },
+  {
+    "path": "static/admin.js",
+    "owner": "onclick:reset-runtime-config-btn",
+    "sink": "toast",
+    "text": "已清除持久化配置，建议重启容器",
+    "classification": "action_or_transient",
+    "target_phase": "P1-4B2",
+    "reason": "Deferred local Admin action or transient copy; B1A catalogs passive copy only."
+  },
+  {
+    "path": "static/admin.js",
+    "owner": "onclick:reset-runtime-config-btn",
+    "sink": "toast",
+    "text": "没有持久化配置可清除",
+    "classification": "action_or_transient",
+    "target_phase": "P1-4B2",
+    "reason": "Deferred local Admin action or transient copy; B1A catalogs passive copy only."
+  },
+  {
+    "path": "static/admin.js",
+    "owner": "onclick:reveal-key-btn",
+    "sink": "textContent",
+    "text": "当前 API Key：${data.api_key}",
+    "classification": "action_or_transient",
+    "target_phase": "P1-4B3",
+    "reason": "Deferred local Admin action or transient copy; B1A catalogs passive copy only."
+  },
+  {
+    "path": "static/admin.js",
+    "owner": "onclick:reveal-key-btn",
+    "sink": "textContent",
+    "text": "当前未启用 API Key",
+    "classification": "action_or_transient",
+    "target_phase": "P1-4B3",
+    "reason": "Deferred local Admin action or transient copy; B1A catalogs passive copy only."
+  },
+  {
+    "path": "static/admin.js",
+    "owner": "onclick:rotate-key-btn",
+    "sink": "confirm",
+    "text": "轮换 API Key？旧客户端 token 会立即失效。",
+    "classification": "action_or_transient",
+    "target_phase": "P1-4B3",
+    "reason": "Deferred local Admin action or transient copy; B1A catalogs passive copy only."
+  },
+  {
+    "path": "static/admin.js",
+    "owner": "onclick:rotate-key-btn",
+    "sink": "textContent",
+    "text": "新 API Key：${data.api_key}",
+    "classification": "action_or_transient",
+    "target_phase": "P1-4B3",
+    "reason": "Deferred local Admin action or transient copy; B1A catalogs passive copy only."
+  },
+  {
+    "path": "static/admin.js",
+    "owner": "onclick:rotate-key-btn",
+    "sink": "toast",
+    "text": "API Key 已轮换",
+    "classification": "action_or_transient",
+    "target_phase": "P1-4B3",
+    "reason": "Deferred local Admin action or transient copy; B1A catalogs passive copy only."
+  },
+  {
+    "path": "static/admin.js",
+    "owner": "onclick:save-admin-credentials-btn",
+    "sink": "credential_feedback",
+    "text": "再次确认后将立即保存哈希凭据，当前登录会失效，需要使用新账号密码重新登录。",
+    "classification": "action_or_transient",
+    "target_phase": "P1-4B3",
+    "reason": "Deferred local Admin action or transient copy; B1A catalogs passive copy only."
+  },
+  {
+    "path": "static/admin.js",
+    "owner": "onclick:save-admin-credentials-btn",
+    "sink": "toast",
+    "text": "请输入新用户名和新密码",
+    "classification": "action_or_transient",
+    "target_phase": "P1-4B3",
+    "reason": "Deferred local Admin action or transient copy; B1A catalogs passive copy only."
+  },
+  {
+    "path": "static/admin.js",
+    "owner": "onclick:unload-btn",
+    "sink": "confirm",
+    "text": "释放所有可释放模型？忙碌模型会跳过。",
+    "classification": "action_or_transient",
+    "target_phase": "P1-4B2",
+    "reason": "Deferred local Admin action or transient copy; B1A catalogs passive copy only."
+  },
+  {
+    "path": "static/admin.js",
+    "owner": "onclick:unload-btn",
+    "sink": "toast",
+    "text": "已释放空闲模型",
+    "classification": "action_or_transient",
+    "target_phase": "P1-4B2",
+    "reason": "Deferred local Admin action or transient copy; B1A catalogs passive copy only."
+  },
+  {
+    "path": "static/admin.js",
+    "owner": "renderUpdate",
+    "sink": "textContent",
+    "text": "发现新版本 v${data.latest_version}（当前 v${current}），请查看发布说明后手动升级。",
+    "classification": "action_or_transient",
+    "target_phase": "P1-4B3",
+    "reason": "Deferred local Admin action or transient copy; B1A catalogs passive copy only."
+  },
+  {
+    "path": "static/admin.js",
+    "owner": "renderUpdate",
+    "sink": "textContent",
+    "text": "当前版本 v${current} · ${data.error}",
+    "classification": "action_or_transient",
+    "target_phase": "P1-4B3",
+    "reason": "Deferred local Admin action or transient copy; B1A catalogs passive copy only."
+  },
+  {
+    "path": "static/admin.js",
+    "owner": "renderUpdate",
+    "sink": "textContent",
+    "text": "当前版本 v${current} · 尚未检查更新",
+    "classification": "action_or_transient",
+    "target_phase": "P1-4B3",
+    "reason": "Deferred local Admin action or transient copy; B1A catalogs passive copy only."
+  },
+  {
+    "path": "static/admin.js",
+    "owner": "renderUpdate",
+    "sink": "textContent",
+    "text": "当前版本 v${current} · 已是最新版本",
+    "classification": "action_or_transient",
+    "target_phase": "P1-4B3",
+    "reason": "Deferred local Admin action or transient copy; B1A catalogs passive copy only."
+  },
+  {
+    "path": "static/admin.js",
+    "owner": "renderUpdate",
+    "sink": "textContent",
+    "text": "当前版本 v${current} · 更新检查已关闭",
+    "classification": "action_or_transient",
+    "target_phase": "P1-4B3",
+    "reason": "Deferred local Admin action or transient copy; B1A catalogs passive copy only."
+  },
+  {
+    "path": "static/admin.js",
+    "owner": "repairAsset",
+    "sink": "confirm",
+    "text": "下载或修复 ${modelId} 模型文件？空闲模型将先释放，并可能重新下载缺失文件。",
+    "classification": "action_or_transient",
+    "target_phase": "P1-4B2",
+    "reason": "Deferred local Admin action or transient copy; B1A catalogs passive copy only."
+  },
+  {
+    "path": "static/admin.js",
+    "owner": "repairAsset",
+    "sink": "toast",
+    "text": "${modelId} 资产修复：${data.ok ? '完成' : '仍不完整'}",
+    "classification": "action_or_transient",
+    "target_phase": "P1-4B2",
+    "reason": "Deferred local Admin action or transient copy; B1A catalogs passive copy only."
+  },
+  {
+    "path": "static/admin.js",
+    "owner": "saveConfig",
+    "sink": "toast",
+    "text": "已保存 ${changed} 项配置${(result.rebuilt_models || []).length ? '，MOSS 已重建' : (result.model_rebuild_required ? '，忙碌模型会稍后重建' : '')}",
+    "classification": "action_or_transient",
+    "target_phase": "P1-4B2",
+    "reason": "Deferred local Admin action or transient copy; B1A catalogs passive copy only."
+  },
+  {
+    "path": "static/admin.js",
+    "owner": "saveConfig",
+    "sink": "toast",
+    "text": "配置没有变化",
+    "classification": "action_or_transient",
+    "target_phase": "P1-4B2",
+    "reason": "Deferred local Admin action or transient copy; B1A catalogs passive copy only."
+  },
+  {
+    "path": "static/admin.js",
+    "owner": "switchModel",
+    "sink": "toast",
+    "text": "模型已切换",
+    "classification": "action_or_transient",
+    "target_phase": "P1-4B2",
+    "reason": "Deferred local Admin action or transient copy; B1A catalogs passive copy only."
+  },
+  {
+    "path": "static/admin.js",
+    "owner": "switchModel",
+    "sink": "toast",
+    "text": "正在切换到 ${modelId}",
+    "classification": "action_or_transient",
+    "target_phase": "P1-4B2",
+    "reason": "Deferred local Admin action or transient copy; B1A catalogs passive copy only."
+  },
+  {
+    "path": "static/admin.js",
+    "owner": "unloadModel",
+    "sink": "toast",
+    "text": "已释放模型",
+    "classification": "action_or_transient",
+    "target_phase": "P1-4B2",
+    "reason": "Deferred local Admin action or transient copy; B1A catalogs passive copy only."
+  },
+  {
+    "path": "templates/admin.html",
+    "owner": "a#-",
+    "sink": "html_text",
+    "text": "前往 Studio",
+    "classification": "action_or_transient",
+    "target_phase": "P1-4B2",
+    "reason": "Deferred local Admin action or transient copy; B1A catalogs passive copy only."
+  },
+  {
+    "path": "templates/admin.html",
+    "owner": "a#update-release-link",
+    "sink": "html_text",
+    "text": "查看发布说明",
+    "classification": "action_or_transient",
+    "target_phase": "P1-4B3",
+    "reason": "Deferred local Admin action or transient copy; B1A catalogs passive copy only."
+  },
+  {
+    "path": "templates/admin.html",
+    "owner": "button#cancel-admin-credentials-btn",
+    "sink": "html_text",
+    "text": "取消",
+    "classification": "action_or_transient",
+    "target_phase": "P1-4B3",
+    "reason": "Deferred local Admin action or transient copy; B1A catalogs passive copy only."
+  },
+  {
+    "path": "templates/admin.html",
+    "owner": "button#check-update-btn",
+    "sink": "html_text",
+    "text": "检查更新",
+    "classification": "action_or_transient",
+    "target_phase": "P1-4B3",
+    "reason": "Deferred local Admin action or transient copy; B1A catalogs passive copy only."
+  },
+  {
+    "path": "templates/admin.html",
+    "owner": "button#clear-cache-btn",
+    "sink": "html_text",
+    "text": "清缓存",
+    "classification": "action_or_transient",
+    "target_phase": "P1-4B2",
+    "reason": "Deferred local Admin action or transient copy; B1A catalogs passive copy only."
+  },
+  {
+    "path": "templates/admin.html",
+    "owner": "button#confirm-admin-credentials-btn",
+    "sink": "html_text",
+    "text": "确认保存并重新登录",
+    "classification": "action_or_transient",
+    "target_phase": "P1-4B3",
+    "reason": "Deferred local Admin action or transient copy; B1A catalogs passive copy only."
+  },
+  {
+    "path": "templates/admin.html",
+    "owner": "button#download-diagnostics-btn",
+    "sink": "html_text",
+    "text": "下载诊断包",
+    "classification": "action_or_transient",
+    "target_phase": "P1-4B2",
+    "reason": "Deferred local Admin action or transient copy; B1A catalogs passive copy only."
+  },
+  {
+    "path": "templates/admin.html",
+    "owner": "button#export-env-btn",
+    "sink": "html_text",
+    "text": "导出 ENV",
+    "classification": "action_or_transient",
+    "target_phase": "P1-4B2",
+    "reason": "Deferred local Admin action or transient copy; B1A catalogs passive copy only."
+  },
+  {
+    "path": "templates/admin.html",
+    "owner": "button#force-unload-btn",
+    "sink": "html_text",
+    "text": "终止进程",
+    "classification": "action_or_transient",
+    "target_phase": "P1-4B2",
+    "reason": "Deferred local Admin action or transient copy; B1A catalogs passive copy only."
+  },
+  {
+    "path": "templates/admin.html",
+    "owner": "button#refresh-btn",
+    "sink": "html_text",
+    "text": "刷新",
+    "classification": "action_or_transient",
+    "target_phase": "P1-4B2",
+    "reason": "Deferred local Admin action or transient copy; B1A catalogs passive copy only."
+  },
+  {
+    "path": "templates/admin.html",
+    "owner": "button#reset-runtime-config-btn",
+    "sink": "html_text",
+    "text": "清除持久化",
+    "classification": "action_or_transient",
+    "target_phase": "P1-4B2",
+    "reason": "Deferred local Admin action or transient copy; B1A catalogs passive copy only."
+  },
+  {
+    "path": "templates/admin.html",
+    "owner": "button#reveal-key-btn",
+    "sink": "html_text",
+    "text": "显示 Key",
+    "classification": "action_or_transient",
+    "target_phase": "P1-4B3",
+    "reason": "Deferred local Admin action or transient copy; B1A catalogs passive copy only."
+  },
+  {
+    "path": "templates/admin.html",
+    "owner": "button#rotate-key-btn",
+    "sink": "html_text",
+    "text": "轮换 Key",
+    "classification": "action_or_transient",
+    "target_phase": "P1-4B3",
+    "reason": "Deferred local Admin action or transient copy; B1A catalogs passive copy only."
+  },
+  {
+    "path": "templates/admin.html",
+    "owner": "button#save-admin-credentials-btn",
+    "sink": "html_text",
+    "text": "保存管理员凭据",
+    "classification": "action_or_transient",
+    "target_phase": "P1-4B3",
+    "reason": "Deferred local Admin action or transient copy; B1A catalogs passive copy only."
+  },
+  {
+    "path": "templates/admin.html",
+    "owner": "button#save-config-btn",
+    "sink": "html_text",
+    "text": "保存配置",
+    "classification": "action_or_transient",
+    "target_phase": "P1-4B2",
+    "reason": "Deferred local Admin action or transient copy; B1A catalogs passive copy only."
+  },
+  {
+    "path": "templates/admin.html",
+    "owner": "button#unload-btn",
+    "sink": "html_text",
+    "text": "释放",
+    "classification": "action_or_transient",
+    "target_phase": "P1-4B2",
+    "reason": "Deferred local Admin action or transient copy; B1A catalogs passive copy only."
+  },
+  {
+    "path": "templates/admin.html",
+    "owner": "h3#-",
+    "sink": "html_text",
+    "text": "管理员账号与密码",
+    "classification": "action_or_transient",
+    "target_phase": "P1-4B3",
+    "reason": "Deferred local Admin action or transient copy; B1A catalogs passive copy only."
+  },
+  {
+    "path": "templates/admin.html",
+    "owner": "input#admin-password-input",
+    "sink": "placeholder",
+    "text": "至少 10 位且包含两类字符",
+    "classification": "action_or_transient",
+    "target_phase": "P1-4B3",
+    "reason": "Deferred local Admin action or transient copy; B1A catalogs passive copy only."
+  },
+  {
+    "path": "templates/admin.html",
+    "owner": "input#admin-username-input",
+    "sink": "placeholder",
+    "text": "管理员或 admin",
+    "classification": "action_or_transient",
+    "target_phase": "P1-4B3",
+    "reason": "Deferred local Admin action or transient copy; B1A catalogs passive copy only."
+  },
+  {
+    "path": "templates/admin.html",
+    "owner": "p#-",
+    "sink": "html_text",
+    "text": "登录。公网暴露前请在此修改；修改后磁盘只保存 PBKDF2 哈希，不保存明文密码。",
+    "classification": "action_or_transient",
+    "target_phase": "P1-4B3",
+    "reason": "Deferred local Admin action or transient copy; B1A catalogs passive copy only."
+  },
+  {
+    "path": "templates/admin.html",
+    "owner": "p#-",
+    "sink": "html_text",
+    "text": "首次可使用默认账号",
+    "classification": "action_or_transient",
+    "target_phase": "P1-4B3",
+    "reason": "Deferred local Admin action or transient copy; B1A catalogs passive copy only."
+  },
+  {
+    "path": "templates/admin.html",
+    "owner": "span#-",
+    "sink": "html_text",
+    "text": "新密码",
+    "classification": "action_or_transient",
+    "target_phase": "P1-4B3",
+    "reason": "Deferred local Admin action or transient copy; B1A catalogs passive copy only."
+  },
+  {
+    "path": "templates/admin.html",
+    "owner": "span#-",
+    "sink": "html_text",
+    "text": "新用户名",
+    "classification": "action_or_transient",
+    "target_phase": "P1-4B3",
+    "reason": "Deferred local Admin action or transient copy; B1A catalogs passive copy only."
+  }
+]

@@ -384,10 +384,9 @@ def test_scanner_reports_stale_dynamic_allowlist(tmp_path: Path) -> None:
     assert any("Stale dynamic-key allowance" in error and "unused.key" in error for error in report.errors)
 
 
-def test_catalogs_remain_209_key_symmetric_with_matching_placeholders() -> None:
+def test_catalogs_remain_symmetric_with_matching_placeholders() -> None:
     placeholder = re.compile(r"\{([a-zA-Z_][a-zA-Z0-9_]*)\}")
     catalogs = [_catalog(locale) for locale in ("zh-cn", "en")]
-    assert len(catalogs[0]) == len(catalogs[1]) == 209
     assert catalogs[0].keys() == catalogs[1].keys()
     assert all(placeholder.findall(catalogs[0][key]) == placeholder.findall(catalogs[1][key]) for key in catalogs[0])
 

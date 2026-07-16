@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>AngeVoice Admin</title>
+  <title data-i18n="page.title">AngeVoice Admin</title>
   <script>
     const savedTheme = localStorage.getItem('angevoice.theme.v1');
     document.documentElement.dataset.theme = savedTheme || (matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light');
@@ -20,7 +20,7 @@
       </a>
       <div class="brand-copy">
         <p class="eyebrow">Admin</p>
-        <h1>管理控制台</h1>
+        <h1 data-i18n="header.console">管理控制台</h1>
       </div>
       <div class="topbar-actions">
         <a class="ghost-button small" href="/">Studio</a>
@@ -30,27 +30,27 @@
     </header>
 
     <section class="admin-nav">
-      <button class="admin-nav-btn active" data-admin-tab="overview" type="button">概览</button>
-      <button class="admin-nav-btn" data-admin-tab="models" type="button">模型</button>
-      <button class="admin-nav-btn" data-admin-tab="config" type="button">配置</button>
-      <button class="admin-nav-btn" data-admin-tab="security" type="button">安全</button>
-      <button class="admin-nav-btn" data-admin-tab="api" type="button">API/诊断</button>
+      <button class="admin-nav-btn active" data-admin-tab="overview" data-i18n="nav.overview" type="button">概览</button>
+      <button class="admin-nav-btn" data-admin-tab="models" data-i18n="nav.models" type="button">模型</button>
+      <button class="admin-nav-btn" data-admin-tab="config" data-i18n="nav.config" type="button">配置</button>
+      <button class="admin-nav-btn" data-admin-tab="security" data-i18n="nav.security" type="button">安全</button>
+      <button class="admin-nav-btn" data-admin-tab="api" data-i18n="nav.api" type="button">API/诊断</button>
     </section>
     <section class="admin-subnav" id="admin-subnav"></section>
     <section class="admin-layout">
       <article class="panel admin-panel overview-panel" data-admin-panel="overview">
         <div class="section-head compact">
           <div>
-            <p class="eyebrow">Dashboard</p>
-            <h2>概览</h2>
+            <p class="eyebrow" data-i18n="section.overview.eyebrow">Dashboard</p>
+            <h2 data-i18n="section.overview.title">概览</h2>
           </div>
           <span class="status-pill" id="admin-health-pill"><span></span><b>检查中</b></span>
         </div>
         <div class="metrics-grid admin-metrics" id="admin-metrics"></div>
         <section class="update-card" id="update-card" aria-live="polite">
           <div>
-            <p class="eyebrow">Updates</p>
-            <h3>版本更新</h3>
+            <p class="eyebrow" data-i18n="section.update.eyebrow">Updates</p>
+            <h3 data-i18n="section.update.title">版本更新</h3>
             <p class="update-message" id="update-message">当前版本检查中...</p>
           </div>
           <div class="button-row">
@@ -63,8 +63,8 @@
       <article class="panel admin-panel models-panel" data-admin-panel="models">
         <div class="section-head compact">
           <div>
-            <p class="eyebrow">Models</p>
-            <h2>模型</h2>
+            <p class="eyebrow" data-i18n="section.models.eyebrow">Models</p>
+            <h2 data-i18n="section.models.title">模型</h2>
           </div>
           <div class="button-row">
             <button class="secondary-button small-action" id="clear-cache-btn" type="button">清缓存</button>
@@ -78,8 +78,8 @@
       <article class="panel admin-panel tuning-panel" data-admin-panel="config" data-admin-subpanel="config.runtime">
         <div class="section-head">
           <div>
-            <p class="eyebrow">Tuning</p>
-            <h2>模型与运行参数</h2>
+            <p class="eyebrow" data-i18n="section.config.eyebrow">Tuning</p>
+            <h2 data-i18n="section.config.title">模型与运行参数</h2>
           </div>
           <div class="button-row">
             <button class="secondary-button" id="reset-runtime-config-btn" type="button">清除持久化</button>
@@ -87,18 +87,18 @@
           </div>
         </div>
         <div class="runtime-config-note" id="runtime-config-note">配置来源检查中...</div>
-        <nav class="config-tabs" id="config-tabs" aria-label="配置分组"></nav>
+        <nav class="config-tabs" id="config-tabs" data-i18n-aria-label="section.config.group_aria" aria-label="配置分组"></nav>
         <form class="config-form" id="config-form"></form>
         <details class="admin-details" id="advanced-config-details">
-          <summary>当前分组高级参数</summary>
+          <summary data-i18n="section.config.advanced_summary">当前分组高级参数</summary>
           <div class="config-form advanced-form" id="advanced-config-form"></div>
         </details>
       </article>
       <article class="panel admin-panel tuning-panel" data-admin-panel="config" data-admin-subpanel="config.quality">
         <div class="section-head compact">
           <div>
-            <p class="eyebrow">Profiles</p>
-            <h2>质量/延迟预设</h2>
+            <p class="eyebrow" data-i18n="section.profiles.eyebrow">Profiles</p>
+            <h2 data-i18n="section.profiles.title">质量/延迟预设</h2>
           </div>
         </div>
         <div class="profile-grid" id="profile-grid"></div>
@@ -106,32 +106,32 @@
       <article class="panel admin-panel tuning-panel" data-admin-panel="config" data-admin-subpanel="config.text">
         <div class="section-head compact">
           <div>
-            <p class="eyebrow">文本预处理</p>
-            <h2>文本与词典</h2>
+            <p class="eyebrow" data-i18n="section.dictionary.eyebrow">文本预处理</p>
+            <h2 data-i18n="section.dictionary.title">文本与词典</h2>
           </div>
         </div>
         <div class="dictionary-admin-summary">
           <div>
-            <b>当前阶段：实验性文本处理</b>
-            <span>默认策略可在这里持久化；Studio 前台仍可按单次合成覆盖。用户词典、品牌改写和多音字词库管理尚未默认启用。</span>
+            <b data-i18n="section.dictionary.phase">当前阶段：实验性文本处理</b>
+            <span data-i18n="section.dictionary.description">默认策略可在这里持久化；Studio 前台仍可按单次合成覆盖。用户词典、品牌改写和多音字词库管理尚未默认启用。</span>
           </div>
           <a class="ghost-button small" href="/">前往 Studio</a>
         </div>
         <div class="config-form" id="text-config-form"></div>
         <div class="dictionary-table">
           <div class="dictionary-table-head">
-            <b>词典分页</b>
-            <span>预留管理面板</span>
+            <b data-i18n="section.dictionary.pagination">词典分页</b>
+            <span data-i18n="section.dictionary.placeholder">预留管理面板</span>
           </div>
-          <p class="empty-state">当前 recovery 线未启用用户词典。后续接入时应独立分页、独立开关，并继续保持 Kokoro / MOSS / ZipVoice 隔离。</p>
+          <p class="empty-state" data-i18n="section.dictionary.empty">当前 recovery 线未启用用户词典。后续接入时应独立分页、独立开关，并继续保持 Kokoro / MOSS / ZipVoice 隔离。</p>
         </div>
       </article>
 
       <article class="panel admin-panel security-panel" data-admin-panel="security" data-admin-subpanel="security.auth">
         <div class="section-head compact">
           <div>
-            <p class="eyebrow">Security</p>
-            <h2>安全</h2>
+            <p class="eyebrow" data-i18n="section.security.eyebrow">Security</p>
+            <h2 data-i18n="section.security.title">安全</h2>
           </div>
         </div>
         <div class="security-stack">
@@ -161,8 +161,8 @@
       <article class="panel admin-panel security-panel" data-admin-panel="security" data-admin-subpanel="security.deploy">
         <div class="section-head compact">
           <div>
-            <p class="eyebrow">Deployment Presets</p>
-            <h2>部署预设</h2>
+            <p class="eyebrow" data-i18n="section.deployment.eyebrow">Deployment Presets</p>
+            <h2 data-i18n="section.deployment.title">部署预设</h2>
           </div>
         </div>
         <div class="profile-grid deploy-grid" id="deploy-profile-grid"></div>
@@ -171,8 +171,8 @@
       <article class="panel admin-panel diagnostics-panel" data-admin-panel="api" data-admin-subpanel="api.diagnostics">
         <div class="section-head compact">
           <div>
-            <p class="eyebrow">Diagnostics</p>
-            <h2>诊断</h2>
+            <p class="eyebrow" data-i18n="section.diagnostics.eyebrow">Diagnostics</p>
+            <h2 data-i18n="section.diagnostics.title">诊断</h2>
           </div>
           <div class="button-row">
             <button class="ghost-button small" id="download-diagnostics-btn" type="button">下载诊断包</button>
@@ -190,7 +190,7 @@
         <div class="section-head compact">
           <div>
             <p class="eyebrow">Raw State</p>
-            <h2>原始状态 JSON</h2>
+            <h2 data-i18n="section.raw_state.title">原始状态 JSON</h2>
           </div>
         </div>
         <pre id="admin-json" class="admin-json"></pre>
