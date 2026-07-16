@@ -507,7 +507,7 @@ def test_consumers_use_relative_imports_and_templates_use_the_asset_manifest() -
     assert admin_html.index("common/i18n.js") < admin_html.index("admin.js")
 
 
-def test_admin_removes_lite_map_and_rerenders_only_locale_dependent_dynamic_regions() -> None:
+def test_admin_removes_lite_map_and_rerenders_safe_locale_dependent_regions() -> None:
     source = ADMIN.read_text(encoding="utf-8")
     assert "const messages =" not in source
     for key in (
@@ -545,9 +545,26 @@ def test_admin_removes_lite_map_and_rerenders_only_locale_dependent_dynamic_regi
     assert listener
     body = listener.group("body")
     calls = re.findall(r"\b(render[A-Za-z]+)\s*\(", body)
-    assert calls == ["renderAdminSubnav", "renderModels", "renderRuntimeConfigNote"]
+    assert calls == [
+        "renderAdminSubnav",
+        "renderMetrics",
+        "renderModels",
+        "renderSecurity",
+        "renderQuality",
+        "renderRequests",
+        "renderConfigFormsForLocale",
+    ]
     assert re.findall(r"if \(([^)]+)\)", body) == ["lastData", "lastConfigPayload"]
-    for forbidden in ("refresh", "fetch", "api", "renderConfigForms", "renderSecurity", "renderUpdate"):
+    for forbidden in (
+        "refresh",
+        "fetch",
+        "api",
+        "checkUpdate",
+        "renderUpdate",
+        "renderConfigForms",
+        "renderProfiles",
+        "collectConfigValues",
+    ):
         assert not re.search(rf"\b{forbidden}\s*\(", body)
 
 

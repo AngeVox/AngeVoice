@@ -258,15 +258,96 @@ function renderConfigForms(payload) {
   if (textForm) textForm.innerHTML = presentation.textHtml;
 }
 
+function captureConfigFormUiState() {
+  const fields = new Map();
+  let focusedKey = null;
+  document.querySelectorAll('[data-config-field]').forEach(field => {
+    const key = field.dataset.configField;
+    if (!key) return;
+    const state = field instanceof HTMLInputElement && field.type === 'checkbox'
+      ? { checked: field.checked }
+      : { value: field.value };
+    try {
+      if (typeof field.selectionStart === 'number' && typeof field.selectionEnd === 'number') {
+        state.selection = {
+          start: field.selectionStart,
+          end: field.selectionEnd,
+          direction: field.selectionDirection || 'none',
+        };
+      }
+    } catch (_) {
+      // Number inputs and some browser controls do not expose a text selection.
+    }
+    if (document.activeElement === field) focusedKey = key;
+    fields.set(key, state);
+  });
+  const advancedDetails = $('advanced-config-details');
+  return {
+    fields,
+    activeGroup,
+    advancedOpen: Boolean(advancedDetails?.open),
+    focusedKey,
+    scrollX: window.scrollX,
+    scrollY: window.scrollY,
+  };
+}
+
+function restoreConfigFormUiState(state) {
+  state.fields.forEach((fieldState, key) => {
+    const field = Array.from(document.querySelectorAll('[data-config-field]'))
+      .find(node => node.dataset.configField === key);
+    if (!field) return;
+    if ('checked' in fieldState && field instanceof HTMLInputElement) {
+      field.checked = fieldState.checked;
+    } else if ('value' in fieldState) {
+      field.value = fieldState.value;
+    }
+    if (!fieldState.selection || typeof field.setSelectionRange !== 'function') return;
+    try {
+      const length = field.value.length;
+      const start = Math.min(fieldState.selection.start, length);
+      const end = Math.min(Math.max(fieldState.selection.end, start), length);
+      field.setSelectionRange(start, end, fieldState.selection.direction);
+    } catch (_) {
+      // Preserve the rest of the locale rerender when a control rejects selection.
+    }
+  });
+  const advancedDetails = $('advanced-config-details');
+  if (advancedDetails && !advancedDetails.classList.contains('hidden-panel')) {
+    advancedDetails.open = state.advancedOpen;
+  }
+  if (state.focusedKey) {
+    const focusedField = Array.from(document.querySelectorAll('[data-config-field]'))
+      .find(node => node.dataset.configField === state.focusedKey);
+    if (focusedField) {
+      try {
+        focusedField.focus({ preventScroll: true });
+      } catch (_) {
+        focusedField.focus();
+      }
+    }
+  }
+  window.scrollTo(state.scrollX, state.scrollY);
+}
+
+function renderConfigFormsForLocale(payload) {
+  const state = captureConfigFormUiState();
+  activeGroup = state.activeGroup;
+  renderConfigForms(payload);
+  restoreConfigFormUiState(state);
+}
+
 function renderProfiles(payload) {
   const presentation = profilesPresentation(payload);
   $('profile-grid').innerHTML = presentation.tuningHtml;
   $('deploy-profile-grid').innerHTML = presentation.deployHtml;
 }
 
-function renderSecurity(data) {
+function renderSecurity(data, { preserveApiKeyStatus = false } = {}) {
   const presentation = securityPresentation(data, currentAdminPresentationCopy());
-  $('api-key-status').textContent = presentation.apiKeyStatus;
+  if (!preserveApiKeyStatus) {
+    $('api-key-status').textContent = presentation.apiKeyStatus;
+  }
   $('security-summary').innerHTML = presentation.summaryHtml;
   const warning = $('default-admin-warning');
   if (warning) {
@@ -434,8 +515,14 @@ document.addEventListener('click', async event => {
 
 document.addEventListener('angevoice:locale-changed', () => {
   renderAdminSubnav();
-  if (lastData) renderModels(lastData);
-  if (lastConfigPayload) renderRuntimeConfigNote(lastConfigPayload);
+  if (lastData) {
+    renderMetrics(lastData);
+    renderModels(lastData);
+    renderSecurity(lastData, { preserveApiKeyStatus: true });
+    renderQuality(lastData);
+    renderRequests(lastData);
+  }
+  if (lastConfigPayload) renderConfigFormsForLocale(lastConfigPayload);
 });
 
 
