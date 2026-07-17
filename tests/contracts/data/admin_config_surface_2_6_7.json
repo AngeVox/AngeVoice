@@ -1,0 +1,2879 @@
+{
+  "comparisons": [
+    {
+      "admin_default": "wetext",
+      "admin_range": {
+        "max": null,
+        "min": null
+      },
+      "config_default": "wetext",
+      "default_equal": true,
+      "env_ranges": [],
+      "key": "angevoice_tn_engine",
+      "range_equal": null,
+      "runtime_config_key": "angevoice_tn_engine"
+    },
+    {
+      "admin_default": 1.0,
+      "admin_range": {
+        "max": 2.0,
+        "min": 0.5
+      },
+      "config_default": 1.0,
+      "default_equal": true,
+      "env_ranges": [
+        {
+          "env": "KOKORO_DEFAULT_SPEED",
+          "max": null,
+          "min": null
+        }
+      ],
+      "key": "default_speed",
+      "range_equal": false,
+      "runtime_config_key": "default_speed"
+    },
+    {
+      "admin_default": 160,
+      "admin_range": {
+        "max": 400,
+        "min": 60
+      },
+      "config_default": 160,
+      "default_equal": true,
+      "env_ranges": [
+        {
+          "env": "KOKORO_SEGMENT_LENGTH",
+          "max": null,
+          "min": 20
+        }
+      ],
+      "key": "segment_length",
+      "range_equal": false,
+      "runtime_config_key": "segment_length"
+    },
+    {
+      "admin_default": 120,
+      "admin_range": {
+        "max": 600,
+        "min": 80
+      },
+      "config_default": 120,
+      "default_equal": true,
+      "env_ranges": [
+        {
+          "env": "MOSS_SEGMENT_LENGTH",
+          "max": null,
+          "min": 20
+        }
+      ],
+      "key": "moss_segment_length",
+      "range_equal": false,
+      "runtime_config_key": "moss_segment_length"
+    },
+    {
+      "admin_default": 56,
+      "admin_range": {
+        "max": 200,
+        "min": 20
+      },
+      "config_default": 56,
+      "default_equal": true,
+      "env_ranges": [
+        {
+          "env": "MOSS_VOICE_CLONE_MAX_TEXT_TOKENS",
+          "max": null,
+          "min": 1
+        }
+      ],
+      "key": "moss_voice_clone_max_text_tokens",
+      "range_equal": false,
+      "runtime_config_key": "moss_voice_clone_max_text_tokens"
+    },
+    {
+      "admin_default": 320,
+      "admin_range": {
+        "max": 1200,
+        "min": 64
+      },
+      "config_default": 320,
+      "default_equal": true,
+      "env_ranges": [
+        {
+          "env": "MOSS_MAX_NEW_FRAMES",
+          "max": null,
+          "min": 1
+        }
+      ],
+      "key": "moss_max_new_frames",
+      "range_equal": false,
+      "runtime_config_key": "moss_max_new_frames"
+    },
+    {
+      "admin_default": 480.0,
+      "admin_range": {
+        "max": 5000,
+        "min": 0
+      },
+      "config_default": 480.0,
+      "default_equal": true,
+      "env_ranges": [
+        {
+          "env": "MOSS_MAX_SILENCE_MS",
+          "max": 5000.0,
+          "min": 0.0
+        }
+      ],
+      "key": "moss_max_silence_ms",
+      "range_equal": true,
+      "runtime_config_key": "moss_max_silence_ms"
+    },
+    {
+      "admin_default": 12.0,
+      "admin_range": {
+        "max": 120,
+        "min": 0
+      },
+      "config_default": 12.0,
+      "default_equal": true,
+      "env_ranges": [
+        {
+          "env": "MOSS_CROSSFADE_MS",
+          "max": 120.0,
+          "min": 0.0
+        }
+      ],
+      "key": "moss_crossfade_ms",
+      "range_equal": true,
+      "runtime_config_key": "moss_crossfade_ms"
+    },
+    {
+      "admin_default": 80.0,
+      "admin_range": {
+        "max": 2000,
+        "min": 0
+      },
+      "config_default": 80.0,
+      "default_equal": true,
+      "env_ranges": [
+        {
+          "env": "MOSS_SEGMENT_PAUSE_MS",
+          "max": 2000.0,
+          "min": 0.0
+        }
+      ],
+      "key": "moss_segment_pause_ms",
+      "range_equal": true,
+      "runtime_config_key": "moss_segment_pause_ms"
+    },
+    {
+      "admin_default": 350.0,
+      "admin_range": {
+        "max": 3000,
+        "min": 0
+      },
+      "config_default": 350.0,
+      "default_equal": true,
+      "env_ranges": [
+        {
+          "env": "MOSS_RUNTIME_PAUSE_MAX_MS",
+          "max": 3000.0,
+          "min": 0.0
+        }
+      ],
+      "key": "moss_runtime_pause_max_ms",
+      "range_equal": true,
+      "runtime_config_key": "moss_runtime_pause_max_ms"
+    },
+    {
+      "admin_default": 0.86,
+      "admin_range": {
+        "max": 1.0,
+        "min": 0.1
+      },
+      "config_default": 0.86,
+      "default_equal": true,
+      "env_ranges": [
+        {
+          "env": "MOSS_OUTPUT_TARGET_PEAK",
+          "max": 1.0,
+          "min": 0.1
+        }
+      ],
+      "key": "moss_output_target_peak",
+      "range_equal": true,
+      "runtime_config_key": "moss_output_target_peak"
+    },
+    {
+      "admin_default": 0.94,
+      "admin_range": {
+        "max": 2.0,
+        "min": 0.1
+      },
+      "config_default": 0.94,
+      "default_equal": true,
+      "env_ranges": [
+        {
+          "env": "MOSS_OUTPUT_GAIN",
+          "max": 2.0,
+          "min": 0.1
+        }
+      ],
+      "key": "moss_output_gain",
+      "range_equal": true,
+      "runtime_config_key": "moss_output_gain"
+    },
+    {
+      "admin_default": true,
+      "admin_range": {
+        "max": null,
+        "min": null
+      },
+      "config_default": true,
+      "default_equal": true,
+      "env_ranges": [],
+      "key": "moss_audio_polish_enabled",
+      "range_equal": null,
+      "runtime_config_key": "moss_audio_polish_enabled"
+    },
+    {
+      "admin_default": true,
+      "admin_range": {
+        "max": null,
+        "min": null
+      },
+      "config_default": true,
+      "default_equal": true,
+      "env_ranges": [],
+      "key": "moss_trim_silence_enabled",
+      "range_equal": null,
+      "runtime_config_key": "moss_trim_silence_enabled"
+    },
+    {
+      "admin_default": "translate",
+      "admin_range": {
+        "max": null,
+        "min": null
+      },
+      "config_default": "translate",
+      "default_equal": true,
+      "env_ranges": [],
+      "key": "moss_mixed_english_policy",
+      "range_equal": null,
+      "runtime_config_key": "moss_mixed_english_policy"
+    },
+    {
+      "admin_default": true,
+      "admin_range": {
+        "max": null,
+        "min": null
+      },
+      "config_default": true,
+      "default_equal": true,
+      "env_ranges": [],
+      "key": "moss_realtime_streaming_decode",
+      "range_equal": null,
+      "runtime_config_key": "moss_realtime_streaming_decode"
+    },
+    {
+      "admin_default": 0.55,
+      "admin_range": {
+        "max": 2.0,
+        "min": 0.05
+      },
+      "config_default": 0.55,
+      "default_equal": true,
+      "env_ranges": [
+        {
+          "env": "KOKORO_STREAM_CHUNK_SECONDS",
+          "max": 2.0,
+          "min": 0.05
+        }
+      ],
+      "key": "stream_chunk_seconds",
+      "range_equal": true,
+      "runtime_config_key": "stream_chunk_seconds"
+    },
+    {
+      "admin_default": 0.25,
+      "admin_range": {
+        "max": 3.0,
+        "min": 0
+      },
+      "config_default": 0.25,
+      "default_equal": true,
+      "env_ranges": [
+        {
+          "env": "KOKORO_STREAM_PREBUFFER_SECONDS",
+          "max": 3.0,
+          "min": 0.0
+        }
+      ],
+      "key": "stream_prebuffer_seconds",
+      "range_equal": true,
+      "runtime_config_key": "stream_prebuffer_seconds"
+    },
+    {
+      "admin_default": false,
+      "admin_range": {
+        "max": null,
+        "min": null
+      },
+      "config_default": false,
+      "default_equal": true,
+      "env_ranges": [],
+      "key": "kokoro_process_isolation_enabled",
+      "range_equal": null,
+      "runtime_config_key": "kokoro_process_isolation_enabled"
+    },
+    {
+      "admin_default": 0.4,
+      "admin_range": {
+        "max": 2.0,
+        "min": 0.05
+      },
+      "config_default": 0.4,
+      "default_equal": true,
+      "env_ranges": [
+        {
+          "env": "MOSS_STREAM_CHUNK_SECONDS",
+          "max": 2.0,
+          "min": 0.05
+        }
+      ],
+      "key": "moss_stream_chunk_seconds",
+      "range_equal": true,
+      "runtime_config_key": "moss_stream_chunk_seconds"
+    },
+    {
+      "admin_default": 3.0,
+      "admin_range": {
+        "max": 12.0,
+        "min": 0
+      },
+      "config_default": 0.75,
+      "default_equal": false,
+      "env_ranges": [
+        {
+          "env": "MOSS_STREAM_PREBUFFER_SECONDS",
+          "max": 12.0,
+          "min": 0.0
+        }
+      ],
+      "key": "moss_stream_prebuffer_seconds",
+      "range_equal": true,
+      "runtime_config_key": "moss_stream_prebuffer_seconds"
+    },
+    {
+      "admin_default": 8,
+      "admin_range": {
+        "max": 64,
+        "min": 1
+      },
+      "config_default": 8,
+      "default_equal": true,
+      "env_ranges": [
+        {
+          "env": "MOSS_STREAM_QUEUE_MAX_ITEMS",
+          "max": 64,
+          "min": 1
+        }
+      ],
+      "key": "moss_stream_queue_max_items",
+      "range_equal": true,
+      "runtime_config_key": "moss_stream_queue_max_items"
+    },
+    {
+      "admin_default": 1,
+      "admin_range": {
+        "max": 64,
+        "min": 1
+      },
+      "config_default": 1,
+      "default_equal": true,
+      "env_ranges": [
+        {
+          "env": "KOKORO_MAX_CONCURRENT_REQUESTS",
+          "max": null,
+          "min": 1
+        }
+      ],
+      "key": "max_concurrent_requests",
+      "range_equal": false,
+      "runtime_config_key": "max_concurrent_requests"
+    },
+    {
+      "admin_default": 300.0,
+      "admin_range": {
+        "max": 3600,
+        "min": 1
+      },
+      "config_default": 300.0,
+      "default_equal": true,
+      "env_ranges": [
+        {
+          "env": "KOKORO_REQUEST_TIMEOUT_SECONDS",
+          "max": null,
+          "min": 1.0
+        }
+      ],
+      "key": "request_timeout_seconds",
+      "range_equal": false,
+      "runtime_config_key": "request_timeout_seconds"
+    },
+    {
+      "admin_default": 600.0,
+      "admin_range": {
+        "max": 86400,
+        "min": 0
+      },
+      "config_default": 600,
+      "default_equal": true,
+      "env_ranges": [
+        {
+          "env": "ANGEVOICE_IDLE_TIMEOUT_SECONDS",
+          "max": null,
+          "min": 0.0
+        }
+      ],
+      "key": "model_idle_timeout_seconds",
+      "range_equal": false,
+      "runtime_config_key": "model_idle_timeout_seconds"
+    },
+    {
+      "admin_default": 30.0,
+      "admin_range": {
+        "max": 3600,
+        "min": 5
+      },
+      "config_default": 30,
+      "default_equal": true,
+      "env_ranges": [
+        {
+          "env": "ANGEVOICE_IDLE_CHECK_INTERVAL",
+          "max": null,
+          "min": 5.0
+        }
+      ],
+      "key": "model_idle_check_interval",
+      "range_equal": false,
+      "runtime_config_key": "model_idle_check_interval"
+    },
+    {
+      "admin_default": true,
+      "admin_range": {
+        "max": null,
+        "min": null
+      },
+      "config_default": true,
+      "default_equal": true,
+      "env_ranges": [],
+      "key": "model_idle_unload_current",
+      "range_equal": null,
+      "runtime_config_key": "model_idle_unload_current"
+    },
+    {
+      "admin_default": false,
+      "admin_range": {
+        "max": null,
+        "min": null
+      },
+      "config_default": false,
+      "default_equal": true,
+      "env_ranges": [],
+      "key": "restart_after_idle_unload_enabled",
+      "range_equal": null,
+      "runtime_config_key": "restart_after_idle_unload_enabled"
+    },
+    {
+      "admin_default": 3.0,
+      "admin_range": {
+        "max": 3600.0,
+        "min": 0.0
+      },
+      "config_default": 3.0,
+      "default_equal": true,
+      "env_ranges": [
+        {
+          "env": "ANGEVOICE_RESTART_AFTER_IDLE_UNLOAD_DELAY_SECONDS",
+          "max": 3600.0,
+          "min": 0.0
+        }
+      ],
+      "key": "restart_after_idle_unload_delay_seconds",
+      "range_equal": true,
+      "runtime_config_key": "restart_after_idle_unload_delay_seconds"
+    },
+    {
+      "admin_default": 1800.0,
+      "admin_range": {
+        "max": 86400.0,
+        "min": 0.0
+      },
+      "config_default": 1800.0,
+      "default_equal": true,
+      "env_ranges": [
+        {
+          "env": "ANGEVOICE_RESTART_AFTER_IDLE_UNLOAD_COOLDOWN_SECONDS",
+          "max": 86400.0,
+          "min": 0.0
+        }
+      ],
+      "key": "restart_after_idle_unload_cooldown_seconds",
+      "range_equal": true,
+      "runtime_config_key": "restart_after_idle_unload_cooldown_seconds"
+    },
+    {
+      "admin_default": 75,
+      "admin_range": {
+        "max": 255,
+        "min": 0
+      },
+      "config_default": 75,
+      "default_equal": true,
+      "env_ranges": [
+        {
+          "env": "ANGEVOICE_RESTART_AFTER_IDLE_UNLOAD_EXIT_CODE",
+          "max": 255,
+          "min": 0
+        }
+      ],
+      "key": "restart_after_idle_unload_exit_code",
+      "range_equal": true,
+      "runtime_config_key": "restart_after_idle_unload_exit_code"
+    },
+    {
+      "admin_default": false,
+      "admin_range": {
+        "max": null,
+        "min": null
+      },
+      "config_default": false,
+      "default_equal": true,
+      "env_ranges": [],
+      "key": "startup_preload_enabled",
+      "range_equal": null,
+      "runtime_config_key": "startup_preload_enabled"
+    },
+    {
+      "admin_default": "kokoro",
+      "admin_range": {
+        "max": null,
+        "min": null
+      },
+      "config_default": "kokoro",
+      "default_equal": true,
+      "env_ranges": [],
+      "key": "startup_preload_model",
+      "range_equal": null,
+      "runtime_config_key": "startup_preload_model"
+    },
+    {
+      "admin_default": 2.0,
+      "admin_range": {
+        "max": 30.0,
+        "min": 0.1
+      },
+      "config_default": 2.0,
+      "default_equal": true,
+      "env_ranges": [
+        {
+          "env": "ANGEVOICE_ENGINE_PROCESS_KILL_GRACE_SECONDS",
+          "max": 30.0,
+          "min": 0.1
+        }
+      ],
+      "key": "engine_process_kill_grace_seconds",
+      "range_equal": true,
+      "runtime_config_key": "engine_process_kill_grace_seconds"
+    },
+    {
+      "admin_default": 64,
+      "admin_range": {
+        "max": 2000,
+        "min": 0
+      },
+      "config_default": 64,
+      "default_equal": true,
+      "env_ranges": [
+        {
+          "env": "KOKORO_CACHE_MAX_ITEMS",
+          "max": null,
+          "min": 0
+        }
+      ],
+      "key": "cache_max_items",
+      "range_equal": false,
+      "runtime_config_key": "cache_max_items"
+    },
+    {
+      "admin_default": 536870912,
+      "admin_range": {
+        "max": 8589934592,
+        "min": 0
+      },
+      "config_default": 536870912,
+      "default_equal": true,
+      "env_ranges": [
+        {
+          "env": "KOKORO_CACHE_MAX_BYTES",
+          "max": null,
+          "min": 0
+        }
+      ],
+      "key": "cache_max_bytes",
+      "range_equal": false,
+      "runtime_config_key": "cache_max_bytes"
+    },
+    {
+      "admin_default": 1200,
+      "admin_range": {
+        "max": 100000,
+        "min": 0
+      },
+      "config_default": 1200,
+      "default_equal": true,
+      "env_ranges": [
+        {
+          "env": "KOKORO_CACHE_SKIP_TEXT_OVER_CHARS",
+          "max": null,
+          "min": 0
+        }
+      ],
+      "key": "cache_skip_text_over_chars",
+      "range_equal": false,
+      "runtime_config_key": "cache_skip_text_over_chars"
+    },
+    {
+      "admin_default": 20971520,
+      "admin_range": {
+        "max": 2147483647,
+        "min": 0
+      },
+      "config_default": 20971520,
+      "default_equal": true,
+      "env_ranges": [
+        {
+          "env": "KOKORO_CACHE_SKIP_AUDIO_OVER_BYTES",
+          "max": null,
+          "min": 0
+        }
+      ],
+      "key": "cache_skip_audio_over_bytes",
+      "range_equal": false,
+      "runtime_config_key": "cache_skip_audio_over_bytes"
+    },
+    {
+      "admin_default": false,
+      "admin_range": {
+        "max": null,
+        "min": null
+      },
+      "config_default": false,
+      "default_equal": true,
+      "env_ranges": [],
+      "key": "save_outputs",
+      "range_equal": null,
+      "runtime_config_key": "save_outputs"
+    },
+    {
+      "admin_default": false,
+      "admin_range": {
+        "max": null,
+        "min": null
+      },
+      "config_default": false,
+      "default_equal": true,
+      "env_ranges": [],
+      "key": "ffmpeg_enabled",
+      "range_equal": null,
+      "runtime_config_key": "ffmpeg_enabled"
+    },
+    {
+      "admin_default": "ffmpeg",
+      "admin_range": {
+        "max": null,
+        "min": null
+      },
+      "config_default": "ffmpeg",
+      "default_equal": true,
+      "env_ranges": [],
+      "key": "ffmpeg_binary",
+      "range_equal": null,
+      "runtime_config_key": "ffmpeg_binary"
+    },
+    {
+      "admin_default": "192k",
+      "admin_range": {
+        "max": null,
+        "min": null
+      },
+      "config_default": "192k",
+      "default_equal": true,
+      "env_ranges": [],
+      "key": "mp3_bitrate",
+      "range_equal": null,
+      "runtime_config_key": "mp3_bitrate"
+    },
+    {
+      "admin_default": "32k",
+      "admin_range": {
+        "max": null,
+        "min": null
+      },
+      "config_default": "32k",
+      "default_equal": true,
+      "env_ranges": [],
+      "key": "audio_opus_bitrate",
+      "range_equal": null,
+      "runtime_config_key": "audio_opus_bitrate"
+    },
+    {
+      "admin_default": "96k",
+      "admin_range": {
+        "max": null,
+        "min": null
+      },
+      "config_default": "96k",
+      "default_equal": true,
+      "env_ranges": [],
+      "key": "audio_aac_bitrate",
+      "range_equal": null,
+      "runtime_config_key": "audio_aac_bitrate"
+    },
+    {
+      "admin_default": 30.0,
+      "admin_range": {
+        "max": 3600.0,
+        "min": 1.0
+      },
+      "config_default": 30.0,
+      "default_equal": true,
+      "env_ranges": [
+        {
+          "env": "ANGEVOICE_FFMPEG_TIMEOUT_SECONDS",
+          "max": 3600.0,
+          "min": 1.0
+        }
+      ],
+      "key": "ffmpeg_timeout_seconds",
+      "range_equal": true,
+      "runtime_config_key": "ffmpeg_timeout_seconds"
+    },
+    {
+      "admin_default": 1000,
+      "admin_range": {
+        "max": 100000,
+        "min": 0
+      },
+      "config_default": 1000,
+      "default_equal": true,
+      "env_ranges": [
+        {
+          "env": "ANGEVOICE_OUTPUT_MAX_FILES",
+          "max": null,
+          "min": 0
+        }
+      ],
+      "key": "output_max_files",
+      "range_equal": false,
+      "runtime_config_key": "output_max_files"
+    },
+    {
+      "admin_default": true,
+      "admin_range": {
+        "max": null,
+        "min": null
+      },
+      "config_default": true,
+      "default_equal": true,
+      "env_ranges": [],
+      "key": "moss_vram_guard_enabled",
+      "range_equal": null,
+      "runtime_config_key": "moss_vram_guard_enabled"
+    },
+    {
+      "admin_default": 1200,
+      "admin_range": {
+        "max": 65536,
+        "min": 0
+      },
+      "config_default": 1200,
+      "default_equal": true,
+      "env_ranges": [
+        {
+          "env": "MOSS_VRAM_SAFE_FREE_MB",
+          "max": null,
+          "min": 0
+        }
+      ],
+      "key": "moss_vram_safe_free_mb",
+      "range_equal": false,
+      "runtime_config_key": "moss_vram_safe_free_mb"
+    },
+    {
+      "admin_default": 600,
+      "admin_range": {
+        "max": 65536,
+        "min": 0
+      },
+      "config_default": 600,
+      "default_equal": true,
+      "env_ranges": [
+        {
+          "env": "MOSS_VRAM_CRITICAL_FREE_MB",
+          "max": null,
+          "min": 0
+        }
+      ],
+      "key": "moss_vram_critical_free_mb",
+      "range_equal": false,
+      "runtime_config_key": "moss_vram_critical_free_mb"
+    },
+    {
+      "admin_default": 96,
+      "admin_range": {
+        "max": 400,
+        "min": 60
+      },
+      "config_default": 96,
+      "default_equal": true,
+      "env_ranges": [
+        {
+          "env": "MOSS_LOW_VRAM_SEGMENT_LENGTH",
+          "max": null,
+          "min": 20
+        }
+      ],
+      "key": "moss_low_vram_segment_length",
+      "range_equal": false,
+      "runtime_config_key": "moss_low_vram_segment_length"
+    },
+    {
+      "admin_default": 280,
+      "admin_range": {
+        "max": 800,
+        "min": 64
+      },
+      "config_default": 280,
+      "default_equal": true,
+      "env_ranges": [
+        {
+          "env": "MOSS_LOW_VRAM_MAX_NEW_FRAMES",
+          "max": null,
+          "min": 1
+        }
+      ],
+      "key": "moss_low_vram_max_new_frames",
+      "range_equal": false,
+      "runtime_config_key": "moss_low_vram_max_new_frames"
+    },
+    {
+      "admin_default": 48,
+      "admin_range": {
+        "max": 160,
+        "min": 20
+      },
+      "config_default": 48,
+      "default_equal": true,
+      "env_ranges": [
+        {
+          "env": "MOSS_LOW_VRAM_TEXT_TOKENS",
+          "max": null,
+          "min": 1
+        }
+      ],
+      "key": "moss_low_vram_text_tokens",
+      "range_equal": false,
+      "runtime_config_key": "moss_low_vram_text_tokens"
+    },
+    {
+      "admin_default": true,
+      "admin_range": {
+        "max": null,
+        "min": null
+      },
+      "config_default": true,
+      "default_equal": true,
+      "env_ranges": [],
+      "key": "moss_disable_full_codec_after_oom",
+      "range_equal": null,
+      "runtime_config_key": "moss_disable_full_codec_after_oom"
+    },
+    {
+      "admin_default": 600.0,
+      "admin_range": {
+        "max": 86400,
+        "min": 0
+      },
+      "config_default": 600.0,
+      "default_equal": true,
+      "env_ranges": [
+        {
+          "env": "MOSS_FULL_CODEC_OOM_COOLDOWN_SECONDS",
+          "max": 86400.0,
+          "min": 0.0
+        }
+      ],
+      "key": "moss_full_codec_oom_cooldown_seconds",
+      "range_equal": true,
+      "runtime_config_key": "moss_full_codec_oom_cooldown_seconds"
+    },
+    {
+      "admin_default": 10.0,
+      "admin_range": {
+        "max": 3600,
+        "min": 0
+      },
+      "config_default": 10.0,
+      "default_equal": true,
+      "env_ranges": [
+        {
+          "env": "MOSS_VRAM_SNAPSHOT_TTL_SECONDS",
+          "max": 3600.0,
+          "min": 0.0
+        }
+      ],
+      "key": "moss_vram_snapshot_ttl_seconds",
+      "range_equal": true,
+      "runtime_config_key": "moss_vram_snapshot_ttl_seconds"
+    },
+    {
+      "admin_default": 10.0,
+      "admin_range": {
+        "max": 1000,
+        "min": 0
+      },
+      "config_default": 10.0,
+      "default_equal": true,
+      "env_ranges": [
+        {
+          "env": "KOKORO_RATE_LIMIT_QPS",
+          "max": null,
+          "min": 0.0
+        }
+      ],
+      "key": "rate_limit_qps",
+      "range_equal": false,
+      "runtime_config_key": "rate_limit_qps"
+    },
+    {
+      "admin_default": 20,
+      "admin_range": {
+        "max": 10000,
+        "min": 0
+      },
+      "config_default": 20,
+      "default_equal": true,
+      "env_ranges": [
+        {
+          "env": "KOKORO_RATE_LIMIT_BURST",
+          "max": null,
+          "min": 0
+        }
+      ],
+      "key": "rate_limit_burst",
+      "range_equal": false,
+      "runtime_config_key": "rate_limit_burst"
+    },
+    {
+      "admin_default": 50,
+      "admin_range": {
+        "max": 10000,
+        "min": 0
+      },
+      "config_default": 50,
+      "default_equal": true,
+      "env_ranges": [
+        {
+          "env": "KOKORO_MAX_QUEUE_LENGTH",
+          "max": null,
+          "min": 0
+        }
+      ],
+      "key": "max_queue_length",
+      "range_equal": false,
+      "runtime_config_key": "max_queue_length"
+    },
+    {
+      "admin_default": 16,
+      "admin_range": {
+        "max": 10000,
+        "min": 0
+      },
+      "config_default": 16,
+      "default_equal": true,
+      "env_ranges": [
+        {
+          "env": "KOKORO_WS_MAX_CONNECTIONS",
+          "max": null,
+          "min": 0
+        }
+      ],
+      "key": "websocket_max_connections",
+      "range_equal": false,
+      "runtime_config_key": "websocket_max_connections"
+    },
+    {
+      "admin_default": 33554432,
+      "admin_range": {
+        "max": 134217728,
+        "min": 1024
+      },
+      "config_default": 33554432,
+      "default_equal": true,
+      "env_ranges": [
+        {
+          "env": "KOKORO_WS_MAX_MESSAGE_BYTES",
+          "max": null,
+          "min": 1024
+        }
+      ],
+      "key": "websocket_max_message_bytes",
+      "range_equal": false,
+      "runtime_config_key": "websocket_max_message_bytes"
+    },
+    {
+      "admin_default": false,
+      "admin_range": {
+        "max": null,
+        "min": null
+      },
+      "config_default": false,
+      "default_equal": true,
+      "env_ranges": [],
+      "key": "trust_proxy_headers",
+      "range_equal": null,
+      "runtime_config_key": "trust_proxy_headers"
+    },
+    {
+      "admin_default": true,
+      "admin_range": {
+        "max": null,
+        "min": null
+      },
+      "config_default": true,
+      "default_equal": true,
+      "env_ranges": [],
+      "key": "public_status_endpoints",
+      "range_equal": null,
+      "runtime_config_key": "public_status_endpoints"
+    },
+    {
+      "admin_default": "auto",
+      "admin_range": {
+        "max": null,
+        "min": null
+      },
+      "config_default": "auto",
+      "default_equal": true,
+      "env_ranges": [],
+      "key": "model_source",
+      "range_equal": null,
+      "runtime_config_key": "model_source"
+    },
+    {
+      "admin_default": "",
+      "admin_range": {
+        "max": null,
+        "min": null
+      },
+      "config_default": "",
+      "default_equal": true,
+      "env_ranges": [],
+      "key": "moss_hf_repo",
+      "range_equal": null,
+      "runtime_config_key": "moss_hf_repo"
+    },
+    {
+      "admin_default": "auto",
+      "admin_range": {
+        "max": null,
+        "min": null
+      },
+      "config_default": "auto",
+      "default_equal": true,
+      "env_ranges": [],
+      "key": "text_single_newline_policy",
+      "range_equal": null,
+      "runtime_config_key": "text_single_newline_policy"
+    },
+    {
+      "admin_default": "auto",
+      "admin_range": {
+        "max": null,
+        "min": null
+      },
+      "config_default": "auto",
+      "default_equal": true,
+      "env_ranges": [],
+      "key": "moss_apply_angevoice_rules",
+      "range_equal": null,
+      "runtime_config_key": "moss_apply_angevoice_rules"
+    },
+    {
+      "admin_default": 8.0,
+      "admin_range": {
+        "max": 60,
+        "min": 0
+      },
+      "config_default": 8.0,
+      "default_equal": true,
+      "env_ranges": [
+        {
+          "env": "MOSS_PROMPT_AUDIO_MAX_SECONDS",
+          "max": null,
+          "min": 0.0
+        }
+      ],
+      "key": "moss_prompt_audio_max_seconds",
+      "range_equal": false,
+      "runtime_config_key": "moss_prompt_audio_max_seconds"
+    },
+    {
+      "admin_default": true,
+      "admin_range": {
+        "max": null,
+        "min": null
+      },
+      "config_default": true,
+      "default_equal": true,
+      "env_ranges": [],
+      "key": "moss_output_peak_normalize_enabled",
+      "range_equal": null,
+      "runtime_config_key": "moss_output_peak_normalize_enabled"
+    },
+    {
+      "admin_default": true,
+      "admin_range": {
+        "max": null,
+        "min": null
+      },
+      "config_default": true,
+      "default_equal": true,
+      "env_ranges": [],
+      "key": "moss_output_declick_enabled",
+      "range_equal": null,
+      "runtime_config_key": "moss_output_declick_enabled"
+    },
+    {
+      "admin_default": 1.5,
+      "admin_range": {
+        "max": 20,
+        "min": 0
+      },
+      "config_default": 1.5,
+      "default_equal": true,
+      "env_ranges": [
+        {
+          "env": "MOSS_OUTPUT_EDGE_FADE_MS",
+          "max": 20.0,
+          "min": 0.0
+        }
+      ],
+      "key": "moss_output_edge_fade_ms",
+      "range_equal": true,
+      "runtime_config_key": "moss_output_edge_fade_ms"
+    },
+    {
+      "admin_default": -45.0,
+      "admin_range": {
+        "max": -10,
+        "min": -90
+      },
+      "config_default": -45.0,
+      "default_equal": true,
+      "env_ranges": [
+        {
+          "env": "MOSS_TRIM_SILENCE_DB",
+          "max": -10.0,
+          "min": -90.0
+        }
+      ],
+      "key": "moss_trim_silence_db",
+      "range_equal": true,
+      "runtime_config_key": "moss_trim_silence_db"
+    },
+    {
+      "admin_default": true,
+      "admin_range": {
+        "max": null,
+        "min": null
+      },
+      "config_default": true,
+      "default_equal": true,
+      "env_ranges": [],
+      "key": "moss_quality_gate_enabled",
+      "range_equal": null,
+      "runtime_config_key": "moss_quality_gate_enabled"
+    },
+    {
+      "admin_default": false,
+      "admin_range": {
+        "max": null,
+        "min": null
+      },
+      "config_default": false,
+      "default_equal": true,
+      "env_ranges": [],
+      "key": "moss_process_isolation_enabled",
+      "range_equal": null,
+      "runtime_config_key": "moss_process_isolation_enabled"
+    },
+    {
+      "admin_default": false,
+      "admin_range": {
+        "max": null,
+        "min": null
+      },
+      "config_default": false,
+      "default_equal": true,
+      "env_ranges": [],
+      "key": "zipvoice_process_isolation_enabled",
+      "range_equal": null,
+      "runtime_config_key": "zipvoice_process_isolation_enabled"
+    },
+    {
+      "admin_default": 8,
+      "admin_range": {
+        "max": 32,
+        "min": 1
+      },
+      "config_default": 8,
+      "default_equal": true,
+      "env_ranges": [
+        {
+          "env": "ZIPVOICE_NUM_STEPS",
+          "max": 32,
+          "min": 1
+        }
+      ],
+      "key": "zipvoice_num_steps",
+      "range_equal": true,
+      "runtime_config_key": "zipvoice_num_steps"
+    },
+    {
+      "admin_default": 15.0,
+      "admin_range": {
+        "max": 30.0,
+        "min": 3.0
+      },
+      "config_default": 15.0,
+      "default_equal": true,
+      "env_ranges": [
+        {
+          "env": "ZIPVOICE_PROMPT_AUDIO_MAX_SECONDS",
+          "max": 30.0,
+          "min": 0.1
+        }
+      ],
+      "key": "zipvoice_prompt_audio_max_seconds",
+      "range_equal": false,
+      "runtime_config_key": "zipvoice_prompt_audio_max_seconds"
+    },
+    {
+      "admin_default": false,
+      "admin_range": {
+        "max": null,
+        "min": null
+      },
+      "config_default": false,
+      "default_equal": true,
+      "env_ranges": [],
+      "key": "zipvoice_remove_long_sil",
+      "range_equal": null,
+      "runtime_config_key": "zipvoice_remove_long_sil"
+    },
+    {
+      "admin_default": 3.0,
+      "admin_range": {
+        "max": 20.0,
+        "min": 0.0
+      },
+      "config_default": 3.0,
+      "default_equal": true,
+      "env_ranges": [
+        {
+          "env": "ZIPVOICE_GUIDANCE_SCALE",
+          "max": 20.0,
+          "min": 0.0
+        }
+      ],
+      "key": "zipvoice_guidance_scale",
+      "range_equal": true,
+      "runtime_config_key": "zipvoice_guidance_scale"
+    },
+    {
+      "admin_default": 0.5,
+      "admin_range": {
+        "max": 1.0,
+        "min": 0.01
+      },
+      "config_default": 0.5,
+      "default_equal": true,
+      "env_ranges": [
+        {
+          "env": "ZIPVOICE_T_SHIFT",
+          "max": 1.0,
+          "min": 0.01
+        }
+      ],
+      "key": "zipvoice_t_shift",
+      "range_equal": true,
+      "runtime_config_key": "zipvoice_t_shift"
+    },
+    {
+      "admin_default": 0.1,
+      "admin_range": {
+        "max": 1.0,
+        "min": 0.0
+      },
+      "config_default": 0.1,
+      "default_equal": true,
+      "env_ranges": [
+        {
+          "env": "ZIPVOICE_TARGET_RMS",
+          "max": 1.0,
+          "min": 0.0
+        }
+      ],
+      "key": "zipvoice_target_rms",
+      "range_equal": true,
+      "runtime_config_key": "zipvoice_target_rms"
+    },
+    {
+      "admin_default": 0.1,
+      "admin_range": {
+        "max": 10.0,
+        "min": 0.001
+      },
+      "config_default": 0.1,
+      "default_equal": true,
+      "env_ranges": [
+        {
+          "env": "ZIPVOICE_FEAT_SCALE",
+          "max": 10.0,
+          "min": 0.001
+        }
+      ],
+      "key": "zipvoice_feat_scale",
+      "range_equal": true,
+      "runtime_config_key": "zipvoice_feat_scale"
+    }
+  ],
+  "contract": "AngeVoice Admin config 2.6.7 public surface",
+  "field_count": 81,
+  "field_order": [
+    "angevoice_tn_engine",
+    "default_speed",
+    "segment_length",
+    "moss_segment_length",
+    "moss_voice_clone_max_text_tokens",
+    "moss_max_new_frames",
+    "moss_max_silence_ms",
+    "moss_crossfade_ms",
+    "moss_segment_pause_ms",
+    "moss_runtime_pause_max_ms",
+    "moss_output_target_peak",
+    "moss_output_gain",
+    "moss_audio_polish_enabled",
+    "moss_trim_silence_enabled",
+    "moss_mixed_english_policy",
+    "moss_realtime_streaming_decode",
+    "stream_chunk_seconds",
+    "stream_prebuffer_seconds",
+    "kokoro_process_isolation_enabled",
+    "moss_stream_chunk_seconds",
+    "moss_stream_prebuffer_seconds",
+    "moss_stream_queue_max_items",
+    "max_concurrent_requests",
+    "request_timeout_seconds",
+    "model_idle_timeout_seconds",
+    "model_idle_check_interval",
+    "model_idle_unload_current",
+    "restart_after_idle_unload_enabled",
+    "restart_after_idle_unload_delay_seconds",
+    "restart_after_idle_unload_cooldown_seconds",
+    "restart_after_idle_unload_exit_code",
+    "startup_preload_enabled",
+    "startup_preload_model",
+    "engine_process_kill_grace_seconds",
+    "cache_max_items",
+    "cache_max_bytes",
+    "cache_skip_text_over_chars",
+    "cache_skip_audio_over_bytes",
+    "save_outputs",
+    "ffmpeg_enabled",
+    "ffmpeg_binary",
+    "mp3_bitrate",
+    "audio_opus_bitrate",
+    "audio_aac_bitrate",
+    "ffmpeg_timeout_seconds",
+    "output_max_files",
+    "moss_vram_guard_enabled",
+    "moss_vram_safe_free_mb",
+    "moss_vram_critical_free_mb",
+    "moss_low_vram_segment_length",
+    "moss_low_vram_max_new_frames",
+    "moss_low_vram_text_tokens",
+    "moss_disable_full_codec_after_oom",
+    "moss_full_codec_oom_cooldown_seconds",
+    "moss_vram_snapshot_ttl_seconds",
+    "rate_limit_qps",
+    "rate_limit_burst",
+    "max_queue_length",
+    "websocket_max_connections",
+    "websocket_max_message_bytes",
+    "trust_proxy_headers",
+    "public_status_endpoints",
+    "model_source",
+    "moss_hf_repo",
+    "text_single_newline_policy",
+    "moss_apply_angevoice_rules",
+    "moss_prompt_audio_max_seconds",
+    "moss_output_peak_normalize_enabled",
+    "moss_output_declick_enabled",
+    "moss_output_edge_fade_ms",
+    "moss_trim_silence_db",
+    "moss_quality_gate_enabled",
+    "moss_process_isolation_enabled",
+    "zipvoice_process_isolation_enabled",
+    "zipvoice_num_steps",
+    "zipvoice_prompt_audio_max_seconds",
+    "zipvoice_remove_long_sil",
+    "zipvoice_guidance_scale",
+    "zipvoice_t_shift",
+    "zipvoice_target_rms",
+    "zipvoice_feat_scale"
+  ],
+  "group_order": [
+    "kokoro",
+    "moss",
+    "zipvoice",
+    "text",
+    "service",
+    "audio",
+    "security"
+  ],
+  "schema": {
+    "fields": [
+      {
+        "advanced": false,
+        "choices": [
+          {
+            "label": "标准：文本规范化",
+            "value": "wetext"
+          },
+          {
+            "label": "保守：AngeVoice 2.6.613",
+            "value": "legacy"
+          },
+          {
+            "label": "关闭：仅基础清理",
+            "value": "off"
+          }
+        ],
+        "default": "wetext",
+        "env": "ANGEVOICE_TN_ENGINE",
+        "group": "text",
+        "help": "使用 wetext runtime 进行数字、日期、时间等文本规范化；技术字符串会先做保护。Studio 可按单次请求覆盖此默认值。",
+        "key": "angevoice_tn_engine",
+        "label": "默认文本处理",
+        "max": null,
+        "min": null,
+        "rebuild_moss": false,
+        "restart": false,
+        "step": null,
+        "type": "choice"
+      },
+      {
+        "advanced": false,
+        "choices": [],
+        "default": 1.0,
+        "env": "KOKORO_DEFAULT_SPEED",
+        "group": "kokoro",
+        "help": "MOSS 暂不支持语速调节，此项只影响 Kokoro。",
+        "key": "default_speed",
+        "label": "Kokoro 默认语速",
+        "max": 2.0,
+        "min": 0.5,
+        "rebuild_moss": false,
+        "restart": false,
+        "step": 0.05,
+        "type": "float"
+      },
+      {
+        "advanced": false,
+        "choices": [],
+        "default": 160,
+        "env": "KOKORO_SEGMENT_LENGTH",
+        "group": "kokoro",
+        "help": "Kokoro 长文本切片长度，常用 120-200。",
+        "key": "segment_length",
+        "label": "Kokoro 分句长度",
+        "max": 400,
+        "min": 60,
+        "rebuild_moss": false,
+        "restart": false,
+        "step": 10,
+        "type": "int"
+      },
+      {
+        "advanced": false,
+        "choices": [],
+        "default": 120,
+        "env": "MOSS_SEGMENT_LENGTH",
+        "group": "moss",
+        "help": "默认 120，牺牲少量吞吐换取中英文混合和长文本稳定；显存更充足时可切换长文本旁白预设。",
+        "key": "moss_segment_length",
+        "label": "MOSS 分句长度",
+        "max": 600,
+        "min": 80,
+        "rebuild_moss": true,
+        "restart": false,
+        "step": 10,
+        "type": "int"
+      },
+      {
+        "advanced": false,
+        "choices": [],
+        "default": 56,
+        "env": "MOSS_VOICE_CLONE_MAX_TEXT_TOKENS",
+        "group": "moss",
+        "help": "",
+        "key": "moss_voice_clone_max_text_tokens",
+        "label": "MOSS token 上限",
+        "max": 200,
+        "min": 20,
+        "rebuild_moss": true,
+        "restart": false,
+        "step": 1,
+        "type": "int"
+      },
+      {
+        "advanced": false,
+        "choices": [],
+        "default": 320,
+        "env": "MOSS_MAX_NEW_FRAMES",
+        "group": "moss",
+        "help": "",
+        "key": "moss_max_new_frames",
+        "label": "MOSS 生成帧预算",
+        "max": 1200,
+        "min": 64,
+        "rebuild_moss": true,
+        "restart": false,
+        "step": 1,
+        "type": "int"
+      },
+      {
+        "advanced": false,
+        "choices": [],
+        "default": 480.0,
+        "env": "MOSS_MAX_SILENCE_MS",
+        "group": "moss",
+        "help": "最终音频中超过该长度的静音会被压缩。",
+        "key": "moss_max_silence_ms",
+        "label": "最大静音",
+        "max": 5000,
+        "min": 0,
+        "rebuild_moss": false,
+        "restart": false,
+        "step": 10,
+        "type": "float"
+      },
+      {
+        "advanced": false,
+        "choices": [],
+        "default": 12.0,
+        "env": "MOSS_CROSSFADE_MS",
+        "group": "moss",
+        "help": "",
+        "key": "moss_crossfade_ms",
+        "label": "Crossfade",
+        "max": 120,
+        "min": 0,
+        "rebuild_moss": false,
+        "restart": false,
+        "step": 1,
+        "type": "float"
+      },
+      {
+        "advanced": false,
+        "choices": [],
+        "default": 80.0,
+        "env": "MOSS_SEGMENT_PAUSE_MS",
+        "group": "moss",
+        "help": "",
+        "key": "moss_segment_pause_ms",
+        "label": "段间停顿",
+        "max": 2000,
+        "min": 0,
+        "rebuild_moss": false,
+        "restart": false,
+        "step": 10,
+        "type": "float"
+      },
+      {
+        "advanced": false,
+        "choices": [],
+        "default": 350.0,
+        "env": "MOSS_RUNTIME_PAUSE_MAX_MS",
+        "group": "moss",
+        "help": "",
+        "key": "moss_runtime_pause_max_ms",
+        "label": "Runtime 停顿上限",
+        "max": 3000,
+        "min": 0,
+        "rebuild_moss": false,
+        "restart": false,
+        "step": 10,
+        "type": "float"
+      },
+      {
+        "advanced": false,
+        "choices": [],
+        "default": 0.86,
+        "env": "MOSS_OUTPUT_TARGET_PEAK",
+        "group": "moss",
+        "help": "",
+        "key": "moss_output_target_peak",
+        "label": "目标峰值",
+        "max": 1.0,
+        "min": 0.1,
+        "rebuild_moss": false,
+        "restart": false,
+        "step": 0.01,
+        "type": "float"
+      },
+      {
+        "advanced": false,
+        "choices": [],
+        "default": 0.94,
+        "env": "MOSS_OUTPUT_GAIN",
+        "group": "moss",
+        "help": "",
+        "key": "moss_output_gain",
+        "label": "输出增益",
+        "max": 2.0,
+        "min": 0.1,
+        "rebuild_moss": false,
+        "restart": false,
+        "step": 0.01,
+        "type": "float"
+      },
+      {
+        "advanced": false,
+        "choices": [],
+        "default": true,
+        "env": "MOSS_AUDIO_POLISH_ENABLED",
+        "group": "moss",
+        "help": "",
+        "key": "moss_audio_polish_enabled",
+        "label": "音频自然化",
+        "max": null,
+        "min": null,
+        "rebuild_moss": false,
+        "restart": false,
+        "step": null,
+        "type": "bool"
+      },
+      {
+        "advanced": false,
+        "choices": [],
+        "default": true,
+        "env": "MOSS_TRIM_SILENCE_ENABLED",
+        "group": "moss",
+        "help": "",
+        "key": "moss_trim_silence_enabled",
+        "label": "裁剪首尾静音",
+        "max": null,
+        "min": null,
+        "rebuild_moss": false,
+        "restart": false,
+        "step": null,
+        "type": "bool"
+      },
+      {
+        "advanced": false,
+        "choices": [
+          {
+            "label": "常见英文转自然中文",
+            "value": "translate"
+          },
+          {
+            "label": "保留英文原文",
+            "value": "preserve"
+          },
+          {
+            "label": "仅替换已知词组",
+            "value": "spell"
+          }
+        ],
+        "default": "translate",
+        "env": "MOSS_MIXED_ENGLISH_POLICY",
+        "group": "moss",
+        "help": "MOSS 对中文句子夹英文较敏感。默认 translate 会把 deadline、work-life balance 等常见词组转成中文，减少停顿、怪声和尾部漂移。",
+        "key": "moss_mixed_english_policy",
+        "label": "中英文混排",
+        "max": null,
+        "min": null,
+        "rebuild_moss": false,
+        "restart": false,
+        "step": null,
+        "type": "choice"
+      },
+      {
+        "advanced": false,
+        "choices": [],
+        "default": true,
+        "env": "MOSS_REALTIME_STREAMING_DECODE",
+        "group": "moss",
+        "help": "默认开启以保持 MOSS 官方逐帧流式体验；若特定设备出现边界噪声或显存压力，可在后台关闭。",
+        "key": "moss_realtime_streaming_decode",
+        "label": "逐帧流式",
+        "max": null,
+        "min": null,
+        "rebuild_moss": false,
+        "restart": false,
+        "step": null,
+        "type": "bool"
+      },
+      {
+        "advanced": false,
+        "choices": [],
+        "default": 0.55,
+        "env": "KOKORO_STREAM_CHUNK_SECONDS",
+        "group": "kokoro",
+        "help": "",
+        "key": "stream_chunk_seconds",
+        "label": "Kokoro 分包秒",
+        "max": 2.0,
+        "min": 0.05,
+        "rebuild_moss": false,
+        "restart": false,
+        "step": 0.01,
+        "type": "float"
+      },
+      {
+        "advanced": false,
+        "choices": [],
+        "default": 0.25,
+        "env": "KOKORO_STREAM_PREBUFFER_SECONDS",
+        "group": "kokoro",
+        "help": "",
+        "key": "stream_prebuffer_seconds",
+        "label": "Kokoro 预缓冲",
+        "max": 3.0,
+        "min": 0,
+        "rebuild_moss": false,
+        "restart": false,
+        "step": 0.05,
+        "type": "float"
+      },
+      {
+        "advanced": true,
+        "choices": [],
+        "default": false,
+        "env": "KOKORO_PROCESS_ISOLATION_ENABLED",
+        "group": "kokoro",
+        "help": "正式 Docker/fnOS 部署默认开启。开启后模型在独立 Worker 中运行，释放时可完整回收 RAM/VRAM；关闭后仅作线程内尽力释放。",
+        "key": "kokoro_process_isolation_enabled",
+        "label": "Kokoro 进程隔离",
+        "max": null,
+        "min": null,
+        "rebuild_moss": true,
+        "restart": false,
+        "step": null,
+        "type": "bool"
+      },
+      {
+        "advanced": false,
+        "choices": [],
+        "default": 0.4,
+        "env": "MOSS_STREAM_CHUNK_SECONDS",
+        "group": "moss",
+        "help": "",
+        "key": "moss_stream_chunk_seconds",
+        "label": "MOSS 分包秒",
+        "max": 2.0,
+        "min": 0.05,
+        "rebuild_moss": false,
+        "restart": false,
+        "step": 0.01,
+        "type": "float"
+      },
+      {
+        "advanced": false,
+        "choices": [],
+        "default": 3.0,
+        "env": "MOSS_STREAM_PREBUFFER_SECONDS",
+        "group": "moss",
+        "help": "MOSS 长文本可能分段间隔较长，适当提高可减少播放中途断续。",
+        "key": "moss_stream_prebuffer_seconds",
+        "label": "MOSS 预缓冲",
+        "max": 12.0,
+        "min": 0,
+        "rebuild_moss": false,
+        "restart": false,
+        "step": 0.05,
+        "type": "float"
+      },
+      {
+        "advanced": false,
+        "choices": [],
+        "default": 8,
+        "env": "MOSS_STREAM_QUEUE_MAX_ITEMS",
+        "group": "moss",
+        "help": "",
+        "key": "moss_stream_queue_max_items",
+        "label": "MOSS 流式队列",
+        "max": 64,
+        "min": 1,
+        "rebuild_moss": false,
+        "restart": false,
+        "step": 1,
+        "type": "int"
+      },
+      {
+        "advanced": false,
+        "choices": [],
+        "default": 1,
+        "env": "KOKORO_MAX_CONCURRENT_REQUESTS",
+        "group": "service",
+        "help": "",
+        "key": "max_concurrent_requests",
+        "label": "最大并发",
+        "max": 64,
+        "min": 1,
+        "rebuild_moss": false,
+        "restart": true,
+        "step": 1,
+        "type": "int"
+      },
+      {
+        "advanced": false,
+        "choices": [],
+        "default": 300.0,
+        "env": "KOKORO_REQUEST_TIMEOUT_SECONDS",
+        "group": "service",
+        "help": "",
+        "key": "request_timeout_seconds",
+        "label": "请求超时",
+        "max": 3600,
+        "min": 1,
+        "rebuild_moss": false,
+        "restart": false,
+        "step": 1,
+        "type": "float"
+      },
+      {
+        "advanced": false,
+        "choices": [],
+        "default": 600.0,
+        "env": "ANGEVOICE_IDLE_TIMEOUT_SECONDS",
+        "group": "service",
+        "help": "",
+        "key": "model_idle_timeout_seconds",
+        "label": "空闲释放",
+        "max": 86400,
+        "min": 0,
+        "rebuild_moss": false,
+        "restart": false,
+        "step": 1,
+        "type": "float"
+      },
+      {
+        "advanced": true,
+        "choices": [],
+        "default": 30.0,
+        "env": "ANGEVOICE_IDLE_CHECK_INTERVAL",
+        "group": "service",
+        "help": "",
+        "key": "model_idle_check_interval",
+        "label": "空闲检查间隔",
+        "max": 3600,
+        "min": 5,
+        "rebuild_moss": false,
+        "restart": false,
+        "step": 1,
+        "type": "float"
+      },
+      {
+        "advanced": false,
+        "choices": [],
+        "default": true,
+        "env": "ANGEVOICE_IDLE_UNLOAD_CURRENT",
+        "group": "service",
+        "help": "",
+        "key": "model_idle_unload_current",
+        "label": "释放当前模型",
+        "max": null,
+        "min": null,
+        "rebuild_moss": false,
+        "restart": false,
+        "step": null,
+        "type": "bool"
+      },
+      {
+        "advanced": false,
+        "choices": [],
+        "default": false,
+        "env": "ANGEVOICE_RESTART_AFTER_IDLE_UNLOAD",
+        "group": "service",
+        "help": "模型因空闲自动释放后，如果服务没有活跃请求或 WebSocket，会退出当前进程并交给 Docker/服务管理器自动拉起，以清理底层运行时残留。",
+        "key": "restart_after_idle_unload_enabled",
+        "label": "空闲后彻底清理",
+        "max": null,
+        "min": null,
+        "rebuild_moss": false,
+        "restart": false,
+        "step": null,
+        "type": "bool"
+      },
+      {
+        "advanced": true,
+        "choices": [],
+        "default": 3.0,
+        "env": "ANGEVOICE_RESTART_AFTER_IDLE_UNLOAD_DELAY_SECONDS",
+        "group": "service",
+        "help": "空闲卸载成功后等待多久再退出进程；等待期间若出现新请求会取消本次退出。",
+        "key": "restart_after_idle_unload_delay_seconds",
+        "label": "彻底清理延迟秒数",
+        "max": 3600.0,
+        "min": 0.0,
+        "rebuild_moss": false,
+        "restart": false,
+        "step": 1.0,
+        "type": "float"
+      },
+      {
+        "advanced": true,
+        "choices": [],
+        "default": 1800.0,
+        "env": "ANGEVOICE_RESTART_AFTER_IDLE_UNLOAD_COOLDOWN_SECONDS",
+        "group": "service",
+        "help": "避免异常环境中频繁退出重启；只有距离上次计划退出超过该时间才会再次触发。",
+        "key": "restart_after_idle_unload_cooldown_seconds",
+        "label": "彻底清理冷却秒数",
+        "max": 86400.0,
+        "min": 0.0,
+        "rebuild_moss": false,
+        "restart": false,
+        "step": 60.0,
+        "type": "float"
+      },
+      {
+        "advanced": true,
+        "choices": [],
+        "default": 75,
+        "env": "ANGEVOICE_RESTART_AFTER_IDLE_UNLOAD_EXIT_CODE",
+        "group": "service",
+        "help": "用于日志和运维区分主动清理退出；请确认容器 restart 策略会自动拉起服务。",
+        "key": "restart_after_idle_unload_exit_code",
+        "label": "彻底清理退出码",
+        "max": 255,
+        "min": 0,
+        "rebuild_moss": false,
+        "restart": false,
+        "step": 1,
+        "type": "int"
+      },
+      {
+        "advanced": false,
+        "choices": [],
+        "default": false,
+        "env": "ANGEVOICE_STARTUP_PRELOAD_ENABLED",
+        "group": "service",
+        "help": "默认关闭以保持 NAS 空闲低占用；开启后由独立 Worker 预热所选模型，首次生成更快。",
+        "key": "startup_preload_enabled",
+        "label": "启动时预载模型",
+        "max": null,
+        "min": null,
+        "rebuild_moss": false,
+        "restart": true,
+        "step": null,
+        "type": "bool"
+      },
+      {
+        "advanced": false,
+        "choices": [
+          {
+            "label": "Kokoro",
+            "value": "kokoro"
+          },
+          {
+            "label": "MOSS-TTS-Nano",
+            "value": "moss"
+          },
+          {
+            "label": "ZipVoice",
+            "value": "zipvoice"
+          }
+        ],
+        "default": "kokoro",
+        "env": "ANGEVOICE_STARTUP_PRELOAD_MODEL",
+        "group": "service",
+        "help": "只在启用启动预载时生效；预载仍遵循该模型的进程隔离设置。",
+        "key": "startup_preload_model",
+        "label": "预载模型",
+        "max": null,
+        "min": null,
+        "rebuild_moss": false,
+        "restart": true,
+        "step": null,
+        "type": "choice"
+      },
+      {
+        "advanced": true,
+        "choices": [],
+        "default": 2.0,
+        "env": "ANGEVOICE_ENGINE_PROCESS_KILL_GRACE_SECONDS",
+        "group": "service",
+        "help": "Kokoro/ZipVoice 隔离 Worker 优雅退出宽限，超时后将终止进程以释放资源。",
+        "key": "engine_process_kill_grace_seconds",
+        "label": "Worker 退出等待秒数",
+        "max": 30.0,
+        "min": 0.1,
+        "rebuild_moss": false,
+        "restart": false,
+        "step": 0.1,
+        "type": "float"
+      },
+      {
+        "advanced": false,
+        "choices": [],
+        "default": 64,
+        "env": "KOKORO_CACHE_MAX_ITEMS",
+        "group": "service",
+        "help": "",
+        "key": "cache_max_items",
+        "label": "音频缓存数量",
+        "max": 2000,
+        "min": 0,
+        "rebuild_moss": false,
+        "restart": false,
+        "step": 1,
+        "type": "int"
+      },
+      {
+        "advanced": false,
+        "choices": [],
+        "default": 536870912,
+        "env": "KOKORO_CACHE_MAX_BYTES",
+        "group": "service",
+        "help": "前端以 MiB 显示和编辑；0 表示不限制，默认约 512 MiB。",
+        "key": "cache_max_bytes",
+        "label": "缓存上限",
+        "max": 8589934592,
+        "min": 0,
+        "rebuild_moss": false,
+        "restart": false,
+        "step": 1048576,
+        "type": "int"
+      },
+      {
+        "advanced": false,
+        "choices": [],
+        "default": 1200,
+        "env": "KOKORO_CACHE_SKIP_TEXT_OVER_CHARS",
+        "group": "service",
+        "help": "超过该字符数的 HTTP 合成结果不写入缓存，0 表示关闭。",
+        "key": "cache_skip_text_over_chars",
+        "label": "长文本跳过缓存",
+        "max": 100000,
+        "min": 0,
+        "rebuild_moss": false,
+        "restart": false,
+        "step": 100,
+        "type": "int"
+      },
+      {
+        "advanced": false,
+        "choices": [],
+        "default": 20971520,
+        "env": "KOKORO_CACHE_SKIP_AUDIO_OVER_BYTES",
+        "group": "service",
+        "help": "前端以 MiB 显示和编辑；超过该大小的音频不写入缓存，0 表示关闭。",
+        "key": "cache_skip_audio_over_bytes",
+        "label": "大音频跳过缓存",
+        "max": 2147483647,
+        "min": 0,
+        "rebuild_moss": false,
+        "restart": false,
+        "step": 1048576,
+        "type": "int"
+      },
+      {
+        "advanced": false,
+        "choices": [],
+        "default": false,
+        "env": "ANGEVOICE_SAVE_OUTPUTS",
+        "group": "service",
+        "help": "",
+        "key": "save_outputs",
+        "label": "保存合成结果",
+        "max": null,
+        "min": null,
+        "rebuild_moss": false,
+        "restart": false,
+        "step": null,
+        "type": "bool"
+      },
+      {
+        "advanced": false,
+        "choices": [],
+        "default": false,
+        "env": "ANGEVOICE_FFMPEG_ENABLED",
+        "group": "audio",
+        "help": "启用后非流式 HTTP 可输出 mp3、ogg_opus/telegram_voice、m4a；流式仍保持 pcm_s16le/wav。旧 KOKORO_MP3_ENABLED=true 会兼容视为启用。",
+        "key": "ffmpeg_enabled",
+        "label": "启用 FFmpeg 转码",
+        "max": null,
+        "min": null,
+        "rebuild_moss": false,
+        "restart": false,
+        "step": null,
+        "type": "bool"
+      },
+      {
+        "advanced": false,
+        "choices": [],
+        "default": "ffmpeg",
+        "env": "ANGEVOICE_FFMPEG_BINARY",
+        "group": "audio",
+        "help": "容器内通常保持 ffmpeg；自定义部署可填写完整可执行文件路径。",
+        "key": "ffmpeg_binary",
+        "label": "FFmpeg 路径",
+        "max": null,
+        "min": null,
+        "rebuild_moss": false,
+        "restart": false,
+        "step": null,
+        "type": "str"
+      },
+      {
+        "advanced": false,
+        "choices": [],
+        "default": "192k",
+        "env": "ANGEVOICE_AUDIO_MP3_BITRATE",
+        "group": "audio",
+        "help": "response_format=mp3 使用，常用 128k-192k。",
+        "key": "mp3_bitrate",
+        "label": "MP3 码率",
+        "max": null,
+        "min": null,
+        "rebuild_moss": false,
+        "restart": false,
+        "step": null,
+        "type": "str"
+      },
+      {
+        "advanced": false,
+        "choices": [],
+        "default": "32k",
+        "env": "ANGEVOICE_AUDIO_OPUS_BITRATE",
+        "group": "audio",
+        "help": "telegram_voice/ogg_opus 输出使用，常用 24k-48k。",
+        "key": "audio_opus_bitrate",
+        "label": "Opus 码率",
+        "max": null,
+        "min": null,
+        "rebuild_moss": false,
+        "restart": false,
+        "step": null,
+        "type": "str"
+      },
+      {
+        "advanced": false,
+        "choices": [],
+        "default": "96k",
+        "env": "ANGEVOICE_AUDIO_AAC_BITRATE",
+        "group": "audio",
+        "help": "m4a 输出使用，常用 64k-128k。",
+        "key": "audio_aac_bitrate",
+        "label": "AAC 码率",
+        "max": null,
+        "min": null,
+        "rebuild_moss": false,
+        "restart": false,
+        "step": null,
+        "type": "str"
+      },
+      {
+        "advanced": true,
+        "choices": [],
+        "default": 30.0,
+        "env": "ANGEVOICE_FFMPEG_TIMEOUT_SECONDS",
+        "group": "audio",
+        "help": "",
+        "key": "ffmpeg_timeout_seconds",
+        "label": "FFmpeg 超时秒数",
+        "max": 3600.0,
+        "min": 1.0,
+        "rebuild_moss": false,
+        "restart": false,
+        "step": 1.0,
+        "type": "float"
+      },
+      {
+        "advanced": false,
+        "choices": [],
+        "default": 1000,
+        "env": "ANGEVOICE_OUTPUT_MAX_FILES",
+        "group": "service",
+        "help": "",
+        "key": "output_max_files",
+        "label": "保留文件数",
+        "max": 100000,
+        "min": 0,
+        "rebuild_moss": false,
+        "restart": false,
+        "step": 1,
+        "type": "int"
+      },
+      {
+        "advanced": false,
+        "choices": [],
+        "default": true,
+        "env": "MOSS_VRAM_GUARD_ENABLED",
+        "group": "moss",
+        "help": "8GB 显存或家用 NAS 推荐开启。",
+        "key": "moss_vram_guard_enabled",
+        "label": "启用显存保护",
+        "max": null,
+        "min": null,
+        "rebuild_moss": false,
+        "restart": false,
+        "step": null,
+        "type": "bool"
+      },
+      {
+        "advanced": false,
+        "choices": [],
+        "default": 1200,
+        "env": "MOSS_VRAM_SAFE_FREE_MB",
+        "group": "moss",
+        "help": "",
+        "key": "moss_vram_safe_free_mb",
+        "label": "安全剩余显存 MB",
+        "max": 65536,
+        "min": 0,
+        "rebuild_moss": false,
+        "restart": false,
+        "step": 100,
+        "type": "int"
+      },
+      {
+        "advanced": false,
+        "choices": [],
+        "default": 600,
+        "env": "MOSS_VRAM_CRITICAL_FREE_MB",
+        "group": "moss",
+        "help": "",
+        "key": "moss_vram_critical_free_mb",
+        "label": "临界剩余显存 MB",
+        "max": 65536,
+        "min": 0,
+        "rebuild_moss": false,
+        "restart": false,
+        "step": 100,
+        "type": "int"
+      },
+      {
+        "advanced": false,
+        "choices": [],
+        "default": 96,
+        "env": "MOSS_LOW_VRAM_SEGMENT_LENGTH",
+        "group": "moss",
+        "help": "",
+        "key": "moss_low_vram_segment_length",
+        "label": "低显存分句长度",
+        "max": 400,
+        "min": 60,
+        "rebuild_moss": false,
+        "restart": false,
+        "step": 10,
+        "type": "int"
+      },
+      {
+        "advanced": false,
+        "choices": [],
+        "default": 280,
+        "env": "MOSS_LOW_VRAM_MAX_NEW_FRAMES",
+        "group": "moss",
+        "help": "",
+        "key": "moss_low_vram_max_new_frames",
+        "label": "低显存帧预算",
+        "max": 800,
+        "min": 64,
+        "rebuild_moss": false,
+        "restart": false,
+        "step": 1,
+        "type": "int"
+      },
+      {
+        "advanced": false,
+        "choices": [],
+        "default": 48,
+        "env": "MOSS_LOW_VRAM_TEXT_TOKENS",
+        "group": "moss",
+        "help": "",
+        "key": "moss_low_vram_text_tokens",
+        "label": "低显存 token 上限",
+        "max": 160,
+        "min": 20,
+        "rebuild_moss": false,
+        "restart": false,
+        "step": 1,
+        "type": "int"
+      },
+      {
+        "advanced": false,
+        "choices": [],
+        "default": true,
+        "env": "MOSS_DISABLE_FULL_CODEC_AFTER_OOM",
+        "group": "moss",
+        "help": "",
+        "key": "moss_disable_full_codec_after_oom",
+        "label": "OOM 后禁用整段解码",
+        "max": null,
+        "min": null,
+        "rebuild_moss": false,
+        "restart": false,
+        "step": null,
+        "type": "bool"
+      },
+      {
+        "advanced": false,
+        "choices": [],
+        "default": 600.0,
+        "env": "MOSS_FULL_CODEC_OOM_COOLDOWN_SECONDS",
+        "group": "moss",
+        "help": "",
+        "key": "moss_full_codec_oom_cooldown_seconds",
+        "label": "OOM 冷却秒",
+        "max": 86400,
+        "min": 0,
+        "rebuild_moss": false,
+        "restart": false,
+        "step": 10,
+        "type": "float"
+      },
+      {
+        "advanced": false,
+        "choices": [],
+        "default": 10.0,
+        "env": "MOSS_VRAM_SNAPSHOT_TTL_SECONDS",
+        "group": "moss",
+        "help": "缓存 torch/nvidia-smi 显存查询结果，减少长文本流式过程中的同步卡顿。0 表示每次都查。",
+        "key": "moss_vram_snapshot_ttl_seconds",
+        "label": "显存快照 TTL",
+        "max": 3600,
+        "min": 0,
+        "rebuild_moss": false,
+        "restart": false,
+        "step": 1,
+        "type": "float"
+      },
+      {
+        "advanced": false,
+        "choices": [],
+        "default": 10.0,
+        "env": "KOKORO_RATE_LIMIT_QPS",
+        "group": "security",
+        "help": "",
+        "key": "rate_limit_qps",
+        "label": "限流 QPS",
+        "max": 1000,
+        "min": 0,
+        "rebuild_moss": false,
+        "restart": true,
+        "step": 0.1,
+        "type": "float"
+      },
+      {
+        "advanced": false,
+        "choices": [],
+        "default": 20,
+        "env": "KOKORO_RATE_LIMIT_BURST",
+        "group": "security",
+        "help": "",
+        "key": "rate_limit_burst",
+        "label": "限流突发",
+        "max": 10000,
+        "min": 0,
+        "rebuild_moss": false,
+        "restart": true,
+        "step": 1,
+        "type": "int"
+      },
+      {
+        "advanced": false,
+        "choices": [],
+        "default": 50,
+        "env": "KOKORO_MAX_QUEUE_LENGTH",
+        "group": "security",
+        "help": "",
+        "key": "max_queue_length",
+        "label": "队列上限",
+        "max": 10000,
+        "min": 0,
+        "rebuild_moss": false,
+        "restart": true,
+        "step": 1,
+        "type": "int"
+      },
+      {
+        "advanced": false,
+        "choices": [],
+        "default": 16,
+        "env": "KOKORO_WS_MAX_CONNECTIONS",
+        "group": "security",
+        "help": "同时保持的 WebSocket 会话数量上限；0 表示禁用限制。",
+        "key": "websocket_max_connections",
+        "label": "WebSocket 连接上限",
+        "max": 10000,
+        "min": 0,
+        "rebuild_moss": false,
+        "restart": true,
+        "step": 1,
+        "type": "int"
+      },
+      {
+        "advanced": false,
+        "choices": [],
+        "default": 33554432,
+        "env": "KOKORO_WS_MAX_MESSAGE_BYTES",
+        "group": "security",
+        "help": "前端以 MiB 显示和编辑；限制首包/控制消息大小。32 MiB 可容纳约 20 MiB 参考音频的 base64 JSON。",
+        "key": "websocket_max_message_bytes",
+        "label": "WebSocket 单消息上限",
+        "max": 134217728,
+        "min": 1024,
+        "rebuild_moss": false,
+        "restart": true,
+        "step": 1024,
+        "type": "int"
+      },
+      {
+        "advanced": false,
+        "choices": [],
+        "default": false,
+        "env": "KOKORO_TRUST_PROXY_HEADERS",
+        "group": "security",
+        "help": "",
+        "key": "trust_proxy_headers",
+        "label": "信任反代 IP",
+        "max": null,
+        "min": null,
+        "rebuild_moss": false,
+        "restart": true,
+        "step": null,
+        "type": "bool"
+      },
+      {
+        "advanced": false,
+        "choices": [],
+        "default": true,
+        "env": "KOKORO_PUBLIC_STATUS_ENDPOINTS",
+        "group": "security",
+        "help": "",
+        "key": "public_status_endpoints",
+        "label": "公开模型列表",
+        "max": null,
+        "min": null,
+        "rebuild_moss": false,
+        "restart": false,
+        "step": null,
+        "type": "bool"
+      },
+      {
+        "advanced": false,
+        "choices": [
+          {
+            "label": "auto 自动",
+            "value": "auto"
+          },
+          {
+            "label": "ModelScope",
+            "value": "modelscope"
+          },
+          {
+            "label": "Hugging Face",
+            "value": "huggingface"
+          },
+          {
+            "label": "offline 离线",
+            "value": "offline"
+          }
+        ],
+        "default": "auto",
+        "env": "ANGEVOICE_MODEL_SOURCE",
+        "group": "security",
+        "help": "",
+        "key": "model_source",
+        "label": "模型下载源",
+        "max": null,
+        "min": null,
+        "rebuild_moss": false,
+        "restart": false,
+        "step": null,
+        "type": "choice"
+      },
+      {
+        "advanced": true,
+        "choices": [],
+        "default": "",
+        "env": "MOSS_HF_REPO",
+        "group": "moss",
+        "help": "可选。默认留空并使用 ModelScope 仓库备用下载 MOSS ONNX 资产；如上游提供 Hugging Face 仓库，可在这里填写。",
+        "key": "moss_hf_repo",
+        "label": "MOSS HF 仓库",
+        "max": null,
+        "min": null,
+        "rebuild_moss": false,
+        "restart": true,
+        "step": null,
+        "type": "str"
+      },
+      {
+        "advanced": true,
+        "choices": [
+          {
+            "label": "智能合并",
+            "value": "auto"
+          },
+          {
+            "label": "保留停顿",
+            "value": "preserve"
+          },
+          {
+            "label": "当作空格",
+            "value": "space"
+          }
+        ],
+        "default": "auto",
+        "env": "ANGEVOICE_SINGLE_NEWLINE_POLICY",
+        "group": "text",
+        "help": "中文网页/小说复制常有硬换行；auto 会尽量合并段内换行，只保留空行段落。",
+        "key": "text_single_newline_policy",
+        "label": "单换行策略",
+        "max": null,
+        "min": null,
+        "rebuild_moss": false,
+        "restart": false,
+        "step": null,
+        "type": "choice"
+      },
+      {
+        "advanced": true,
+        "choices": [
+          {
+            "label": "智能处理",
+            "value": "auto"
+          },
+          {
+            "label": "完整中文规则",
+            "value": "true"
+          },
+          {
+            "label": "仅温和清理",
+            "value": "false"
+          }
+        ],
+        "default": "auto",
+        "env": "MOSS_APPLY_ANGEVOICE_RULES",
+        "group": "text",
+        "help": "MOSS 与 Kokoro 分离处理；auto 会对 URL、版本号、API、英文缩写等混排文本保持保守。",
+        "key": "moss_apply_angevoice_rules",
+        "label": "MOSS 文本规则",
+        "max": null,
+        "min": null,
+        "rebuild_moss": false,
+        "restart": false,
+        "step": null,
+        "type": "choice"
+      },
+      {
+        "advanced": true,
+        "choices": [],
+        "default": 8.0,
+        "env": "MOSS_PROMPT_AUDIO_MAX_SECONDS",
+        "group": "moss",
+        "help": "",
+        "key": "moss_prompt_audio_max_seconds",
+        "label": "参考音频秒数",
+        "max": 60,
+        "min": 0,
+        "rebuild_moss": true,
+        "restart": false,
+        "step": 0.5,
+        "type": "float"
+      },
+      {
+        "advanced": true,
+        "choices": [],
+        "default": true,
+        "env": "MOSS_OUTPUT_PEAK_NORMALIZE_ENABLED",
+        "group": "moss",
+        "help": "",
+        "key": "moss_output_peak_normalize_enabled",
+        "label": "峰值保护",
+        "max": null,
+        "min": null,
+        "rebuild_moss": false,
+        "restart": false,
+        "step": null,
+        "type": "bool"
+      },
+      {
+        "advanced": true,
+        "choices": [],
+        "default": true,
+        "env": "MOSS_OUTPUT_DECLICK_ENABLED",
+        "group": "moss",
+        "help": "",
+        "key": "moss_output_declick_enabled",
+        "label": "去爆音",
+        "max": null,
+        "min": null,
+        "rebuild_moss": false,
+        "restart": false,
+        "step": null,
+        "type": "bool"
+      },
+      {
+        "advanced": true,
+        "choices": [],
+        "default": 1.5,
+        "env": "MOSS_OUTPUT_EDGE_FADE_MS",
+        "group": "moss",
+        "help": "",
+        "key": "moss_output_edge_fade_ms",
+        "label": "边缘淡入淡出",
+        "max": 20,
+        "min": 0,
+        "rebuild_moss": false,
+        "restart": false,
+        "step": 0.5,
+        "type": "float"
+      },
+      {
+        "advanced": true,
+        "choices": [],
+        "default": -45.0,
+        "env": "MOSS_TRIM_SILENCE_DB",
+        "group": "moss",
+        "help": "",
+        "key": "moss_trim_silence_db",
+        "label": "静音阈值 dB",
+        "max": -10,
+        "min": -90,
+        "rebuild_moss": false,
+        "restart": false,
+        "step": 1,
+        "type": "float"
+      },
+      {
+        "advanced": true,
+        "choices": [],
+        "default": true,
+        "env": "MOSS_QUALITY_GATE_ENABLED",
+        "group": "moss",
+        "help": "",
+        "key": "moss_quality_gate_enabled",
+        "label": "MOSS 质量自检",
+        "max": null,
+        "min": null,
+        "rebuild_moss": true,
+        "restart": false,
+        "step": null,
+        "type": "bool"
+      },
+      {
+        "advanced": true,
+        "choices": [],
+        "default": false,
+        "env": "MOSS_PROCESS_ISOLATION_ENABLED",
+        "group": "moss",
+        "help": "建议保持开启：超时或底层卡死时可终止隔离 worker 并自动恢复，避免引擎永久阻塞。",
+        "key": "moss_process_isolation_enabled",
+        "label": "MOSS 进程隔离",
+        "max": null,
+        "min": null,
+        "rebuild_moss": true,
+        "restart": false,
+        "step": null,
+        "type": "bool"
+      },
+      {
+        "advanced": true,
+        "choices": [],
+        "default": false,
+        "env": "ZIPVOICE_PROCESS_ISOLATION_ENABLED",
+        "group": "zipvoice",
+        "help": "正式 Docker/fnOS 部署默认开启。NAS/GPU 长驻部署请保持开启；关闭后使用 ZipVoice 产生的主机内存可能无法完整归还。",
+        "key": "zipvoice_process_isolation_enabled",
+        "label": "ZipVoice 进程隔离",
+        "max": null,
+        "min": null,
+        "rebuild_moss": true,
+        "restart": false,
+        "step": null,
+        "type": "bool"
+      },
+      {
+        "advanced": false,
+        "choices": [],
+        "default": 8,
+        "env": "ZIPVOICE_NUM_STEPS",
+        "group": "zipvoice",
+        "help": "步数提高可能改善质量但会增加延迟；CPU/NAS 建议先用 8，GPU 可测试 16。",
+        "key": "zipvoice_num_steps",
+        "label": "采样步数",
+        "max": 32,
+        "min": 1,
+        "rebuild_moss": false,
+        "restart": false,
+        "step": 1,
+        "type": "int"
+      },
+      {
+        "advanced": false,
+        "choices": [],
+        "default": 15.0,
+        "env": "ZIPVOICE_PROMPT_AUDIO_MAX_SECONDS",
+        "group": "zipvoice",
+        "help": "官方建议单人参考音频短于 3 秒；此项是产品保护上限，超过 3 秒只提示风险。",
+        "key": "zipvoice_prompt_audio_max_seconds",
+        "label": "参考音频最长秒数",
+        "max": 30.0,
+        "min": 3.0,
+        "rebuild_moss": false,
+        "restart": false,
+        "step": 0.5,
+        "type": "float"
+      },
+      {
+        "advanced": false,
+        "choices": [],
+        "default": false,
+        "env": "ZIPVOICE_REMOVE_LONG_SIL",
+        "group": "zipvoice",
+        "help": "仅在生成音频存在异常长停顿时尝试开启，可能改变自然停顿。",
+        "key": "zipvoice_remove_long_sil",
+        "label": "移除生成长静音",
+        "max": null,
+        "min": null,
+        "rebuild_moss": false,
+        "restart": false,
+        "step": null,
+        "type": "bool"
+      },
+      {
+        "advanced": true,
+        "choices": [],
+        "default": 3.0,
+        "env": "ZIPVOICE_GUIDANCE_SCALE",
+        "group": "zipvoice",
+        "help": "",
+        "key": "zipvoice_guidance_scale",
+        "label": "Guidance Scale",
+        "max": 20.0,
+        "min": 0.0,
+        "rebuild_moss": false,
+        "restart": false,
+        "step": 0.1,
+        "type": "float"
+      },
+      {
+        "advanced": true,
+        "choices": [],
+        "default": 0.5,
+        "env": "ZIPVOICE_T_SHIFT",
+        "group": "zipvoice",
+        "help": "",
+        "key": "zipvoice_t_shift",
+        "label": "T-Shift",
+        "max": 1.0,
+        "min": 0.01,
+        "rebuild_moss": false,
+        "restart": false,
+        "step": 0.01,
+        "type": "float"
+      },
+      {
+        "advanced": true,
+        "choices": [],
+        "default": 0.1,
+        "env": "ZIPVOICE_TARGET_RMS",
+        "group": "zipvoice",
+        "help": "",
+        "key": "zipvoice_target_rms",
+        "label": "目标 RMS",
+        "max": 1.0,
+        "min": 0.0,
+        "rebuild_moss": false,
+        "restart": false,
+        "step": 0.01,
+        "type": "float"
+      },
+      {
+        "advanced": true,
+        "choices": [],
+        "default": 0.1,
+        "env": "ZIPVOICE_FEAT_SCALE",
+        "group": "zipvoice",
+        "help": "",
+        "key": "zipvoice_feat_scale",
+        "label": "特征缩放",
+        "max": 10.0,
+        "min": 0.001,
+        "rebuild_moss": false,
+        "restart": false,
+        "step": 0.01,
+        "type": "float"
+      }
+    ],
+    "groups": [
+      {
+        "key": "kokoro",
+        "label": "Kokoro"
+      },
+      {
+        "key": "moss",
+        "label": "MOSS-TTS-Nano"
+      },
+      {
+        "key": "zipvoice",
+        "label": "ZipVoice"
+      },
+      {
+        "key": "text",
+        "label": "文本与词典"
+      },
+      {
+        "key": "service",
+        "label": "服务与存储"
+      },
+      {
+        "key": "audio",
+        "label": "格式转码"
+      },
+      {
+        "key": "security",
+        "label": "安全访问"
+      }
+    ],
+    "profile_keys": [
+      "deploy_lan_default",
+      "deploy_public_hardened",
+      "nas_stable",
+      "nas_deep_sleep_cpu",
+      "balanced",
+      "long_narration",
+      "low_latency",
+      "clone_quality"
+    ]
+  }
+}
