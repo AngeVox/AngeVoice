@@ -353,10 +353,10 @@ def test_catalogs_are_frozen_side_effect_free_native_esm_modules() -> None:
     assert json.loads(completed.stdout) == {
         "exportsOnlyMessages": True,
         "allFrozen": True,
-            "zhDomainCounts": [15, 187, 114],
-            "enDomainCounts": [15, 187, 114],
-            "zhCount": 316,
-            "enCount": 316,
+            "zhDomainCounts": [15, 187, 151],
+            "enDomainCounts": [15, 187, 151],
+            "zhCount": 353,
+            "enCount": 353,
         "sameKeys": True,
     }
 
@@ -524,8 +524,17 @@ def test_admin_removes_lite_map_and_rerenders_safe_locale_dependent_regions() ->
     copy_source = source[source.index("function currentAdminPresentationCopy") : source.index("const $ =")]
     passive_keys = re.findall(r"t\('presentation\.([a-z0-9_]+)'", copy_source)
     assert len(passive_keys) == len(set(passive_keys)) == 68
-    for action in ("load", "switch", "unload", "forceStop", "checkAssets", "repairAssets"):
-        assert re.search(rf"\b{action}: (?!t\('presentation\.)", copy_source)
+    assert {
+        "load": "action.load",
+        "switch": "action.switch",
+        "unload": "action.unload",
+        "forceStop": "action.force_stop",
+        "checkAssets": "action.check_assets",
+        "repairAssets": "action.repair_assets",
+    } == {
+        action: key
+        for action, key in re.findall(r"\b(load|switch|unload|forceStop|checkAssets|repairAssets): t\('([^']+)'\)", copy_source)
+    }
     assert "healthErrors: count => t('presentation.health_errors', { count })" in copy_source
     assert "itemCount: count => t('presentation.item_count', { count })" in copy_source
     assert "apiKeyStatus: (state, source, preview) => t('presentation.api_key_status', { state, source, preview })" in copy_source

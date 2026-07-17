@@ -896,7 +896,7 @@ def scan_admin_catalog_references(root: Path = PACKAGE_ROOT) -> I18nScanReport:
 
 
 def test_zh_and_en_catalogs_have_identical_keys_and_placeholders() -> None:
-    expected_counts = {"common": 15, "studio": 187, "admin": 114}
+    expected_counts = {"common": 15, "studio": 187, "admin": 151}
     for domain, expected in expected_counts.items():
         zh_domain = _domain_catalog(domain, "zh-cn")
         en_domain = _domain_catalog(domain, "en")
@@ -909,7 +909,7 @@ def test_zh_and_en_catalogs_have_identical_keys_and_placeholders() -> None:
 
     zh = _catalog("zh-cn")
     en = _catalog("en")
-    assert len(zh) == len(en) == sum(expected_counts.values()) == 316
+    assert len(zh) == len(en) == sum(expected_counts.values()) == 353
     assert set(zh) == set(en)
     for key in zh:
         assert PLACEHOLDER.findall(zh[key]) == PLACEHOLDER.findall(en[key]), key
@@ -932,7 +932,8 @@ def test_admin_catalog_keys_are_all_referenced_by_admin_production_sources() -> 
     admin_keys = set(_domain_catalog("admin", "zh-cn"))
     assert {"nav.config.text", "section.dictionary.title"} <= report.referenced
     assert not report.errors, "\n".join(report.errors)
-    assert admin_keys <= report.referenced
+    assert len(admin_keys) == len(report.referenced) == 151
+    assert admin_keys == report.referenced
 
 
 def test_pages_load_the_explicit_runtime_before_consumers_without_catalog_tags() -> None:
@@ -1011,10 +1012,55 @@ def test_admin_hardcoded_user_copy_matches_the_independent_b2_b3_debt_registry()
         fingerprints.append({key: item[key] for key in ("path", "owner", "sink", "text")})
     assert fingerprints == sorted(fingerprints, key=lambda item: tuple(item.values()))
     assert len(fingerprints) == len({tuple(item.values()) for item in fingerprints})
+    assert len(fingerprints) == 37
+    assert sum(item["target_phase"] == "P1-4B2" for item in registered) == 0
+    assert sum(item["target_phase"] == "P1-4B3" for item in registered) == 37
+    migrated = {
+        ("static/admin.js", "currentAdminPresentationCopy", "presentation_action", "加载"),
+        ("static/admin.js", "currentAdminPresentationCopy", "presentation_action", "切换"),
+        ("static/admin.js", "currentAdminPresentationCopy", "presentation_action", "释放"),
+        ("static/admin.js", "currentAdminPresentationCopy", "presentation_action", "检测模型文件"),
+        ("static/admin.js", "currentAdminPresentationCopy", "presentation_action", "下载/修复模型文件"),
+        ("templates/admin.html", "a#-", "html_text", "前往 Studio"),
+        ("templates/admin.html", "button#refresh-btn", "html_text", "刷新"),
+        ("templates/admin.html", "button#clear-cache-btn", "html_text", "清缓存"),
+        ("templates/admin.html", "button#unload-btn", "html_text", "释放"),
+        ("templates/admin.html", "button#force-unload-btn", "html_text", "终止进程"),
+        ("templates/admin.html", "button#reset-runtime-config-btn", "html_text", "清除持久化"),
+        ("templates/admin.html", "button#save-config-btn", "html_text", "保存配置"),
+        ("templates/admin.html", "button#download-diagnostics-btn", "html_text", "下载诊断包"),
+        ("templates/admin.html", "button#export-env-btn", "html_text", "导出 ENV"),
+    }
+    assert not migrated & {tuple(item.values()) for item in fingerprints}
     actual = {
         (finding.path, finding.owner, finding.sink, finding.text)
         for finding in scan_admin_user_copy()
     }
+    b2b_migrated = {
+        ("static/admin.js", "applyProfile", "confirm", "将应用“公网加固”预设：会收紧公开接口并启用限流，是否继续？"),
+        ("static/admin.js", "applyProfile", "toast", "已应用预设：${result.profile}"),
+        ("static/admin.js", "checkAsset", "toast", "${modelId} 模型文件：${asset.ready ? '完整' : '缺失或需要修复'}"),
+        ("static/admin.js", "document.click", "toast", "操作失败：${err.message}"),
+        ("static/admin.js", "loadModel", "toast", "模型已加载"),
+        ("static/admin.js", "loadModel", "toast", "正在加载 ${modelId}"),
+        ("static/admin.js", "onclick:clear-cache-btn", "toast", "缓存已清空"),
+        ("static/admin.js", "onclick:download-diagnostics-btn", "toast", "诊断包已下载"),
+        ("static/admin.js", "onclick:refresh-btn", "toast", "已刷新"),
+        ("static/admin.js", "onclick:reset-runtime-config-btn", "confirm", "清除 /app/config/runtime-config.json？清除后需重启容器或重新加载服务，ENV 才会完全接管。"),
+        ("static/admin.js", "onclick:reset-runtime-config-btn", "toast", "已清除持久化配置，建议重启容器"),
+        ("static/admin.js", "onclick:reset-runtime-config-btn", "toast", "没有持久化配置可清除"),
+        ("static/admin.js", "onclick:unload-btn", "confirm", "释放所有可释放模型？忙碌模型会跳过。"),
+        ("static/admin.js", "onclick:unload-btn", "toast", "已释放空闲模型"),
+        ("static/admin.js", "repairAsset", "confirm", "下载或修复 ${modelId} 模型文件？空闲模型将先释放，并可能重新下载缺失文件。"),
+        ("static/admin.js", "repairAsset", "toast", "${modelId} 资产修复：${data.ok ? '完成' : '仍不完整'}"),
+        ("static/admin.js", "saveConfig", "toast", "已保存 ${changed} 项配置${(result.rebuilt_models || []).length ? '，MOSS 已重建' : (result.model_rebuild_required ? '，忙碌模型会稍后重建' : '')}"),
+        ("static/admin.js", "saveConfig", "toast", "配置没有变化"),
+        ("static/admin.js", "switchModel", "toast", "模型已切换"),
+        ("static/admin.js", "switchModel", "toast", "正在切换到 ${modelId}"),
+        ("static/admin.js", "unloadModel", "toast", "已释放模型"),
+    }
+    assert len(b2b_migrated) == 21
+    assert not b2b_migrated & actual
     expected = {tuple(item.values()) for item in fingerprints}
     assert actual == expected
 

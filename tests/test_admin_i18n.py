@@ -9,7 +9,7 @@ ADMIN_HTML = ROOT / "src" / "kokoro_tts" / "templates" / "admin.html"
 ADMIN_JS = ROOT / "src" / "kokoro_tts" / "static" / "admin.js"
 
 
-def test_b1a_template_localizes_only_passive_admin_shell_nodes() -> None:
+def test_b2a_template_localizes_only_authorized_static_action_nodes() -> None:
     html = ADMIN_HTML.read_text(encoding="utf-8")
     for key in (
         "page.title",
@@ -26,6 +26,25 @@ def test_b1a_template_localizes_only_passive_admin_shell_nodes() -> None:
     ):
         assert key in html
 
+    static_actions = {
+        "refresh-btn": "action.refresh",
+        "clear-cache-btn": "action.clear_cache",
+        "unload-btn": "action.unload",
+        "force-unload-btn": "action.force_stop",
+        "reset-runtime-config-btn": "action.reset_runtime_config",
+        "save-config-btn": "action.save_config",
+        "download-diagnostics-btn": "action.download_diagnostics",
+        "export-env-btn": "action.export_env",
+    }
+    for node_id, key in static_actions.items():
+        node = re.search(rf"<[^>]+\bid=\"{node_id}\"[^>]*>", html)
+        assert node, node_id
+        assert f'data-i18n="{key}"' in node.group(0), node_id
+
+    studio_link = re.search(r'<a\s+class="ghost-button small"\s+href="/"\s+data-i18n="([^"]+)">前往 Studio</a>', html)
+    assert studio_link
+    assert studio_link.group(1) == "action.open_studio"
+
     for node_id in (
         "admin-health-pill",
         "runtime-config-note",
@@ -35,18 +54,15 @@ def test_b1a_template_localizes_only_passive_admin_shell_nodes() -> None:
         "admin-credentials-feedback",
         "admin-toast",
         "admin-json",
-        "refresh-btn",
-        "clear-cache-btn",
-        "unload-btn",
-        "force-unload-btn",
-        "reset-runtime-config-btn",
-        "save-config-btn",
-        "download-diagnostics-btn",
-        "export-env-btn",
         "update-release-link",
         "check-update-btn",
         "reveal-key-btn",
         "rotate-key-btn",
+        "save-admin-credentials-btn",
+        "confirm-admin-credentials-btn",
+        "cancel-admin-credentials-btn",
+        "admin-username-input",
+        "admin-password-input",
     ):
         node = re.search(rf"<[^>]+\bid=\"{node_id}\"[^>]*>", html)
         assert node, node_id
@@ -58,6 +74,81 @@ def test_b1a_template_localizes_only_passive_admin_shell_nodes() -> None:
 
     admin_js = ADMIN_JS.read_text(encoding="utf-8")
     assert "{ key: 'config.text', labelKey: 'nav.config.text' }" in admin_js
+
+
+def test_b2a_model_action_properties_use_exact_action_keys() -> None:
+    source = ADMIN_JS.read_text(encoding="utf-8")
+    copy_source = source[source.index("function currentAdminPresentationCopy") : source.index("const $ =")]
+    assert {
+        "load": "action.load",
+        "switch": "action.switch",
+        "unload": "action.unload",
+        "forceStop": "action.force_stop",
+        "checkAssets": "action.check_assets",
+        "repairAssets": "action.repair_assets",
+    } == {
+        property: key
+        for property, key in re.findall(r"\b(load|switch|unload|forceStop|checkAssets|repairAssets): t\('([^']+)'\)", copy_source)
+    }
+
+
+def test_b2b_action_feedback_uses_static_translation_keys_without_changing_action_shapes() -> None:
+    source = ADMIN_JS.read_text(encoding="utf-8")
+
+    def function_body(name: str, next_name: str) -> str:
+        return source[source.index(f"async function {name}") : source.index(f"async function {next_name}")]
+
+    load = function_body("loadModel", "switchModel")
+    switch = function_body("switchModel", "unloadModel")
+    unload = function_body("unloadModel", "checkAsset")
+    check = function_body("checkAsset", "repairAsset")
+    repair = function_body("repairAsset", "saveConfig")
+    save = function_body("saveConfig", "applyProfile")
+    profile = source[source.index("async function applyProfile") : source.index("document.addEventListener('click'")]
+    click = source[source.index("document.addEventListener('click'") : source.index("document.addEventListener('angevoice:locale-changed'")]
+
+    for body, keys in (
+        (load, ("toast.model_loading", "toast.model_loaded")),
+        (switch, ("toast.model_switching", "toast.model_switched")),
+        (check, ("toast.asset_check_ready", "toast.asset_check_missing")),
+        (repair, ("confirm.repair_asset", "toast.asset_repair_complete", "toast.asset_repair_incomplete")),
+        (profile, ("confirm.apply_public_hardened", "toast.profile_applied")),
+        (click, ("toast.action_failed",)),
+    ):
+        for key in keys:
+            assert f"t('{key}'" in body
+
+    assert "t('toast.model_unloaded')" in unload
+    assert "t('toast.force_unloaded')" in unload
+    assert "force && !confirm(t('confirm.force_unload_model', { model: modelId }))" in unload
+    assert "t('toast.asset_check_ready', { model: modelId })" in check
+    assert "t('toast.asset_check_missing', { model: modelId })" in check
+    assert "t('confirm.repair_asset', { model: modelId })" in repair
+    assert "JSON.stringify({force_unload: false})" in repair
+    assert "if (!changed)" in save
+    assert save.index("if (!changed)") < save.index("else if ((result.rebuilt_models || []).length)") < save.index("else if (result.model_rebuild_required)")
+    for key in ("toast.config_unchanged", "toast.config_saved_rebuilt", "toast.config_saved_rebuild_pending", "toast.config_saved"):
+        assert f"t('{key}'" in save
+    assert "JSON.stringify({model: modelId, load: true, unload_previous: false})" in switch
+    assert "toast(t('toast.action_failed', { message: err.message }), true);" in click
+    assert not re.search(r"\bt\s*\(\s*(?!['\"])" , "\n".join((load, switch, unload, check, repair, save, profile, click)))
+
+
+def test_b2b_static_handlers_use_exact_keys_without_migrating_b3() -> None:
+    source = ADMIN_JS.read_text(encoding="utf-8")
+    handlers = source[source.index("$('reset-runtime-config-btn')") : source.index("$('reveal-key-btn')")]
+    for key in (
+        "confirm.reset_runtime_config",
+        "toast.runtime_config_cleared",
+        "toast.runtime_config_not_found",
+        "toast.refreshed",
+        "toast.cache_cleared",
+        "confirm.unload_all",
+        "toast.idle_models_unloaded",
+    ):
+        assert f"t('{key}'" in handlers
+    assert "toast(t('toast.diagnostics_downloaded'))" in source
+    assert "check-update-btn').onclick = () => checkUpdate({force: true}).catch(err => toast(err.message, true))" in source
 
 
 def _locale_listener_body(source: str) -> str:

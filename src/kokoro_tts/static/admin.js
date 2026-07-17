@@ -68,12 +68,12 @@ function currentAdminPresentationCopy() {
     lowVram: t('presentation.low_vram'),
     vramNormal: t('presentation.vram_normal'),
     fallbackReason: t('presentation.fallback_reason'),
-    load: '加载',
-    switch: '切换',
-    unload: '释放',
+    load: t('action.load'),
+    switch: t('action.switch'),
+    unload: t('action.unload'),
     forceStop: t('action.force_stop'),
-    checkAssets: '检测模型文件',
-    repairAssets: '下载/修复模型文件',
+    checkAssets: t('action.check_assets'),
+    repairAssets: t('action.repair_assets'),
     emptyModels: t('presentation.empty_models'),
     restart: t('presentation.restart'),
     rebuild: t('presentation.rebuild'),
@@ -405,21 +405,21 @@ async function refresh() {
 }
 
 async function loadModel(modelId) {
-  toast(`正在加载 ${modelId}`);
+  toast(t('toast.model_loading', { model: modelId }));
   await api(`/admin/api/models/${encodeURIComponent(modelId)}/load`, {method: 'POST'});
   await refresh();
-  toast('模型已加载');
+  toast(t('toast.model_loaded'));
 }
 
 async function switchModel(modelId) {
-  toast(`正在切换到 ${modelId}`);
+  toast(t('toast.model_switching', { model: modelId }));
   await api('/admin/api/models/switch', {
     method: 'POST',
     headers: {'Content-Type': 'application/json'},
     body: JSON.stringify({model: modelId, load: true, unload_previous: false})
   });
   await refresh();
-  toast('模型已切换');
+  toast(t('toast.model_switched'));
 }
 
 async function unloadModel(modelId, force = false) {
@@ -430,23 +430,33 @@ async function unloadModel(modelId, force = false) {
     body: JSON.stringify({force})
   });
   await refresh();
-  toast(force ? t('toast.force_unloaded') : '已释放模型');
+  toast(force ? t('toast.force_unloaded') : t('toast.model_unloaded'));
 }
 
 async function checkAsset(modelId) {
   const data = await api('/admin/api/assets?full_verify_zipvoice=true');
   const key = modelId.startsWith('moss') ? 'moss' : modelId;
   const asset = data.models?.[key] || {};
-  toast(`${modelId} 模型文件：${asset.ready ? '完整' : '缺失或需要修复'}`, !asset.ready);
+  toast(
+    asset.ready
+      ? t('toast.asset_check_ready', { model: modelId })
+      : t('toast.asset_check_missing', { model: modelId }),
+    !asset.ready,
+  );
 }
 
 async function repairAsset(modelId) {
-  if (!confirm(`下载或修复 ${modelId} 模型文件？空闲模型将先释放，并可能重新下载缺失文件。`)) return;
+  if (!confirm(t('confirm.repair_asset', { model: modelId }))) return;
   const data = await api(`/admin/api/assets/${encodeURIComponent(modelId)}/repair`, {
     method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({force_unload: false})
   });
   await refresh();
-  toast(`${modelId} 资产修复：${data.ok ? '完成' : '仍不完整'}`, !data.ok);
+  toast(
+    data.ok
+      ? t('toast.asset_repair_complete', { model: modelId })
+      : t('toast.asset_repair_incomplete', { model: modelId }),
+    !data.ok,
+  );
 }
 
 async function saveConfig() {
@@ -458,12 +468,20 @@ async function saveConfig() {
   });
   await refresh();
   const changed = (result.changed || []).length;
-  toast(changed ? `已保存 ${changed} 项配置${(result.rebuilt_models || []).length ? '，MOSS 已重建' : (result.model_rebuild_required ? '，忙碌模型会稍后重建' : '')}` : '配置没有变化');
+  if (!changed) {
+    toast(t('toast.config_unchanged'));
+  } else if ((result.rebuilt_models || []).length) {
+    toast(t('toast.config_saved_rebuilt', { count: changed }));
+  } else if (result.model_rebuild_required) {
+    toast(t('toast.config_saved_rebuild_pending', { count: changed }));
+  } else {
+    toast(t('toast.config_saved', { count: changed }));
+  }
 }
 
 async function applyProfile(profile) {
   if (profile === 'deploy_public_hardened') {
-    if (!confirm('将应用“公网加固”预设：会收紧公开接口并启用限流，是否继续？')) return;
+    if (!confirm(t('confirm.apply_public_hardened'))) return;
   }
   const result = await api('/admin/api/config/profile', {
     method: 'POST',
@@ -471,7 +489,7 @@ async function applyProfile(profile) {
     body: JSON.stringify({profile})
   });
   await refresh();
-  toast(`已应用预设：${result.profile}`);
+  toast(t('toast.profile_applied', { profile: result.profile }));
 }
 
 document.addEventListener('click', async event => {
@@ -509,7 +527,7 @@ document.addEventListener('click', async event => {
     }
     if (profile) await applyProfile(profile);
   } catch (err) {
-    toast(`操作失败：${err.message}`, true);
+    toast(t('toast.action_failed', { message: err.message }), true);
   }
 });
 
@@ -527,23 +545,23 @@ document.addEventListener('angevoice:locale-changed', () => {
 
 
 $('reset-runtime-config-btn').onclick = async () => {
-  if (!confirm('清除 /app/config/runtime-config.json？清除后需重启容器或重新加载服务，ENV 才会完全接管。')) return;
+  if (!confirm(t('confirm.reset_runtime_config'))) return;
   const data = await api('/admin/api/config/runtime', {method: 'DELETE'});
   await refresh();
-  toast(data.removed ? '已清除持久化配置，建议重启容器' : '没有持久化配置可清除');
+  toast(data.removed ? t('toast.runtime_config_cleared') : t('toast.runtime_config_not_found'));
 };
-$('refresh-btn').onclick = () => refresh().then(() => toast('已刷新')).catch(err => toast(err.message, true));
+$('refresh-btn').onclick = () => refresh().then(() => toast(t('toast.refreshed'))).catch(err => toast(err.message, true));
 $('check-update-btn').onclick = () => checkUpdate({force: true}).catch(err => toast(err.message, true));
 $('clear-cache-btn').onclick = async () => {
   await api('/admin/api/cache', {method: 'DELETE'});
   await refresh();
-  toast('缓存已清空');
+  toast(t('toast.cache_cleared'));
 };
 $('unload-btn').onclick = async () => {
-  if (!confirm('释放所有可释放模型？忙碌模型会跳过。')) return;
+  if (!confirm(t('confirm.unload_all'))) return;
   await api('/admin/api/models/unload', {method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({include_current: true, force: false})});
   await refresh();
-  toast('已释放空闲模型');
+  toast(t('toast.idle_models_unloaded'));
 };
 $('force-unload-btn').onclick = async () => {
   if (!confirm(t('confirm.force_unload_all'))) return;
@@ -618,7 +636,7 @@ $('download-diagnostics-btn').onclick = async () => {
   const link = document.createElement('a');
   link.href = url; link.download = 'angevoice-diagnostics.zip'; link.click();
   URL.revokeObjectURL(url);
-  toast('诊断包已下载');
+  toast(t('toast.diagnostics_downloaded'));
 };
 $('export-env-btn').onclick = async () => {
   const data = await api('/admin/api/config/env');

@@ -25,7 +25,7 @@
       <div class="topbar-actions">
         <a class="ghost-button small" href="/">Studio</a>
         <a class="ghost-button small" href="/api-docs">API</a>
-        <button class="ghost-button small" id="refresh-btn" type="button">刷新</button>
+        <button class="ghost-button small" id="refresh-btn" data-i18n="action.refresh" type="button">刷新</button>
       </div>
     </header>
 
@@ -67,9 +67,9 @@
             <h2 data-i18n="section.models.title">模型</h2>
           </div>
           <div class="button-row">
-            <button class="secondary-button small-action" id="clear-cache-btn" type="button">清缓存</button>
-            <button class="danger-button small-action" id="unload-btn" type="button">释放</button>
-            <button class="danger-button small-action" id="force-unload-btn" type="button">终止进程</button>
+            <button class="secondary-button small-action" id="clear-cache-btn" data-i18n="action.clear_cache" type="button">清缓存</button>
+            <button class="danger-button small-action" id="unload-btn" data-i18n="action.unload" type="button">释放</button>
+            <button class="danger-button small-action" id="force-unload-btn" data-i18n="action.force_stop" type="button">终止进程</button>
           </div>
         </div>
         <div class="model-list" id="models-body"></div>
@@ -82,8 +82,8 @@
             <h2 data-i18n="section.config.title">模型与运行参数</h2>
           </div>
           <div class="button-row">
-            <button class="secondary-button" id="reset-runtime-config-btn" type="button">清除持久化</button>
-            <button class="primary-button" id="save-config-btn" type="button">保存配置</button>
+            <button class="secondary-button" id="reset-runtime-config-btn" data-i18n="action.reset_runtime_config" type="button">清除持久化</button>
+            <button class="primary-button" id="save-config-btn" data-i18n="action.save_config" type="button">保存配置</button>
           </div>
         </div>
         <div class="runtime-config-note" id="runtime-config-note">配置来源检查中...</div>
@@ -115,7 +115,7 @@
             <b data-i18n="section.dictionary.phase">当前阶段：实验性文本处理</b>
             <span data-i18n="section.dictionary.description">默认策略可在这里持久化；Studio 前台仍可按单次合成覆盖。用户词典、品牌改写和多音字词库管理尚未默认启用。</span>
           </div>
-          <a class="ghost-button small" href="/">前往 Studio</a>
+          <a class="ghost-button small" href="/" data-i18n="action.open_studio">前往 Studio</a>
         </div>
         <div class="config-form" id="text-config-form"></div>
         <div class="dictionary-table">
@@ -175,8 +175,8 @@
             <h2 data-i18n="section.diagnostics.title">诊断</h2>
           </div>
           <div class="button-row">
-            <button class="ghost-button small" id="download-diagnostics-btn" type="button">下载诊断包</button>
-            <button class="ghost-button small" id="export-env-btn" type="button">导出 ENV</button>
+            <button class="ghost-button small" id="download-diagnostics-btn" data-i18n="action.download_diagnostics" type="button">下载诊断包</button>
+            <button class="ghost-button small" id="export-env-btn" data-i18n="action.export_env" type="button">导出 ENV</button>
           </div>
         </div>
         <div class="quality-grid" id="quality-grid"></div>
