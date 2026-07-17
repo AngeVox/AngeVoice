@@ -353,10 +353,10 @@ def test_catalogs_are_frozen_side_effect_free_native_esm_modules() -> None:
     assert json.loads(completed.stdout) == {
         "exportsOnlyMessages": True,
         "allFrozen": True,
-            "zhDomainCounts": [15, 187, 151],
-            "enDomainCounts": [15, 187, 151],
-            "zhCount": 353,
-            "enCount": 353,
+            "zhDomainCounts": [15, 187, 185],
+            "enDomainCounts": [15, 187, 185],
+            "zhCount": 387,
+            "enCount": 387,
         "sameKeys": True,
     }
 
@@ -559,18 +559,20 @@ def test_admin_removes_lite_map_and_rerenders_safe_locale_dependent_regions() ->
         "renderMetrics",
         "renderModels",
         "renderSecurity",
+        "renderApiKeyStatusForLocale",
         "renderQuality",
         "renderRequests",
         "renderConfigFormsForLocale",
+        "renderUpdate",
+        "renderCredentialFeedback",
     ]
-    assert re.findall(r"if \(([^)]+)\)", body) == ["lastData", "lastConfigPayload"]
+    assert re.findall(r"if \(([^)]+)\)", body) == ["lastData", "lastConfigPayload", "lastUpdateData"]
     for forbidden in (
         "refresh",
-        "fetch",
-        "api",
-        "checkUpdate",
-        "renderUpdate",
-        "renderConfigForms",
+            "fetch",
+            "api",
+            "checkUpdate",
+            "renderConfigForms",
         "renderProfiles",
         "collectConfigValues",
     ):

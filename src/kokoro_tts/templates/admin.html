@@ -54,8 +54,8 @@
             <p class="update-message" id="update-message">当前版本检查中...</p>
           </div>
           <div class="button-row">
-            <a class="ghost-button small hidden-panel" id="update-release-link" target="_blank" rel="noreferrer noopener">查看发布说明</a>
-            <button class="secondary-button small" id="check-update-btn" type="button">检查更新</button>
+            <a class="ghost-button small hidden-panel" id="update-release-link" data-i18n="action.view_release_notes" target="_blank" rel="noreferrer noopener">查看发布说明</a>
+            <button class="secondary-button small" id="check-update-btn" data-i18n="action.check_update" type="button">检查更新</button>
           </div>
         </section>
       </article>
@@ -138,21 +138,21 @@
           <div class="security-warning hidden-panel" id="default-admin-warning" role="alert"></div>
           <div class="secret-box" id="api-key-status">加载中...</div>
           <div class="button-row">
-            <button class="secondary-button" id="reveal-key-btn" type="button">显示 Key</button>
-            <button class="danger-button" id="rotate-key-btn" type="button">轮换 Key</button>
+            <button class="secondary-button" id="reveal-key-btn" data-i18n="action.reveal_api_key" type="button">显示 Key</button>
+            <button class="danger-button" id="rotate-key-btn" data-i18n="action.rotate_api_key" type="button">轮换 Key</button>
           </div>
           <div class="mini-list" id="security-summary"></div>
           <div class="credential-card">
-            <h3>管理员账号与密码</h3>
-            <p>首次可使用默认账号 <code>admin</code> / <code>admin123</code> 登录。公网暴露前请在此修改；修改后磁盘只保存 PBKDF2 哈希，不保存明文密码。</p>
+            <h3 data-i18n="credentials.title">管理员账号与密码</h3>
+            <p><span data-i18n="credentials.default_account_intro">首次可使用默认账号</span> <code>admin</code> / <code>admin123</code> <span data-i18n="credentials.default_account_guidance">登录。公网暴露前请在此修改；修改后磁盘只保存 PBKDF2 哈希，不保存明文密码。</span></p>
             <div class="credential-grid">
-              <label class="config-field"><span>新用户名</span><input id="admin-username-input" type="text" autocomplete="username" placeholder="管理员或 admin" minlength="2" maxlength="64"></label>
-              <label class="config-field"><span>新密码</span><input id="admin-password-input" type="password" autocomplete="new-password" placeholder="至少 10 位且包含两类字符" minlength="10" maxlength="256"></label>
+              <label class="config-field"><span data-i18n="credentials.new_username">新用户名</span><input id="admin-username-input" type="text" autocomplete="username" data-i18n-placeholder="credentials.username_placeholder" placeholder="管理员或 admin" minlength="2" maxlength="64"></label>
+              <label class="config-field"><span data-i18n="credentials.new_password">新密码</span><input id="admin-password-input" type="password" autocomplete="new-password" data-i18n-placeholder="credentials.password_placeholder" placeholder="至少 10 位且包含两类字符" minlength="10" maxlength="256"></label>
             </div>
             <div class="credential-actions">
-              <button class="primary-button" id="save-admin-credentials-btn" type="button">保存管理员凭据</button>
-              <button class="danger-button hidden-panel" id="confirm-admin-credentials-btn" type="button">确认保存并重新登录</button>
-              <button class="ghost-button hidden-panel" id="cancel-admin-credentials-btn" type="button">取消</button>
+              <button class="primary-button" id="save-admin-credentials-btn" data-i18n="action.save_admin_credentials" type="button">保存管理员凭据</button>
+              <button class="danger-button hidden-panel" id="confirm-admin-credentials-btn" data-i18n="action.confirm_admin_credentials" type="button">确认保存并重新登录</button>
+              <button class="ghost-button hidden-panel" id="cancel-admin-credentials-btn" data-i18n="action.cancel" type="button">取消</button>
             </div>
             <p class="credential-feedback" id="admin-credentials-feedback" aria-live="polite"></p>
           </div>

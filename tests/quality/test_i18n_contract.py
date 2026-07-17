@@ -896,7 +896,7 @@ def scan_admin_catalog_references(root: Path = PACKAGE_ROOT) -> I18nScanReport:
 
 
 def test_zh_and_en_catalogs_have_identical_keys_and_placeholders() -> None:
-    expected_counts = {"common": 15, "studio": 187, "admin": 151}
+    expected_counts = {"common": 15, "studio": 187, "admin": 185}
     for domain, expected in expected_counts.items():
         zh_domain = _domain_catalog(domain, "zh-cn")
         en_domain = _domain_catalog(domain, "en")
@@ -909,7 +909,7 @@ def test_zh_and_en_catalogs_have_identical_keys_and_placeholders() -> None:
 
     zh = _catalog("zh-cn")
     en = _catalog("en")
-    assert len(zh) == len(en) == sum(expected_counts.values()) == 353
+    assert len(zh) == len(en) == sum(expected_counts.values()) == 387
     assert set(zh) == set(en)
     for key in zh:
         assert PLACEHOLDER.findall(zh[key]) == PLACEHOLDER.findall(en[key]), key
@@ -932,7 +932,7 @@ def test_admin_catalog_keys_are_all_referenced_by_admin_production_sources() -> 
     admin_keys = set(_domain_catalog("admin", "zh-cn"))
     assert {"nav.config.text", "section.dictionary.title"} <= report.referenced
     assert not report.errors, "\n".join(report.errors)
-    assert len(admin_keys) == len(report.referenced) == 151
+    assert len(admin_keys) == len(report.referenced) == 185
     assert admin_keys == report.referenced
 
 
@@ -1012,9 +1012,9 @@ def test_admin_hardcoded_user_copy_matches_the_independent_b2_b3_debt_registry()
         fingerprints.append({key: item[key] for key in ("path", "owner", "sink", "text")})
     assert fingerprints == sorted(fingerprints, key=lambda item: tuple(item.values()))
     assert len(fingerprints) == len({tuple(item.values()) for item in fingerprints})
-    assert len(fingerprints) == 37
+    assert fingerprints == []
     assert sum(item["target_phase"] == "P1-4B2" for item in registered) == 0
-    assert sum(item["target_phase"] == "P1-4B3" for item in registered) == 37
+    assert sum(item["target_phase"] == "P1-4B3" for item in registered) == 0
     migrated = {
         ("static/admin.js", "currentAdminPresentationCopy", "presentation_action", "加载"),
         ("static/admin.js", "currentAdminPresentationCopy", "presentation_action", "切换"),
@@ -1061,6 +1061,59 @@ def test_admin_hardcoded_user_copy_matches_the_independent_b2_b3_debt_registry()
     }
     assert len(b2b_migrated) == 21
     assert not b2b_migrated & actual
+    b3a_migrated = {
+        ("static/admin.js", "checkUpdate", "textContent", "检查中…"),
+        ("static/admin.js", "checkUpdate", "textContent", "检查更新"),
+        ("static/admin.js", "checkUpdate", "toast", "发现新版本 v${data.latest_version}"),
+        ("static/admin.js", "checkUpdate", "toast", "检查更新失败：${err.message}"),
+        ("static/admin.js", "renderUpdate", "textContent", "发现新版本 v${data.latest_version}（当前 v${current}），请查看发布说明后手动升级。"),
+        ("static/admin.js", "renderUpdate", "textContent", "当前版本 v${current} · ${data.error}"),
+        ("static/admin.js", "renderUpdate", "textContent", "当前版本 v${current} · 尚未检查更新"),
+        ("static/admin.js", "renderUpdate", "textContent", "当前版本 v${current} · 已是最新版本"),
+        ("static/admin.js", "renderUpdate", "textContent", "当前版本 v${current} · 更新检查已关闭"),
+        ("templates/admin.html", "a#update-release-link", "html_text", "查看发布说明"),
+        ("templates/admin.html", "button#check-update-btn", "html_text", "检查更新"),
+    }
+    assert len(b3a_migrated) == 11
+    assert not b3a_migrated & actual
+    b3b_migrated = {
+        ("static/admin.js", "onclick:reveal-key-btn", "textContent", "当前 API Key：${data.api_key}"),
+        ("static/admin.js", "onclick:reveal-key-btn", "textContent", "当前未启用 API Key"),
+        ("static/admin.js", "onclick:rotate-key-btn", "confirm", "轮换 API Key？旧客户端 token 会立即失效。"),
+        ("static/admin.js", "onclick:rotate-key-btn", "textContent", "新 API Key：${data.api_key}"),
+        ("static/admin.js", "onclick:rotate-key-btn", "toast", "API Key 已轮换"),
+        ("templates/admin.html", "button#reveal-key-btn", "html_text", "显示 Key"),
+        ("templates/admin.html", "button#rotate-key-btn", "html_text", "轮换 Key"),
+    }
+    assert len(b3b_migrated) == 7
+    assert not b3b_migrated & actual
+    b3c_migrated = {
+        ("static/admin.js", "onclick:cancel-admin-credentials-btn", "credential_feedback", "已取消保存，未修改管理员凭据。"),
+        ("static/admin.js", "onclick:confirm-admin-credentials-btn", "credential_feedback", "保存失败：${err.message}"),
+        ("static/admin.js", "onclick:confirm-admin-credentials-btn", "credential_feedback", "正在安全保存管理员凭据…"),
+        ("static/admin.js", "onclick:confirm-admin-credentials-btn", "credential_feedback", "管理员凭据已安全保存。请刷新页面并使用新账号密码重新登录。"),
+        ("static/admin.js", "onclick:confirm-admin-credentials-btn", "toast", "保存失败：${err.message}"),
+        ("static/admin.js", "onclick:confirm-admin-credentials-btn", "toast", "管理员凭据已安全保存，请使用新账号密码重新登录"),
+        ("static/admin.js", "onclick:confirm-admin-credentials-btn", "toast", "请输入新用户名和新密码"),
+        ("static/admin.js", "onclick:save-admin-credentials-btn", "credential_feedback", "再次确认后将立即保存哈希凭据，当前登录会失效，需要使用新账号密码重新登录。"),
+        ("static/admin.js", "onclick:save-admin-credentials-btn", "toast", "请输入新用户名和新密码"),
+        ("templates/admin.html", "button#cancel-admin-credentials-btn", "html_text", "取消"),
+        ("templates/admin.html", "button#confirm-admin-credentials-btn", "html_text", "确认保存并重新登录"),
+        ("templates/admin.html", "button#save-admin-credentials-btn", "html_text", "保存管理员凭据"),
+        ("templates/admin.html", "h3#-", "html_text", "管理员账号与密码"),
+        ("templates/admin.html", "input#admin-password-input", "placeholder", "至少 10 位且包含两类字符"),
+        ("templates/admin.html", "input#admin-username-input", "placeholder", "管理员或 admin"),
+        ("templates/admin.html", "p#-", "html_text", "登录。公网暴露前请在此修改；修改后磁盘只保存 PBKDF2 哈希，不保存明文密码。"),
+        ("templates/admin.html", "p#-", "html_text", "首次可使用默认账号"),
+        ("templates/admin.html", "span#-", "html_text", "新密码"),
+        ("templates/admin.html", "span#-", "html_text", "新用户名"),
+    }
+    assert len(b3c_migrated) == 19
+    assert not b3c_migrated & actual
+    api_key = [item for item in registered if "reveal-key" in item["owner"] or "rotate-key" in item["owner"]]
+    credentials = [item for item in registered if item not in api_key]
+    assert len(api_key) == 0
+    assert len(credentials) == 0
     expected = {tuple(item.values()) for item in fingerprints}
     assert actual == expected
 

@@ -113,4 +113,4 @@ def test_admin_ui_exposes_first_entry_default_with_security_warning_and_inline_s
     credential_handler = js.split("$('save-admin-credentials-btn').onclick", 1)[1].split("$('download-diagnostics-btn')", 1)[0]
     assert "confirm(" not in credential_handler
     assert "toggleCredentialConfirmation" in credential_handler
-    assert "保存失败" in credential_handler
+    assert "credentials.save_failed" in credential_handler

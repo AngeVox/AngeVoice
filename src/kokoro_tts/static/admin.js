@@ -14,6 +14,13 @@ import {
 
 let lastData = null;
 let lastConfigPayload = null;
+let lastUpdateData = null;
+let updateCheckInProgress = false;
+let apiKeyDisplayMode = 'summary';
+let credentialFeedbackState = null;
+const credentialPendingState = 'pending';
+const credentialSuccessState = 'success';
+const credentialErrorState = 'error';
 let activeGroup = 'kokoro';
 let activeAdminTab = 'overview';
 const adminSubtabs = {
@@ -174,22 +181,30 @@ function renderHealth(models) {
 }
 
 function renderUpdate(data = {}) {
+  lastUpdateData = data;
   const card = $('update-card');
   const message = $('update-message');
   const link = $('update-release-link');
+  const btn = $('check-update-btn');
   if (!card || !message || !link) return;
   const current = data.current_version || '-';
+  if (btn) {
+    btn.disabled = updateCheckInProgress;
+    btn.textContent = updateCheckInProgress ? t('update.checking') : t('action.check_update');
+  }
   card.classList.toggle('available', Boolean(data.update_available));
-  if (!data.enabled) {
-    message.textContent = `当前版本 v${current} · 更新检查已关闭`;
+  if (updateCheckInProgress) {
+    message.textContent = t('update.checking');
+  } else if (!data.enabled) {
+    message.textContent = t('update.disabled', { current });
   } else if (data.update_available) {
-    message.textContent = `发现新版本 v${data.latest_version}（当前 v${current}），请查看发布说明后手动升级。`;
+    message.textContent = t('update.available', { latest: data.latest_version, current });
   } else if (data.checked && data.error) {
-    message.textContent = `当前版本 v${current} · ${data.error}`;
+    message.textContent = t('update.error', { current, error: data.error });
   } else if (data.checked) {
-    message.textContent = `当前版本 v${current} · 已是最新版本`;
+    message.textContent = t('update.up_to_date', { current });
   } else {
-    message.textContent = `当前版本 v${current} · 尚未检查更新`;
+    message.textContent = t('update.not_checked', { current });
   }
   if (data.release_url) {
     link.href = data.release_url;
@@ -201,17 +216,18 @@ function renderUpdate(data = {}) {
 }
 
 async function checkUpdate({ force = false, silent = false } = {}) {
-  const btn = $('check-update-btn');
-  if (btn) { btn.disabled = true; btn.textContent = '检查中…'; }
+  updateCheckInProgress = true;
+  renderUpdate(lastUpdateData || {});
   try {
     const data = await api(`/admin/api/update/check?force=${force ? 'true' : 'false'}`, { method: 'POST' });
     renderUpdate(data);
-    if (!silent && data.update_available) toast(`发现新版本 v${data.latest_version}`);
+    if (!silent && data.update_available) toast(t('toast.update_available', { version: data.latest_version }));
     if (!silent && data.error) toast(data.error, true);
   } catch (err) {
-    if (!silent) toast(`检查更新失败：${err.message}`, true);
+    if (!silent) toast(t('toast.update_check_failed', { message: err.message }), true);
   } finally {
-    if (btn) { btn.disabled = false; btn.textContent = '检查更新'; }
+    updateCheckInProgress = false;
+    renderUpdate(lastUpdateData || {});
   }
 }
 
@@ -343,10 +359,47 @@ function renderProfiles(payload) {
   $('deploy-profile-grid').innerHTML = presentation.deployHtml;
 }
 
+function renderApiKeySummary(presentation) {
+  $('api-key-status').textContent = presentation.apiKeyStatus;
+  apiKeyDisplayMode = 'summary';
+}
+
+function renderApiKeyDisabledStatus() {
+  $('api-key-status').textContent = t('api_key.disabled');
+  apiKeyDisplayMode = 'disabled';
+}
+
+function renderApiKeySecretStatus(mode, apiKey) {
+  const holder = $('api-key-status');
+  const prefix = document.createElement('span');
+  const prefixText = mode === 'current' ? t('api_key.current_prefix') : t('api_key.new_prefix');
+  prefix.dataset.apiKeyPrefix = '';
+  prefix.textContent = prefixText;
+  const secret = document.createElement('code');
+  secret.dataset.apiKeySecret = '';
+  secret.textContent = apiKey;
+  holder.replaceChildren(prefix, secret);
+  apiKeyDisplayMode = mode;
+}
+
+function renderApiKeyStatusForLocale(data) {
+  if (apiKeyDisplayMode === 'summary') {
+    renderApiKeySummary(securityPresentation(data, currentAdminPresentationCopy()));
+  } else if (apiKeyDisplayMode === 'disabled') {
+    renderApiKeyDisabledStatus();
+  } else {
+    const prefix = $('api-key-status').querySelector('[data-api-key-prefix]');
+    if (prefix) {
+      const prefixText = apiKeyDisplayMode === 'current' ? t('api_key.current_prefix') : t('api_key.new_prefix');
+      prefix.textContent = prefixText;
+    }
+  }
+}
+
 function renderSecurity(data, { preserveApiKeyStatus = false } = {}) {
   const presentation = securityPresentation(data, currentAdminPresentationCopy());
   if (!preserveApiKeyStatus) {
-    $('api-key-status').textContent = presentation.apiKeyStatus;
+    renderApiKeySummary(presentation);
   }
   $('security-summary').innerHTML = presentation.summaryHtml;
   const warning = $('default-admin-warning');
@@ -537,10 +590,13 @@ document.addEventListener('angevoice:locale-changed', () => {
     renderMetrics(lastData);
     renderModels(lastData);
     renderSecurity(lastData, { preserveApiKeyStatus: true });
+    renderApiKeyStatusForLocale(lastData);
     renderQuality(lastData);
     renderRequests(lastData);
   }
   if (lastConfigPayload) renderConfigFormsForLocale(lastConfigPayload);
+  if (lastUpdateData) renderUpdate(lastUpdateData);
+  renderCredentialFeedback();
 });
 
 
@@ -572,19 +628,43 @@ $('force-unload-btn').onclick = async () => {
 $('save-config-btn').onclick = () => saveConfig().catch(err => toast(err.message, true));
 $('reveal-key-btn').onclick = async () => {
   const data = await api('/admin/api/security?reveal=true');
-  $('api-key-status').textContent = data.api_key ? `当前 API Key：${data.api_key}` : '当前未启用 API Key';
+  if (data.api_key) {
+    renderApiKeySecretStatus('current', data.api_key);
+  } else {
+    renderApiKeyDisabledStatus();
+  }
 };
 $('rotate-key-btn').onclick = async () => {
-  if (!confirm('轮换 API Key？旧客户端 token 会立即失效。')) return;
+  if (!confirm(t('confirm.rotate_api_key'))) return;
   const data = await api('/admin/api/security/key', {method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({rotate: true})});
-  $('api-key-status').textContent = `新 API Key：${data.api_key}`;
-  toast('API Key 已轮换');
+  renderApiKeySecretStatus('new', data.api_key);
+  toast(t('toast.api_key_rotated'));
 };
 
-function setCredentialFeedback(message, state = '') {
+function renderCredentialFeedback() {
   const el = $('admin-credentials-feedback');
-  el.textContent = message || '';
-  el.className = `credential-feedback ${state}`.trim();
+  const feedback = credentialFeedbackState;
+  if (!feedback) {
+    el.textContent = '';
+    el.classList.remove(credentialPendingState, credentialSuccessState, credentialErrorState);
+    return;
+  }
+  const params = feedback.params || {};
+  const feedbackRenderers = {
+    'credentials.confirm_save': () => t('credentials.confirm_save'),
+    'credentials.cancelled': () => t('credentials.cancelled'),
+    'credentials.saving': () => t('credentials.saving'),
+    'credentials.saved': () => t('credentials.saved'),
+    'credentials.save_failed': () => t('credentials.save_failed', params),
+  };
+  el.textContent = feedbackRenderers[feedback.key] ? feedbackRenderers[feedback.key]() : '';
+  el.classList.remove(credentialPendingState, credentialSuccessState, credentialErrorState);
+  if (feedback.state) el.classList.add(feedback.state);
+}
+
+function setCredentialFeedback(key = null, params = {}, state = '') {
+  credentialFeedbackState = key ? { key, params: { ...params }, state } : null;
+  renderCredentialFeedback();
 }
 
 function toggleCredentialConfirmation(show) {
@@ -596,34 +676,35 @@ function toggleCredentialConfirmation(show) {
 $('save-admin-credentials-btn').onclick = () => {
   const username = $('admin-username-input').value.trim();
   const password = $('admin-password-input').value;
-  if (!username || !password) { toast('请输入新用户名和新密码', true); return; }
+  if (!username || !password) { toast(t('credentials.enter_username_password'), true); return; }
   toggleCredentialConfirmation(true);
-  setCredentialFeedback('再次确认后将立即保存哈希凭据，当前登录会失效，需要使用新账号密码重新登录。', 'pending');
+  setCredentialFeedback('credentials.confirm_save', {}, credentialPendingState);
 };
 $('cancel-admin-credentials-btn').onclick = () => {
   toggleCredentialConfirmation(false);
-  setCredentialFeedback('已取消保存，未修改管理员凭据。');
+  setCredentialFeedback('credentials.cancelled');
 };
 $('confirm-admin-credentials-btn').onclick = async () => {
   const username = $('admin-username-input').value.trim();
   const password = $('admin-password-input').value;
   const confirmBtn = $('confirm-admin-credentials-btn');
   const cancelBtn = $('cancel-admin-credentials-btn');
-  if (!username || !password) { toggleCredentialConfirmation(false); toast('请输入新用户名和新密码', true); return; }
+  if (!username || !password) { toggleCredentialConfirmation(false); toast(t('credentials.enter_username_password'), true); return; }
   confirmBtn.disabled = true;
   cancelBtn.disabled = true;
-  setCredentialFeedback('正在安全保存管理员凭据…', 'pending');
+  setCredentialFeedback('credentials.saving', {}, credentialPendingState);
   try {
     await api('/admin/api/security/credentials', {
       method: 'PUT', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({username, password})
     });
     $('admin-password-input').value = '';
     toggleCredentialConfirmation(false);
-    setCredentialFeedback('管理员凭据已安全保存。请刷新页面并使用新账号密码重新登录。', 'success');
-    toast('管理员凭据已安全保存，请使用新账号密码重新登录');
+    setCredentialFeedback('credentials.saved', {}, credentialSuccessState);
+    toast(t('toast.credentials_saved'));
   } catch (err) {
-    setCredentialFeedback(`保存失败：${err.message}`, 'error');
-    toast(`保存失败：${err.message}`, true);
+    const params = { message: err.message };
+    setCredentialFeedback('credentials.save_failed', params, credentialErrorState);
+    toast(t('credentials.save_failed', params), true);
   } finally {
     confirmBtn.disabled = false;
     cancelBtn.disabled = false;
