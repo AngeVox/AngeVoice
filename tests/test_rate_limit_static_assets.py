@@ -63,4 +63,9 @@ def test_api_rate_limit_response_shape_and_retry_after_are_unchanged() -> None:
     assert limited.json()["error"] == "rate_limit_exceeded"
     assert limited.json()["message"] == "Too many requests. Please slow down."
     assert isinstance(limited.json()["retry_after"], float)
-    assert limited.headers["Retry-After"] == str(max(1, int(limited.json()["retry_after"]) + 1))
+    retry_after = limited.json()["retry_after"]
+    retry_after_header = int(limited.headers["Retry-After"])
+    # The JSON value is rounded to two decimals, while Retry-After is derived
+    # from the unrounded internal value; do not reconstruct the header here.
+    assert retry_after_header >= 1
+    assert retry_after_header - 1 <= retry_after <= retry_after_header
