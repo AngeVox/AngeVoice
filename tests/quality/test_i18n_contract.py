@@ -26,7 +26,7 @@ TRANSLATED_PROGRESS_CALL = re.compile(r"(?<![\w$.])setTranslatedProgress\s*\(")
 COPY_DESCRIPTOR_CALL = re.compile(r"(?<![\w$.])descriptor\s*\(")
 GROUP_LABEL_KEY = re.compile(r"\blabelKey\s*:\s*['\"]([^'\"]+)['\"]")
 pytestmark = pytest.mark.quality
-CATALOG_DOMAINS = ("common", "studio", "admin")
+CATALOG_DOMAINS = ("common", "studio", "admin", "docs")
 STUDIO_COPY_DEBT = Path(__file__).with_name("studio_copy_debt.json")
 ADMIN_COPY_DEBT = Path(__file__).with_name("admin_copy_debt.json")
 JS_STRING = re.compile(r"(?P<quote>['\"`])(?P<body>(?:\\.|(?!\1).)*?)(?P=quote)")
@@ -896,7 +896,7 @@ def scan_admin_catalog_references(root: Path = PACKAGE_ROOT) -> I18nScanReport:
 
 
 def test_zh_and_en_catalogs_have_identical_keys_and_placeholders() -> None:
-    expected_counts = {"common": 15, "studio": 187, "admin": 185}
+    expected_counts = {"common": 15, "studio": 189, "admin": 185}
     for domain, expected in expected_counts.items():
         zh_domain = _domain_catalog(domain, "zh-cn")
         en_domain = _domain_catalog(domain, "en")
@@ -907,9 +907,15 @@ def test_zh_and_en_catalogs_have_identical_keys_and_placeholders() -> None:
             assert not re.search(r"</?[A-Za-z][^>]*>", zh_domain[key]), key
             assert not re.search(r"</?[A-Za-z][^>]*>", en_domain[key]), key
 
+    docs_zh = _domain_catalog("docs", "zh-cn")
+    docs_en = _domain_catalog("docs", "en")
+    assert set(docs_zh) == set(docs_en)
+    for key in docs_zh:
+        assert PLACEHOLDER.findall(docs_zh[key]) == PLACEHOLDER.findall(docs_en[key]), key
+
     zh = _catalog("zh-cn")
     en = _catalog("en")
-    assert len(zh) == len(en) == sum(expected_counts.values()) == 387
+    assert len(zh) == len(en) == sum(expected_counts.values()) + len(docs_zh)
     assert set(zh) == set(en)
     for key in zh:
         assert PLACEHOLDER.findall(zh[key]) == PLACEHOLDER.findall(en[key]), key
@@ -964,7 +970,7 @@ def test_pages_load_the_explicit_runtime_before_consumers_without_catalog_tags()
 
     runtime_source = (PACKAGE_ROOT / "static" / "common" / "i18n.js").read_text(encoding="utf-8")
     imports = re.findall(
-        r"""^import \{ messages as (\w+Messages) \} from ['"]\.\./locale/(common|studio|admin)/messages\.(zh-cn|en)\.js['"];""",
+        r"""^import \{ messages as (\w+Messages) \} from ['"]\.\./locale/(common|studio|admin|docs)/messages\.(zh-cn|en)\.js['"];""",
         runtime_source,
         re.MULTILINE,
     )
@@ -973,9 +979,11 @@ def test_pages_load_the_explicit_runtime_before_consumers_without_catalog_tags()
         ("commonEnMessages", "common", "en"),
         ("studioZhCNMessages", "studio", "zh-cn"),
         ("studioEnMessages", "studio", "en"),
-        ("adminZhCNMessages", "admin", "zh-cn"),
-        ("adminEnMessages", "admin", "en"),
-    ]
+            ("adminZhCNMessages", "admin", "zh-cn"),
+            ("adminEnMessages", "admin", "en"),
+            ("docsZhCNMessages", "docs", "zh-cn"),
+            ("docsEnMessages", "docs", "en"),
+        ]
     assert "?h=" not in runtime_source
     assert "data-i18n-html" not in runtime_source
     assert ".innerHTML = translate(" not in runtime_source

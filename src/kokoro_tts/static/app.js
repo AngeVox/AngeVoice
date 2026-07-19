@@ -12,6 +12,7 @@ import {
 } from './studio/voice-presentation.js';
 import { createReferenceRecorderController } from './studio/recording.js';
 import {
+  createReferenceAudioFileChooserController,
   createReferenceAudioPreviewController,
   referenceAudioProfileKey,
   referenceAudioUploadKey
@@ -86,6 +87,8 @@ const els = {
   clonePanel: document.getElementById('clone-panel'),
   cloneStatus: document.getElementById('clone-status'),
   promptAudio: document.getElementById('prompt-audio'),
+  promptAudioPicker: document.getElementById('prompt-audio-picker'),
+  promptAudioFileName: document.getElementById('prompt-audio-file-name'),
   clearPromptAudio: document.getElementById('clear-prompt-audio'),
   recordReference: document.getElementById('record-reference-btn'),
   stopRecordReference: document.getElementById('stop-record-reference-btn'),
@@ -138,6 +141,7 @@ const groups = [
 ];
 let referenceRecorderController = null;
 let referenceAudioPreviewController = null;
+let referenceAudioFileChooserController = null;
 let voiceProfileController = null;
 let httpSynthesisController = null;
 let audioOutputController = null;
@@ -288,6 +292,7 @@ function localizeTransientCopy() {
   if (state.promptAudioStatusTranslation && els.cloneStatus) {
     els.cloneStatus.textContent = translateDescriptor(state.promptAudioStatusTranslation);
   }
+  referenceAudioFileChooserController?.render(state.promptAudioFile);
 }
 
 const USER_ERROR_MESSAGES = {
@@ -627,6 +632,14 @@ function initializeReferenceAudioPreview() {
   });
 }
 
+function initializeReferenceAudioFileChooser() {
+  referenceAudioFileChooserController = createReferenceAudioFileChooserController({
+    element: els.promptAudioFileName,
+    translate: t,
+  });
+  referenceAudioFileChooserController.render(state.promptAudioFile);
+}
+
 function initializeAudioOutput() {
   audioOutputController = createAudioOutputController({
     element: els.audio,
@@ -759,6 +772,7 @@ function setPromptAudioFile(file, { loadPreview = true } = {}) {
   if (file && modelSupportsProfiles()) setZipVoiceExpanded(true);
   const changed = state.promptAudioFile !== (file || null);
   state.promptAudioFile = file || null;
+  referenceAudioFileChooserController?.render(state.promptAudioFile);
   if (modelSupportsProfiles()) {
     voiceProfileController?.renderCopy();
     renderVoiceSelect();
@@ -1491,6 +1505,11 @@ function bindEvents() {
     }
     setPromptAudioFile(file);
   });
+  els.promptAudioPicker?.addEventListener('keydown', event => {
+    if (event.key !== 'Enter' && event.key !== ' ') return;
+    event.preventDefault();
+    els.promptAudio?.click();
+  });
   els.recordReference?.addEventListener('click', () => referenceRecorderController?.start());
   els.stopRecordReference?.addEventListener('click', () => referenceRecorderController?.stop());
   els.clearPromptAudio?.addEventListener('click', async () => {
@@ -1587,6 +1606,7 @@ function init() {
   initializeAudioOutput();
   initializeStreamSynthesis();
   initializeReferenceAudioPreview();
+  initializeReferenceAudioFileChooser();
   initializeVoiceProfileController();
   initializeReferenceRecorder();
   applyStreamToggleState();

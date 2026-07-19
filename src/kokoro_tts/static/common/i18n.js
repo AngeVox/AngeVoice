@@ -4,6 +4,8 @@ import { messages as studioZhCNMessages } from '../locale/studio/messages.zh-cn.
 import { messages as studioEnMessages } from '../locale/studio/messages.en.js';
 import { messages as adminZhCNMessages } from '../locale/admin/messages.zh-cn.js';
 import { messages as adminEnMessages } from '../locale/admin/messages.en.js';
+import { messages as docsZhCNMessages } from '../locale/docs/messages.zh-cn.js';
+import { messages as docsEnMessages } from '../locale/docs/messages.en.js';
 
 function mergeDomains(locale, domains) {
   const merged = {};
@@ -20,8 +22,8 @@ function mergeDomains(locale, domains) {
 
 const storageKey = 'angevoice.locale.v1';
 const catalogs = Object.freeze({
-  'zh-CN': mergeDomains('zh-CN', [commonZhCNMessages, studioZhCNMessages, adminZhCNMessages]),
-  en: mergeDomains('en', [commonEnMessages, studioEnMessages, adminEnMessages])
+  'zh-CN': mergeDomains('zh-CN', [commonZhCNMessages, studioZhCNMessages, adminZhCNMessages, docsZhCNMessages]),
+  en: mergeDomains('en', [commonEnMessages, studioEnMessages, adminEnMessages, docsEnMessages])
 });
 const aliases = {
   'zh': 'zh-CN',
@@ -192,10 +194,12 @@ export function initializeI18n() {
   completeInitialization();
 }
 
-window.AngeVoiceI18n = {
-  t: translate,
-  apply: applyLocale,
-  locale: getCurrentLocale
-};
+if (typeof window !== 'undefined') {
+  window.AngeVoiceI18n = {
+    t: translate,
+    apply: applyLocale,
+    locale: getCurrentLocale
+  };
+}
 
-initializeI18n();
+if (typeof document !== 'undefined') initializeI18n();

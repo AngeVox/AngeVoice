@@ -137,6 +137,8 @@ export const messages = Object.freeze({
     'studio.record.microphone_unavailable': 'Microphone unavailable; upload a WAV file instead',
     'studio.reference_audio.label': 'Reference audio',
     'studio.reference_audio.clone': 'Reference audio cloning',
+    'studio.reference_audio.choose_file': 'Choose reference audio',
+    'studio.reference_audio.no_file_selected': 'No file selected',
     'studio.reference_audio.clear': 'Clear reference audio',
     'studio.reference_audio.wav_only_title': 'Models with saved voices require uploaded or recorded WAV reference audio',
     'studio.reference_audio.profile_recording': '{model} reference recording',

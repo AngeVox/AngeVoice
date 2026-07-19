@@ -21,6 +21,15 @@ export function referenceAudioProfileKey({ engineId, voiceId, revision = '' } = 
   return `profile:${sourceKeyPart(normalizedEngineId(engineId))}:${sourceKeyPart(voiceId)}:${sourceKeyPart(revision)}`;
 }
 
+export function createReferenceAudioFileChooserController({ element = null, translate = key => key } = {}) {
+  function render(file = null) {
+    if (!element) return;
+    element.textContent = file?.name || translate('studio.reference_audio.no_file_selected');
+  }
+
+  return Object.freeze({ render });
+}
+
 export async function responseAudioWavBlob(response, BlobType = Blob) {
   const blob = await response.blob();
   if (blob.type === 'audio/wav') return blob;

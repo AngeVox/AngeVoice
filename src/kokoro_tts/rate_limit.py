@@ -102,6 +102,8 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
         self._trust_proxy_headers = bool(trust_proxy_headers)
 
     async def dispatch(self, request: Request, call_next):  # noqa: ANN201
+        if _is_static_asset_request(request):
+            return await call_next(request)
         client_key = _extract_client_key(request, trust_proxy_headers=self._trust_proxy_headers)
         bucket = self._registry.get_bucket(client_key)
         if bucket.acquire():
@@ -118,6 +120,13 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
             },
             headers={"Retry-After": str(max(1, int(retry) + 1))},
         )
+
+
+def _is_static_asset_request(request: Request) -> bool:
+    """Return whether a safe static asset read may bypass API rate limiting."""
+    return request.method in {"GET", "HEAD"} and (
+        request.url.path == "/static" or request.url.path.startswith("/static/")
+    )
 
 
 class _NonBlockingConcurrencyGate:

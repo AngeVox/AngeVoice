@@ -4,6 +4,7 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title data-i18n="page.title">AngeVoice Admin</title>
+  <link rel="icon" href="{{ asset_url('favicon.svg') }}" type="image/svg+xml" />
   <script>
     const savedTheme = localStorage.getItem('angevoice.theme.v1');
     document.documentElement.dataset.theme = savedTheme || (matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light');

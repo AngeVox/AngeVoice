@@ -1,0 +1,12 @@
+{
+  "anchors": ["quick", "models", "openai", "moss-clone", "moss-http", "moss-ws", "zipvoice-http", "server-default", "errors"],
+  "copy_recipes": ["quick-health", "switch-moss", "speech-kokoro", "speech-moss", "speech-zipvoice", "moss-http-curl", "moss-http-python", "moss-ws-json", "moss-ws-browser", "moss-ws-python", "zipvoice-reference", "zipvoice-telegram", "server-compose", "server-default-curl"],
+  "technical_literals": {
+    "endpoints": ["/health", "/v1/models", "/v1/audio/voices", "/v1/audio/speech", "/api/tts", "/ws/v1/tts"],
+    "models": ["kokoro", "moss", "zipvoice", "moss-nano-cpu", "moss-nano-cuda"],
+    "environment_variables": ["KOKORO_API_KEY", "MOSS_PROMPT_AUDIO_PATH", "MOSS_PROMPT_AUDIO_MAX_SECONDS", "MOSS_PROMPT_CACHE_MAX_ITEMS", "ANGEVOICE_ENABLED_MODELS", "MOSS_CUDA_ENABLED"],
+    "response_formats": ["wav", "pcm", "mp3", "ogg_opus", "telegram_voice", "m4a", "pcm_s16le"],
+    "error_codes": ["FFMPEG_DISABLED", "FFMPEG_UNAVAILABLE", "FFMPEG_CONVERSION_FAILED"],
+    "links": ["/", "/docs", "/redoc", "/health"]
+  }
+}

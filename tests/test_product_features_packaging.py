@@ -146,12 +146,43 @@ def test_zipvoice_allows_longer_reference_with_warning_but_rejects_over_product_
 def test_api_docs_expose_zipvoice_http_examples_in_visible_navigation():
     root = Path(__file__).resolve().parents[1] / "src/kokoro_tts"
     html = (root / "templates/api_docs.html").read_text(encoding="utf-8")
-    assert '<a href="#zipvoice-http">ZipVoice HTTP 克隆</a>' in html
-    assert '<article class="doc-card" id="zipvoice-http">' in html
-    assert 'model=zipvoice' in html
-    assert 'prompt_audio=@reference.wav' in html
-    assert 'response_format=telegram_voice' in html
-    assert 'WebSocket 流式暂不输出 OGG/MP3/M4A' in html
+    content = (root / "static/docs/docs-content.js").read_text(encoding="utf-8")
+    assert 'docs.nav.zipvoice' in content
+    assert "id: 'zipvoice-http'" in content
+    assert 'model=zipvoice' in content
+    assert 'prompt_audio=@reference.wav' in content
+    assert 'response_format=telegram_voice' in content
+    assert 'docs.zip.warn' in content
+    assert "asset_url('docs/docs.js')" in html
+
+
+def test_browser_favicon_is_packaged_once_and_used_by_all_pages():
+    root = Path(__file__).resolve().parents[1] / "src/kokoro_tts"
+    favicon = root / "static/favicon.svg"
+    assert favicon.is_file()
+    assert "<svg" in favicon.read_text(encoding="utf-8")
+    for template in ("index.html", "admin.html", "api_docs.html"):
+        source = (root / "templates" / template).read_text(encoding="utf-8")
+        assert "{{ asset_url('favicon.svg') }}" in source
+
+
+def test_reference_audio_file_chooser_keeps_the_native_input_as_the_file_owner():
+    root = Path(__file__).resolve().parents[1] / "src/kokoro_tts"
+    html = (root / "templates/index.html").read_text(encoding="utf-8")
+    app = (root / "static/app.js").read_text(encoding="utf-8")
+    preview = (root / "static/studio/reference-audio-preview.js").read_text(encoding="utf-8")
+    assert 'id="prompt-audio"' in html
+    assert 'class="reference-audio-native-input"' in html
+    assert 'for="prompt-audio"' in html
+    assert 'id="prompt-audio-picker"' in html
+    assert 'id="prompt-audio-file-name"' in html
+    assert 'aria-describedby="prompt-audio-file-name"' in html
+    assert 'aria-live="polite"' in html
+    assert 'data-i18n="studio.reference_audio.choose_file"' in html
+    assert 'data-i18n="studio.reference_audio.no_file_selected"' in html
+    assert "promptAudioPicker?.addEventListener('keydown'" in app
+    assert "referenceAudioFileChooserController?.render(state.promptAudioFile)" in app
+    assert "input.files" not in preview
 
 
 def test_studio_recording_and_profile_delete_are_capability_driven():

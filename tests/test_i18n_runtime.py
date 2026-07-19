@@ -10,7 +10,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 RUNTIME = ROOT / "src" / "kokoro_tts" / "static" / "common" / "i18n.js"
 LOCALE_ROOT = ROOT / "src" / "kokoro_tts" / "static" / "locale"
-CATALOG_DOMAINS = ("common", "studio", "admin")
+CATALOG_DOMAINS = ("common", "studio", "admin", "docs")
 APP = ROOT / "src" / "kokoro_tts" / "static" / "app.js"
 ADMIN = ROOT / "src" / "kokoro_tts" / "static" / "admin.js"
 SECURITY_NOTICE = ROOT / "src" / "kokoro_tts" / "static" / "security_notice.js"
@@ -350,15 +350,14 @@ def test_catalogs_are_frozen_side_effect_free_native_esm_modules() -> None:
         capture_output=True,
         text=True,
     )
-    assert json.loads(completed.stdout) == {
-        "exportsOnlyMessages": True,
-        "allFrozen": True,
-            "zhDomainCounts": [15, 187, 185],
-            "enDomainCounts": [15, 187, 185],
-            "zhCount": 387,
-            "enCount": 387,
-        "sameKeys": True,
-    }
+    payload = json.loads(completed.stdout)
+    assert payload["exportsOnlyMessages"] is True
+    assert payload["allFrozen"] is True
+    assert payload["zhDomainCounts"][:3] == [15, 189, 185]
+    assert payload["enDomainCounts"][:3] == [15, 189, 185]
+    assert payload["zhDomainCounts"][3] == payload["enDomainCounts"][3]
+    assert payload["zhCount"] == payload["enCount"] == sum(payload["zhDomainCounts"])
+    assert payload["sameKeys"] is True
 
 
 def test_studio_error_catalog_is_exact_bilingual_and_placeholder_compatible() -> None:
@@ -453,10 +452,26 @@ def test_studio_error_catalog_is_exact_bilingual_and_placeholder_compatible() ->
         assert result["zh"][key].count("\n") == result["en"][key].count("\n")
 
 
+def test_reference_audio_file_chooser_catalog_copy_is_bilingual_and_placeholder_free() -> None:
+    expected = {
+        "studio.reference_audio.choose_file": ("选择参考音频", "Choose reference audio"),
+        "studio.reference_audio.no_file_selected": ("未选择文件", "No file selected"),
+    }
+    catalogs = {
+        locale: (LOCALE_ROOT / "studio" / f"messages.{locale}.js").read_text(encoding="utf-8")
+        for locale in ("zh-cn", "en")
+    }
+    for key, (zh, en) in expected.items():
+        assert f"'{key}': '{zh}'" in catalogs["zh-cn"]
+        assert f"'{key}': '{en}'" in catalogs["en"]
+        assert not re.findall(r"\{([a-zA-Z_][a-zA-Z0-9_]*)\}", zh)
+        assert not re.findall(r"\{([a-zA-Z_][a-zA-Z0-9_]*)\}", en)
+
+
 def test_consumers_use_relative_imports_and_templates_use_the_asset_manifest() -> None:
     runtime_source = RUNTIME.read_text(encoding="utf-8")
     catalog_imports = re.findall(
-        r"""^import \{ messages as (\w+Messages) \} from ['"]\.\./locale/(common|studio|admin)/(messages\.(?:zh-cn|en)\.js)['"];""",
+        r"""^import \{ messages as (\w+Messages) \} from ['"]\.\./locale/(common|studio|admin|docs)/(messages\.(?:zh-cn|en)\.js)['"];""",
         runtime_source,
         re.MULTILINE,
     )
@@ -467,6 +482,8 @@ def test_consumers_use_relative_imports_and_templates_use_the_asset_manifest() -
         ("studioEnMessages", "studio", "messages.en.js"),
         ("adminZhCNMessages", "admin", "messages.zh-cn.js"),
         ("adminEnMessages", "admin", "messages.en.js"),
+        ("docsZhCNMessages", "docs", "messages.zh-cn.js"),
+        ("docsEnMessages", "docs", "messages.en.js"),
     ]
     consumers = (APP, ADMIN, SECURITY_NOTICE)
     for path in consumers:

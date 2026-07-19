@@ -137,6 +137,8 @@ export const messages = Object.freeze({
     'studio.record.microphone_unavailable': '麦克风不可用，可改为上传 WAV 文件',
     'studio.reference_audio.label': '参考音频',
     'studio.reference_audio.clone': '参考音频克隆',
+    'studio.reference_audio.choose_file': '选择参考音频',
+    'studio.reference_audio.no_file_selected': '未选择文件',
     'studio.reference_audio.clear': '清除参考音频',
     'studio.reference_audio.wav_only_title': '可保存音色的模型请上传或录制 WAV 参考音频',
     'studio.reference_audio.profile_recording': '{model} 参考录音',

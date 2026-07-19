@@ -506,6 +506,7 @@ def test_reference_audio_preview_module_is_pure_and_app_only_composes_it() -> No
         "REFERENCE_AUDIO_RECOMMENDED_SECONDS",
         "referenceAudioUploadKey",
         "referenceAudioProfileKey",
+        "createReferenceAudioFileChooserController",
         "responseAudioWavBlob",
         "createReferenceAudioPreviewController",
     ]
@@ -519,3 +520,43 @@ def test_reference_audio_preview_module_is_pure_and_app_only_composes_it() -> No
     assert "referenceAudioUploadKey({ engineId: profileEngineId(), file })" in app
     assert "referenceAudioProfileKey({" in app
     assert "engineId: profileEngineId()," in app
+
+
+def test_reference_audio_file_chooser_projects_localized_empty_copy_without_owning_files() -> None:
+    result = _node(
+        f"""
+        import {{ createReferenceAudioFileChooserController }} from {MODULE.as_uri()!r};
+        const element = {{ textContent: '' }};
+        let locale = 'zh-CN';
+        const translate = key => ({{
+          'zh-CN': {{ 'studio.reference_audio.no_file_selected': '未选择文件' }},
+          en: {{ 'studio.reference_audio.no_file_selected': 'No file selected' }},
+        }})[locale][key];
+        const controller = createReferenceAudioFileChooserController({{ element, translate }});
+        controller.render();
+        const zhEmpty = element.textContent;
+        const file = {{ name: 'reference.wav' }};
+        controller.render(file);
+        const zhFile = element.textContent;
+        locale = 'en';
+        controller.render(file);
+        const enFile = element.textContent;
+        controller.render(null);
+        const enEmpty = element.textContent;
+        locale = 'zh-CN';
+        controller.render(null);
+        console.log(JSON.stringify({{ zhEmpty, zhFile, enFile, enEmpty, zhAfterClear: element.textContent, sameFile: file.name === 'reference.wav' }}));
+        """
+    )
+    assert result == {
+        "zhEmpty": "未选择文件",
+        "zhFile": "reference.wav",
+        "enFile": "reference.wav",
+        "enEmpty": "No file selected",
+        "zhAfterClear": "未选择文件",
+        "sameFile": True,
+    }
+    module = MODULE.read_text(encoding="utf-8")
+    assert "createReferenceAudioFileChooserController" in module
+    assert "input.files" not in module
+    assert "initializeReferenceAudioFileChooser" in APP.read_text(encoding="utf-8")

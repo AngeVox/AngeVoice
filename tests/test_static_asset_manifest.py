@@ -77,10 +77,23 @@ def test_templates_use_one_manifest_for_css_entries_and_import_maps() -> None:
     for name in ("index.html", "admin.html", "api_docs.html"):
         source = (PACKAGE_ROOT / "templates" / name).read_text(encoding="utf-8")
         assert source.count("asset_import_map_json()") == 1
-        assert source.index('type="importmap"') < source.index("asset_url(")
+        assert source.index('type="importmap"') < source.index("asset_url('app.css')")
         assert "?h=" not in source
     for path in STATIC_ROOT.rglob("*.js"):
         assert "?h=" not in path.read_text(encoding="utf-8"), path
+
+
+def test_templates_use_one_manifest_addressed_svg_favicon() -> None:
+    manifest = StaticAssetManifest(STATIC_ROOT)
+    favicon = "favicon.svg"
+    assert (STATIC_ROOT / favicon).is_file()
+    assert manifest.url(favicon).startswith("/static/favicon.svg?h=")
+    for name in ("index.html", "admin.html", "api_docs.html"):
+        source = (PACKAGE_ROOT / "templates" / name).read_text(encoding="utf-8")
+        assert "href=\"data:,\"" not in source
+        assert "href=\"/static/favicon.svg" not in source
+        assert "{{ asset_url('favicon.svg') }}" in source
+        assert 'type="image/svg+xml"' in source
 
 
 def test_package_data_recursively_includes_future_static_modules() -> None:

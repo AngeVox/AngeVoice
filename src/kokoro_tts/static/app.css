@@ -734,9 +734,43 @@ input:focus {
   display: none;
 }
 
-.file-field input[type="file"] {
-  padding: 9px 12px;
+.reference-audio-native-input {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  padding: 0;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+.reference-audio-file-control {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 42px;
+}
+
+.reference-audio-picker {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
   cursor: pointer;
+}
+
+.reference-audio-picker:focus-visible {
+  outline: 3px solid color-mix(in srgb, var(--accent-2) 65%, transparent);
+  outline-offset: 2px;
+}
+
+.reference-audio-file-name {
+  min-width: 0;
+  overflow: hidden;
+  color: var(--muted);
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .field {

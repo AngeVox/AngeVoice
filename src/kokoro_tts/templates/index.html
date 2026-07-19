@@ -4,7 +4,7 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>AngeVoice Studio</title>
-  <link rel="icon" href="data:," />
+  <link rel="icon" href="{{ asset_url('favicon.svg') }}" type="image/svg+xml" />
   <script>
     const savedTheme = localStorage.getItem('angevoice.theme.v1');
     document.documentElement.dataset.theme = savedTheme || (matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light');
@@ -94,7 +94,14 @@
           <div class="engine-parameter-fields" id="engine-parameter-fields"></div>
         </section>
         <div class="clone-panel" id="clone-panel" hidden>
-          <label class="field file-field"><span><span data-i18n="studio.reference_audio.label">参考音频</span> <b id="clone-status" data-i18n="studio.reference_audio.clone">参考音频克隆</b></span><input type="file" id="prompt-audio" accept="audio/*,.wav,.mp3,.flac,.ogg,.m4a,.aac" /></label>
+          <div class="field file-field">
+            <span><span data-i18n="studio.reference_audio.label">参考音频</span> <b id="clone-status" data-i18n="studio.reference_audio.clone">参考音频克隆</b></span>
+            <input class="reference-audio-native-input" type="file" id="prompt-audio" accept="audio/*,.wav,.mp3,.flac,.ogg,.m4a,.aac" aria-describedby="prompt-audio-file-name" />
+            <div class="reference-audio-file-control">
+              <label class="secondary-button small reference-audio-picker" id="prompt-audio-picker" for="prompt-audio" role="button" tabindex="0" aria-controls="prompt-audio-file-name" data-i18n="studio.reference_audio.choose_file">选择参考音频</label>
+              <span class="reference-audio-file-name" id="prompt-audio-file-name" data-i18n="studio.reference_audio.no_file_selected" aria-live="polite">未选择文件</span>
+            </div>
+          </div>
           <div class="reference-actions">
             <button type="button" class="secondary-button small" id="record-reference-btn" data-i18n="studio.record.start">网页录音</button>
             <button type="button" class="danger-button small" id="stop-record-reference-btn" data-i18n="studio.record.stop" disabled>停止录音</button>
