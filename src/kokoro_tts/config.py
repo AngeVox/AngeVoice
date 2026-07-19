@@ -31,6 +31,7 @@ from .config_ids import (
     PLACEHOLDER_ADMIN_PASSWORDS,
     normalize_config_model_id,
 )
+from .model_source_metadata import MODEL_SOURCE_METADATA
 
 def _find_models_dir() -> Path:
     """查找可用的 Kokoro 模型目录。
@@ -156,7 +157,7 @@ class TTSConfig:
     update_check_cache_seconds: float = 21600.0
 
     # 模型源站：auto 先短超时探测 HF/ModelScope 可达性，再做国家/地区判断。
-    model_source: str = "auto"
+    model_source: str = MODEL_SOURCE_METADATA.default
     model_source_detect_url: str = "https://ipapi.co/country/"
     model_source_detect_timeout_seconds: float = 1.5
     model_source_probe_timeout_seconds: float = 1.5
@@ -389,8 +390,10 @@ class TTSConfig:
             raise ValueError("ANGEVOICE_ENABLED_MODELS cannot be empty")
 
     def _normalize_model_source(self) -> None:
-        self.model_source = str(self.model_source or "auto").strip().lower()
-        if self.model_source not in {"auto", "huggingface", "modelscope", "offline"}:
+        self.model_source = str(
+            self.model_source or MODEL_SOURCE_METADATA.default
+        ).strip().lower()
+        if self.model_source not in MODEL_SOURCE_METADATA.accepted_values:
             raise ValueError("ANGEVOICE_MODEL_SOURCE must be auto, huggingface, modelscope, or offline")
 
     def _normalize_execution_providers(self) -> None:
