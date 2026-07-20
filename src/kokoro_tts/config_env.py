@@ -8,6 +8,7 @@ from pathlib import Path
 from typing import NamedTuple
 
 from .config_api_key import AUTO_API_KEY_SENTINELS, load_or_generate_api_key
+from .config_env_domain import CACHE_INT_DECLARATIONS, parse_int_env
 
 logger = logging.getLogger(__name__)
 
@@ -25,14 +26,7 @@ class FloatEnvSpec(NamedTuple):
 
 
 def get_env_int(name: str, default: int) -> int:
-    value = os.environ.get(name)
-    if value is None:
-        return default
-    try:
-        return int(value)
-    except ValueError:
-        logger.warning("忽略无效整数环境变量 %s=%r", name, value)
-        return default
+    return parse_int_env(name, default, warning_sink=logger.warning)
 
 
 def get_env_float(name: str, default: float) -> float:
@@ -108,10 +102,14 @@ INT_ENV: dict[str, IntEnvSpec] = {
     "KOKORO_MAX_TEXT_LENGTH": IntEnvSpec("max_text_length", 1),
     "KOKORO_SEGMENT_LENGTH": IntEnvSpec("segment_length", 20),
     "MOSS_SEGMENT_LENGTH": IntEnvSpec("moss_segment_length", 20),
-    "KOKORO_CACHE_MAX_ITEMS": IntEnvSpec("cache_max_items", 0),
-    "KOKORO_CACHE_MAX_BYTES": IntEnvSpec("cache_max_bytes", 0),
-    "KOKORO_CACHE_SKIP_TEXT_OVER_CHARS": IntEnvSpec("cache_skip_text_over_chars", 0),
-    "KOKORO_CACHE_SKIP_AUDIO_OVER_BYTES": IntEnvSpec("cache_skip_audio_over_bytes", 0),
+    **{
+        declaration.env_name: IntEnvSpec(
+            declaration.attr,
+            declaration.min_value,
+            declaration.max_value,
+        )
+        for declaration in CACHE_INT_DECLARATIONS
+    },
     "KOKORO_BATCH_MAX_ITEMS": IntEnvSpec("batch_max_items", 1),
     "KOKORO_BATCH_CONCURRENCY": IntEnvSpec("batch_concurrency", 1),
     "KOKORO_VOICE_UPLOAD_MAX_BYTES": IntEnvSpec("voice_upload_max_bytes", 1),

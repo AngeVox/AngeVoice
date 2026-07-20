@@ -5,11 +5,14 @@ from __future__ import annotations
 import ast
 import dataclasses
 import json
+import subprocess
 from pathlib import Path
 
 import pytest
 
 from kokoro_tts import config_env
+from kokoro_tts import config_env_domain
+from kokoro_tts.admin_config import load_runtime_config
 from kokoro_tts.config import TTSConfig
 
 
@@ -18,6 +21,12 @@ pytestmark = pytest.mark.contract
 DATA_PATH = Path(__file__).parent / "data" / "config_env_surface_2_6_7.json"
 SNAPSHOT = json.loads(DATA_PATH.read_text(encoding="utf-8"))
 PATH_STR_FIELDS = set(SNAPSHOT["path_coercion_fields"])
+CACHE_INT_ENV_NAMES = (
+    "KOKORO_CACHE_MAX_ITEMS",
+    "KOKORO_CACHE_MAX_BYTES",
+    "KOKORO_CACHE_SKIP_TEXT_OVER_CHARS",
+    "KOKORO_CACHE_SKIP_AUDIO_OVER_BYTES",
+)
 
 
 def _known_env_names() -> set[str]:
@@ -80,6 +89,249 @@ def test_all_mapping_attributes_are_ttsconfig_fields_and_env_names_are_unique() 
     ] == "mp3_bitrate"
     assert config_env.STR_ENV["ANGEVOICE_AUDIO_MP3_BITRATE"] == "mp3_bitrate"
     assert config_env.STR_ENV["KOKORO_MP3_BITRATE"] == "mp3_bitrate"
+
+
+def test_cache_integer_declarations_preserve_mapping_content_order_and_owners() -> None:
+    assert len(config_env.INT_ENV) == 37
+    assert sum(
+        len(mapping)
+        for mapping in (
+            config_env.STR_ENV,
+            config_env.INT_ENV,
+            config_env.FLOAT_ENV,
+            config_env.BOOL_ENV,
+        )
+    ) == 158
+    assert tuple(
+        (item.env_name, item.attr, item.min_value, item.max_value)
+        for item in config_env_domain.CACHE_INT_DECLARATIONS
+    ) == tuple(
+        (
+            env_name,
+            SNAPSHOT["int_env"][env_name]["attr"],
+            SNAPSHOT["int_env"][env_name]["min"],
+            SNAPSHOT["int_env"][env_name]["max"],
+        )
+        for env_name in CACHE_INT_ENV_NAMES
+    )
+    assert tuple(
+        name for name in config_env.INT_ENV if name in CACHE_INT_ENV_NAMES
+    ) == CACHE_INT_ENV_NAMES
+    assert all(
+        config_env.INT_ENV[name]
+        == config_env.IntEnvSpec(
+            SNAPSHOT["int_env"][name]["attr"],
+            SNAPSHOT["int_env"][name]["min"],
+            SNAPSHOT["int_env"][name]["max"],
+        )
+        for name in CACHE_INT_ENV_NAMES
+    )
+
+    # P2B owns parser/mapping declarations only. Worker export and Admin field
+    # metadata remain compatibility/presentation consumers until later phases.
+    package_root = Path(config_env.__file__).parent
+    source_paths = {
+        relative: package_root / relative
+        for relative in (
+            "config_env.py",
+            "config_env_domain.py",
+            "server.py",
+            "admin_config/groups/cache.py",
+        )
+    }
+    trees = {
+        relative: ast.parse(path.read_text(encoding="utf-8"))
+        for relative, path in source_paths.items()
+    }
+
+    def assignment_value(tree: ast.Module, name: str) -> ast.AST:
+        assignments = []
+        for node in tree.body:
+            if isinstance(node, ast.Assign) and any(
+                isinstance(target, ast.Name) and target.id == name
+                for target in node.targets
+            ):
+                assignments.append(node.value)
+            if (
+                isinstance(node, ast.AnnAssign)
+                and isinstance(node.target, ast.Name)
+                and node.target.id == name
+            ):
+                assignments.append(node.value)
+        assert len(assignments) == 1
+        assert assignments[0] is not None
+        return assignments[0]
+
+    def constant_value(node: ast.AST) -> object:
+        assert isinstance(node, ast.Constant)
+        return node.value
+
+    def call_argument(
+        call: ast.Call, position: int, keyword: str, default: object
+    ) -> object:
+        if len(call.args) > position:
+            return constant_value(call.args[position])
+        matches = [item.value for item in call.keywords if item.arg == keyword]
+        assert len(matches) <= 1
+        return constant_value(matches[0]) if matches else default
+
+    literal_occurrences = {env_name: [] for env_name in CACHE_INT_ENV_NAMES}
+    for source_path in package_root.rglob("*.py"):
+        tree = ast.parse(source_path.read_text(encoding="utf-8"))
+        relative = source_path.relative_to(package_root).as_posix()
+        for node in ast.walk(tree):
+            if (
+                isinstance(node, ast.Constant)
+                and isinstance(node.value, str)
+                and node.value in literal_occurrences
+            ):
+                literal_occurrences[node.value].append(relative)
+
+    expected_contexts = {
+        "config_env_domain.py",
+        "server.py",
+        "admin_config/groups/cache.py",
+    }
+    for env_name in CACHE_INT_ENV_NAMES:
+        assert set(literal_occurrences[env_name]) == expected_contexts
+        assert len(literal_occurrences[env_name]) == len(expected_contexts)
+    assert not any(
+        isinstance(node, ast.Constant)
+        and isinstance(node.value, str)
+        and node.value in CACHE_INT_ENV_NAMES
+        for node in ast.walk(trees["config_env.py"])
+    )
+
+    declaration_tuple = assignment_value(
+        trees["config_env_domain.py"], "CACHE_INT_DECLARATIONS"
+    )
+    assert isinstance(declaration_tuple, ast.Tuple)
+    declaration_calls = [
+        item
+        for item in declaration_tuple.elts
+        if isinstance(item, ast.Call)
+        and isinstance(item.func, ast.Name)
+        and item.func.id == "EnvIntDeclaration"
+    ]
+    assert len(declaration_calls) == len(CACHE_INT_ENV_NAMES)
+    for env_name in CACHE_INT_ENV_NAMES:
+        matches = [
+            call
+            for call in declaration_calls
+            if constant_value(call.args[0]) == env_name
+        ]
+        assert len(matches) == 1
+        call = matches[0]
+        expected = SNAPSHOT["int_env"][env_name]
+        assert call_argument(call, 1, "attr", None) == expected["attr"]
+        assert call_argument(call, 2, "min_value", None) == expected["min"]
+        assert call_argument(call, 3, "max_value", None) == expected["max"]
+
+    worker_exports = assignment_value(trees["server.py"], "_WORKER_ENV_EXPORTS")
+    assert isinstance(worker_exports, ast.Dict)
+    for env_name in CACHE_INT_ENV_NAMES:
+        matches = [
+            value
+            for key, value in zip(worker_exports.keys, worker_exports.values)
+            if isinstance(key, ast.Constant) and key.value == env_name
+        ]
+        assert len(matches) == 1
+        assert constant_value(matches[0]) == SNAPSHOT["int_env"][env_name]["attr"]
+
+    admin_fields = assignment_value(trees["admin_config/groups/cache.py"], "FIELDS")
+    admin_calls = [
+        node
+        for node in ast.walk(admin_fields)
+        if isinstance(node, ast.Call)
+        and isinstance(node.func, ast.Name)
+        and node.func.id == "field_def"
+    ]
+    for env_name in CACHE_INT_ENV_NAMES:
+        matches = [
+            call
+            for call in admin_calls
+            if len(call.args) >= 2 and constant_value(call.args[1]) == env_name
+        ]
+        assert len(matches) == 1
+        assert constant_value(matches[0].args[0]) == SNAPSHOT["int_env"][env_name]["attr"]
+
+    config_tree = trees["config_env.py"]
+    assert any(
+        isinstance(node, ast.ImportFrom)
+        and node.module == "config_env_domain"
+        and any(item.name == "CACHE_INT_DECLARATIONS" for item in node.names)
+        for node in config_tree.body
+    )
+    int_env = assignment_value(config_tree, "INT_ENV")
+    assert isinstance(int_env, ast.Dict)
+    declaration_mapping = [
+        value
+        for key, value in zip(int_env.keys, int_env.values)
+        if key is None and isinstance(value, ast.DictComp)
+    ]
+    assert len(declaration_mapping) == 1
+    mapping = declaration_mapping[0]
+    assert (
+        isinstance(mapping.key, ast.Attribute)
+        and isinstance(mapping.key.value, ast.Name)
+        and mapping.key.value.id == "declaration"
+        and mapping.key.attr == "env_name"
+    )
+    assert len(mapping.generators) == 1
+    generator = mapping.generators[0]
+    assert (
+        isinstance(generator.target, ast.Name)
+        and generator.target.id == "declaration"
+        and isinstance(generator.iter, ast.Name)
+        and generator.iter.id == "CACHE_INT_DECLARATIONS"
+    )
+
+
+@pytest.mark.parametrize("env_name", CACHE_INT_ENV_NAMES)
+def test_cache_integer_apply_env_behavior_and_runtime_precedence(
+    monkeypatch, tmp_path, caplog, env_name
+) -> None:
+    attr = SNAPSHOT["int_env"][env_name]["attr"]
+    cfg = _cfg(tmp_path)
+    setattr(cfg, attr, 23)
+    config_env.apply_env(cfg)
+    assert getattr(cfg, attr) == 23
+
+    monkeypatch.setenv(env_name, "7")
+    config_env.apply_env(cfg)
+    assert getattr(cfg, attr) == 7
+
+    monkeypatch.setenv(env_name, "not-an-integer")
+    with caplog.at_level("WARNING", logger="kokoro_tts.config_env"):
+        config_env.apply_env(cfg)
+    assert getattr(cfg, attr) == 7
+    assert sum(record.name == "kokoro_tts.config_env" for record in caplog.records) == 1
+
+    monkeypatch.setenv(env_name, "-7")
+    config_env.apply_env(cfg)
+    assert getattr(cfg, attr) == 0
+
+    runtime = tmp_path / "runtime-config.json"
+    runtime.write_bytes(json.dumps({"values": {attr: 19}}).encode("utf-8"))
+    cfg.runtime_config_file = runtime
+    load_runtime_config(cfg)
+    assert getattr(cfg, attr) == 19
+
+
+def test_p2a1_snapshots_keep_head_hashes() -> None:
+    root = Path(__file__).resolve().parents[2]
+    for name in (
+        "ttsconfig_shape_2_6_7.json",
+        "config_env_surface_2_6_7.json",
+        "admin_config_surface_2_6_7.json",
+    ):
+        path = Path(__file__).with_name("data") / name
+        relative = path.relative_to(root).as_posix()
+        current = subprocess.check_output(["git", "hash-object", relative], cwd=root)
+        expected = subprocess.check_output(
+            ["git", "rev-parse", f"HEAD:{relative}"], cwd=root
+        ).strip()
+        assert current.strip() == expected
 
 
 def _is_os_environ(node: ast.AST) -> bool:
