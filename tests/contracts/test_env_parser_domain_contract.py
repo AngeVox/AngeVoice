@@ -12,7 +12,11 @@ import pytest
 
 from kokoro_tts import config_env, config_env_domain
 from kokoro_tts.config import TTSConfig
-from kokoro_tts.config_env_domain import CACHE_INT_DECLARATIONS, EnvIntDeclaration
+from kokoro_tts.config_env_domain import (
+    BATCH_INT_DECLARATIONS,
+    CACHE_INT_DECLARATIONS,
+    EnvIntDeclaration,
+)
 
 
 pytestmark = pytest.mark.contract
@@ -33,6 +37,11 @@ EXPECTED_CACHE_DECLARATIONS = (
         0,
         None,
     ),
+)
+
+EXPECTED_BATCH_DECLARATIONS = (
+    ("KOKORO_BATCH_MAX_ITEMS", "batch_max_items", 1, None),
+    ("KOKORO_BATCH_CONCURRENCY", "batch_concurrency", 1, None),
 )
 
 
@@ -58,6 +67,29 @@ def test_cache_integer_declarations_are_frozen_slot_backed_and_exact() -> None:
 def test_cache_declaration_attributes_are_ttsconfig_fields() -> None:
     config_fields = {field.name for field in dataclasses.fields(TTSConfig)}
     assert {item.attr for item in CACHE_INT_DECLARATIONS} <= config_fields
+
+
+def test_batch_integer_declarations_are_frozen_exact_and_exported() -> None:
+    assert isinstance(BATCH_INT_DECLARATIONS, tuple)
+    assert tuple(
+        (item.env_name, item.attr, item.min_value, item.max_value)
+        for item in BATCH_INT_DECLARATIONS
+    ) == EXPECTED_BATCH_DECLARATIONS
+    assert len({item.env_name for item in BATCH_INT_DECLARATIONS}) == 2
+    assert {item.attr for item in BATCH_INT_DECLARATIONS} <= {
+        field.name for field in dataclasses.fields(TTSConfig)
+    }
+    assert {
+        item.env_name for item in BATCH_INT_DECLARATIONS
+    }.isdisjoint(item.env_name for item in CACHE_INT_DECLARATIONS)
+    assert config_env_domain.__all__ == [
+        "BATCH_INT_DECLARATIONS",
+        "CACHE_INT_DECLARATIONS",
+        "EnvIntDeclaration",
+        "parse_int_env",
+    ]
+    with pytest.raises(dataclasses.FrozenInstanceError):
+        BATCH_INT_DECLARATIONS[0].min_value = 2
 
 
 def test_domain_module_has_no_forbidden_runtime_dependencies() -> None:
@@ -99,6 +131,23 @@ def test_domain_module_has_no_forbidden_runtime_dependencies() -> None:
     }
     assert "clamp" not in called_names
     assert not {"Path", "urlopen", "load_runtime_config"} & called_names
+    declarations = [
+        node
+        for node in tree.body
+        if isinstance(node, ast.Assign)
+        and any(
+            isinstance(target, ast.Name)
+            and target.id in {"CACHE_INT_DECLARATIONS", "BATCH_INT_DECLARATIONS"}
+            for target in node.targets
+        )
+    ]
+    assert len(declarations) == 2
+    assert not any(
+        isinstance(node, ast.Name)
+        and node.id.endswith("_DECLARATIONS")
+        and node.id not in {"CACHE_INT_DECLARATIONS", "BATCH_INT_DECLARATIONS"}
+        for node in ast.walk(tree)
+    )
 
 
 def test_parse_int_env_preserves_missing_and_integer_input_behavior(

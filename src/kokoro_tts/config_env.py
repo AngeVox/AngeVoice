@@ -8,7 +8,11 @@ from pathlib import Path
 from typing import NamedTuple
 
 from .config_api_key import AUTO_API_KEY_SENTINELS, load_or_generate_api_key
-from .config_env_domain import CACHE_INT_DECLARATIONS, parse_int_env
+from .config_env_domain import (
+    BATCH_INT_DECLARATIONS,
+    CACHE_INT_DECLARATIONS,
+    parse_int_env,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -110,8 +114,14 @@ INT_ENV: dict[str, IntEnvSpec] = {
         )
         for declaration in CACHE_INT_DECLARATIONS
     },
-    "KOKORO_BATCH_MAX_ITEMS": IntEnvSpec("batch_max_items", 1),
-    "KOKORO_BATCH_CONCURRENCY": IntEnvSpec("batch_concurrency", 1),
+    **{
+        declaration.env_name: IntEnvSpec(
+            declaration.attr,
+            declaration.min_value,
+            declaration.max_value,
+        )
+        for declaration in BATCH_INT_DECLARATIONS
+    },
     "KOKORO_VOICE_UPLOAD_MAX_BYTES": IntEnvSpec("voice_upload_max_bytes", 1),
     "ANGEVOICE_OUTPUT_MAX_FILES": IntEnvSpec("output_max_files", 0),
     "MOSS_CPU_THREADS": IntEnvSpec("moss_cpu_threads", 1),

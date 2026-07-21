@@ -29,6 +29,11 @@ CACHE_INT_DECLARATIONS = (
     ),
 )
 
+BATCH_INT_DECLARATIONS = (
+    EnvIntDeclaration("KOKORO_BATCH_MAX_ITEMS", "batch_max_items", 1),
+    EnvIntDeclaration("KOKORO_BATCH_CONCURRENCY", "batch_concurrency", 1),
+)
+
 
 _logger = logging.getLogger(__name__)
 WarningSink = Callable[..., object]
@@ -52,4 +57,9 @@ def parse_int_env(
         return default
 
 
-__all__ = ["CACHE_INT_DECLARATIONS", "EnvIntDeclaration", "parse_int_env"]
+__all__ = [
+    "BATCH_INT_DECLARATIONS",
+    "CACHE_INT_DECLARATIONS",
+    "EnvIntDeclaration",
+    "parse_int_env",
+]

@@ -5,6 +5,7 @@ from __future__ import annotations
 import ast
 import dataclasses
 import json
+import logging
 import subprocess
 from pathlib import Path
 
@@ -26,6 +27,49 @@ CACHE_INT_ENV_NAMES = (
     "KOKORO_CACHE_MAX_BYTES",
     "KOKORO_CACHE_SKIP_TEXT_OVER_CHARS",
     "KOKORO_CACHE_SKIP_AUDIO_OVER_BYTES",
+)
+BATCH_INT_ENV_NAMES = (
+    "KOKORO_BATCH_MAX_ITEMS",
+    "KOKORO_BATCH_CONCURRENCY",
+)
+INT_ENV_KEY_ORDER = (
+    "KOKORO_PORT",
+    "KOKORO_WORKERS",
+    "KOKORO_MAX_CONCURRENT_REQUESTS",
+    "KOKORO_MAX_TEXT_LENGTH",
+    "KOKORO_SEGMENT_LENGTH",
+    "MOSS_SEGMENT_LENGTH",
+    "KOKORO_CACHE_MAX_ITEMS",
+    "KOKORO_CACHE_MAX_BYTES",
+    "KOKORO_CACHE_SKIP_TEXT_OVER_CHARS",
+    "KOKORO_CACHE_SKIP_AUDIO_OVER_BYTES",
+    "KOKORO_BATCH_MAX_ITEMS",
+    "KOKORO_BATCH_CONCURRENCY",
+    "KOKORO_VOICE_UPLOAD_MAX_BYTES",
+    "ANGEVOICE_OUTPUT_MAX_FILES",
+    "MOSS_CPU_THREADS",
+    "ZIPVOICE_CPU_THREADS",
+    "ZIPVOICE_CUDA_DEVICE_INDEX",
+    "ZIPVOICE_NUM_STEPS",
+    "ZIPVOICE_PROMPT_UPLOAD_MAX_BYTES",
+    "MOSS_PROMPT_UPLOAD_MAX_BYTES",
+    "KOKORO_TTS_REQUEST_MAX_BYTES",
+    "MOSS_PROMPT_CACHE_MAX_ITEMS",
+    "MOSS_MAX_NEW_FRAMES",
+    "MOSS_VOICE_CLONE_MAX_TEXT_TOKENS",
+    "MOSS_SEED",
+    "MOSS_CUDA_MEMORY_LIMIT_MB",
+    "MOSS_STREAM_QUEUE_MAX_ITEMS",
+    "MOSS_VRAM_SAFE_FREE_MB",
+    "MOSS_VRAM_CRITICAL_FREE_MB",
+    "MOSS_LOW_VRAM_SEGMENT_LENGTH",
+    "MOSS_LOW_VRAM_MAX_NEW_FRAMES",
+    "MOSS_LOW_VRAM_TEXT_TOKENS",
+    "KOKORO_RATE_LIMIT_BURST",
+    "KOKORO_MAX_QUEUE_LENGTH",
+    "KOKORO_WS_MAX_CONNECTIONS",
+    "KOKORO_WS_MAX_MESSAGE_BYTES",
+    "ANGEVOICE_RESTART_AFTER_IDLE_UNLOAD_EXIT_CODE",
 )
 
 
@@ -67,6 +111,7 @@ def test_mapping_tables_match_the_checked_in_surface() -> None:
         env: {"attr": spec.attr, "min": spec.min_value, "max": spec.max_value}
         for env, spec in sorted(config_env.FLOAT_ENV.items())
     } == SNAPSHOT["float_env"]
+    assert tuple(config_env.INT_ENV) == INT_ENV_KEY_ORDER
 
 
 def test_all_mapping_attributes_are_ttsconfig_fields_and_env_names_are_unique() -> None:
@@ -264,13 +309,25 @@ def test_cache_integer_declarations_preserve_mapping_content_order_and_owners() 
     )
     int_env = assignment_value(config_tree, "INT_ENV")
     assert isinstance(int_env, ast.Dict)
-    declaration_mapping = [
+    declaration_mappings = [
         value
         for key, value in zip(int_env.keys, int_env.values)
         if key is None and isinstance(value, ast.DictComp)
     ]
-    assert len(declaration_mapping) == 1
-    mapping = declaration_mapping[0]
+    assert len(declaration_mappings) == 2
+
+    def declaration_mapping_for(name: str) -> ast.DictComp:
+        matches = [
+            mapping
+            for mapping in declaration_mappings
+            if len(mapping.generators) == 1
+            and isinstance(mapping.generators[0].iter, ast.Name)
+            and mapping.generators[0].iter.id == name
+        ]
+        assert len(matches) == 1
+        return matches[0]
+
+    mapping = declaration_mapping_for("CACHE_INT_DECLARATIONS")
     assert (
         isinstance(mapping.key, ast.Attribute)
         and isinstance(mapping.key.value, ast.Name)
@@ -285,6 +342,150 @@ def test_cache_integer_declarations_preserve_mapping_content_order_and_owners() 
         and isinstance(generator.iter, ast.Name)
         and generator.iter.id == "CACHE_INT_DECLARATIONS"
     )
+
+
+def test_batch_integer_declarations_preserve_mapping_order_and_owners() -> None:
+    assert tuple(
+        (item.env_name, item.attr, item.min_value, item.max_value)
+        for item in config_env_domain.BATCH_INT_DECLARATIONS
+    ) == tuple(
+        (
+            env_name,
+            SNAPSHOT["int_env"][env_name]["attr"],
+            SNAPSHOT["int_env"][env_name]["min"],
+            SNAPSHOT["int_env"][env_name]["max"],
+        )
+        for env_name in BATCH_INT_ENV_NAMES
+    )
+    assert tuple(name for name in config_env.INT_ENV if name in BATCH_INT_ENV_NAMES) == (
+        BATCH_INT_ENV_NAMES
+    )
+    assert all(
+        config_env.INT_ENV[name]
+        == config_env.IntEnvSpec(
+            SNAPSHOT["int_env"][name]["attr"],
+            SNAPSHOT["int_env"][name]["min"],
+            SNAPSHOT["int_env"][name]["max"],
+        )
+        for name in BATCH_INT_ENV_NAMES
+    )
+
+    package_root = Path(config_env.__file__).parent
+    config_tree = ast.parse((package_root / "config_env.py").read_text(encoding="utf-8"))
+    assert any(
+        isinstance(node, ast.ImportFrom)
+        and node.module == "config_env_domain"
+        and any(item.name == "BATCH_INT_DECLARATIONS" for item in node.names)
+        for node in config_tree.body
+    )
+    int_env = next(
+        node.value
+        for node in config_tree.body
+        if isinstance(node, ast.AnnAssign)
+        and isinstance(node.target, ast.Name)
+        and node.target.id == "INT_ENV"
+    )
+    assert isinstance(int_env, ast.Dict)
+    batch_mappings = [
+        value
+        for key, value in zip(int_env.keys, int_env.values)
+        if key is None
+        and isinstance(value, ast.DictComp)
+        and len(value.generators) == 1
+        and isinstance(value.generators[0].iter, ast.Name)
+        and value.generators[0].iter.id == "BATCH_INT_DECLARATIONS"
+    ]
+    assert len(batch_mappings) == 1
+    mapping = batch_mappings[0]
+    assert (
+        isinstance(mapping.key, ast.Attribute)
+        and isinstance(mapping.key.value, ast.Name)
+        and mapping.key.value.id == "declaration"
+        and mapping.key.attr == "env_name"
+    )
+
+    source_paths = {
+        "config_env.py": package_root / "config_env.py",
+        "config_env_domain.py": package_root / "config_env_domain.py",
+        "server.py": package_root / "server.py",
+        "service_extras.py": package_root / "service_extras.py",
+    }
+    source_text = {
+        name: path.read_text(encoding="utf-8") for name, path in source_paths.items()
+    }
+    for env_name in BATCH_INT_ENV_NAMES:
+        assert env_name not in source_text["config_env.py"]
+        assert source_text["config_env_domain.py"].count(env_name) == 1
+        assert source_text["server.py"].count(env_name) == 1
+    assert "cfg.batch_max_items" in source_text["service_extras.py"]
+    assert 'getattr(cfg, "batch_concurrency", 1)' in source_text["service_extras.py"]
+    admin_source = "\n".join(
+        path.read_text(encoding="utf-8")
+        for path in (package_root / "admin_config").rglob("*.py")
+    )
+    assert all(env_name not in admin_source for env_name in BATCH_INT_ENV_NAMES)
+
+
+@pytest.mark.parametrize("env_name", BATCH_INT_ENV_NAMES)
+def test_batch_integer_apply_env_behavior_warning_and_runtime_config_non_ownership(
+    monkeypatch, tmp_path, caplog, env_name
+) -> None:
+    attr = SNAPSHOT["int_env"][env_name]["attr"]
+    cfg = _cfg(tmp_path)
+    setattr(cfg, attr, 23)
+    config_env.apply_env(cfg)
+    assert getattr(cfg, attr) == 23
+
+    for raw, expected in (
+        ("7", 7),
+        ("1", 1),
+        ("0", 1),
+        ("-7", 1),
+        ("  7  ", 7),
+        ("+7", 7),
+        (str(10**200), 10**200),
+    ):
+        monkeypatch.setenv(env_name, raw)
+        config_env.apply_env(cfg)
+        assert getattr(cfg, attr) == expected
+
+    for raw in ("not-an-integer", ""):
+        setattr(cfg, attr, 23)
+        monkeypatch.setenv(env_name, raw)
+        caplog.clear()
+        with caplog.at_level(logging.WARNING, logger="kokoro_tts.config_env"):
+            config_env.apply_env(cfg)
+        assert getattr(cfg, attr) == 23
+        records = [
+            record for record in caplog.records if record.name == "kokoro_tts.config_env"
+        ]
+        assert len(records) == 1
+        assert records[0].levelno == logging.WARNING
+        assert records[0].msg == "忽略无效整数环境变量 %s=%r"
+        assert records[0].args == (env_name, raw)
+        assert records[0].getMessage() == f"忽略无效整数环境变量 {env_name}={raw!r}"
+
+    monkeypatch.setenv(env_name, "7")
+    config_env.apply_env(cfg)
+    runtime = tmp_path / "runtime-config.json"
+    runtime.write_bytes(json.dumps({"values": {attr: 19}}).encode("utf-8"))
+    cfg.runtime_config_file = runtime
+    load_runtime_config(cfg)
+    # Batch fields are not Admin runtime-config fields. The same-name JSON
+    # value is ignored; this is not a precedence contest, so the applied ENV
+    # value remains unchanged.
+    assert getattr(cfg, attr) == 7
+
+
+@pytest.mark.parametrize("env_name", BATCH_INT_ENV_NAMES)
+def test_batch_integer_parser_and_apply_env_keep_separate_ownership(
+    monkeypatch, tmp_path, env_name
+) -> None:
+    monkeypatch.setenv(env_name, "-7")
+    assert config_env_domain.parse_int_env(env_name, 23) == -7
+    cfg = _cfg(tmp_path)
+    config_env.apply_env(cfg)
+    assert getattr(cfg, SNAPSHOT["int_env"][env_name]["attr"]) == 1
 
 
 @pytest.mark.parametrize("env_name", CACHE_INT_ENV_NAMES)
