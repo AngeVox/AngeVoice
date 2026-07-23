@@ -1,5 +1,6 @@
 """Code quality regression tests."""
 
+import os
 from unittest.mock import MagicMock
 
 from kokoro_tts.config import TTSConfig
@@ -93,11 +94,13 @@ def test_percent_reads_three_digits_as_number():
     assert "百分之十二点五" in text
 
 
-def test_worker_env_exports_cover_runtime_env_specs():
+def test_worker_env_exports_cover_runtime_env_specs(monkeypatch, tmp_path):
     """多 worker 模式应继承运行时配置里的关键环境变量。"""
 
+    from kokoro_tts import config_env
     from kokoro_tts.config_env import BOOL_ENV, FLOAT_ENV, INT_ENV, STR_ENV
-    from kokoro_tts.server import _WORKER_ENV_EXPORTS
+    from kokoro_tts.config_env_domain import UPDATE_CHECK_ENV_DECLARATIONS
+    from kokoro_tts import server
 
     all_runtime_envs = set(STR_ENV) | set(INT_ENV) | set(FLOAT_ENV) | set(BOOL_ENV)
     process_level_only = {
@@ -108,11 +111,38 @@ def test_worker_env_exports_cover_runtime_env_specs():
         "KOKORO_API_KEY",
         "KOKORO_AUTO_API_KEY",
     }
-    missing = sorted(all_runtime_envs - set(_WORKER_ENV_EXPORTS) - process_level_only)
+    missing = sorted(all_runtime_envs - set(server._WORKER_ENV_EXPORTS) - process_level_only)
     assert missing == []
-    assert _WORKER_ENV_EXPORTS["ANGEVOICE_IDLE_UNLOAD_CURRENT"] == "model_idle_unload_current"
-    assert _WORKER_ENV_EXPORTS["KOKORO_TTS_REQUEST_MAX_BYTES"] == "tts_request_max_bytes"
-    assert _WORKER_ENV_EXPORTS["KOKORO_VOICE_UPLOAD_MAX_BYTES"] == "voice_upload_max_bytes"
+    assert server._WORKER_ENV_EXPORTS["ANGEVOICE_IDLE_UNLOAD_CURRENT"] == "model_idle_unload_current"
+    assert server._WORKER_ENV_EXPORTS["KOKORO_TTS_REQUEST_MAX_BYTES"] == "tts_request_max_bytes"
+    assert server._WORKER_ENV_EXPORTS["KOKORO_VOICE_UPLOAD_MAX_BYTES"] == "voice_upload_max_bytes"
+
+    update_names = tuple(item.env_name for item in UPDATE_CHECK_ENV_DECLARATIONS)
+    assert tuple(name for name in server._WORKER_ENV_EXPORTS if name in update_names) == update_names
+    assert tuple(server._WORKER_ENV_EXPORTS[name] for name in update_names) == tuple(
+        item.attr for item in UPDATE_CHECK_ENV_DECLARATIONS
+    )
+
+    # Exercise the multi-Uvicorn-worker ENV handoff without creating an app or
+    # touching UpdateChecker: normalized parent config -> export -> child parse.
+    monkeypatch.setenv("ANGEVOICE_UPDATE_CHECK_ENABLED", " false ")
+    monkeypatch.setenv("ANGEVOICE_UPDATE_REPOSITORY", " owner/repository ")
+    monkeypatch.setenv("ANGEVOICE_UPDATE_CHECK_TIMEOUT_SECONDS", "nan")
+    monkeypatch.setenv("ANGEVOICE_UPDATE_CHECK_CACHE_SECONDS", "inf")
+    parent = TTSConfig(model_dir=tmp_path / "parent-model")
+    config_env.apply_env(parent)
+    update_exports = {item.env_name: item.attr for item in UPDATE_CHECK_ENV_DECLARATIONS}
+    monkeypatch.setattr(server, "_WORKER_ENV_EXPORTS", update_exports)
+    server._export_config_for_workers(parent)
+    assert os.environ["ANGEVOICE_UPDATE_CHECK_ENABLED"] == "false"
+    assert os.environ["ANGEVOICE_UPDATE_REPOSITORY"] == " owner/repository "
+    assert os.environ["ANGEVOICE_UPDATE_CHECK_TIMEOUT_SECONDS"] == "0.2"
+    assert os.environ["ANGEVOICE_UPDATE_CHECK_CACHE_SECONDS"] == "604800.0"
+    child = TTSConfig(model_dir=tmp_path / "child-model")
+    config_env.apply_env(child)
+    assert tuple(getattr(child, item.attr) for item in UPDATE_CHECK_ENV_DECLARATIONS) == tuple(
+        getattr(parent, item.attr) for item in UPDATE_CHECK_ENV_DECLARATIONS
+    )
 
 
 def test_moss_model_assets_reject_lfs_only_dir(tmp_path):

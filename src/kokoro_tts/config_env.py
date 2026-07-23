@@ -11,6 +11,7 @@ from .config_api_key import AUTO_API_KEY_SENTINELS, load_or_generate_api_key
 from .config_env_domain import (
     BATCH_INT_DECLARATIONS,
     CACHE_INT_DECLARATIONS,
+    UPDATE_CHECK_ENV_DECLARATIONS,
     parse_int_env,
 )
 
@@ -74,7 +75,11 @@ STR_ENV: dict[str, str] = {
     "ANGEVOICE_STARTUP_PRELOAD_MODEL": "startup_preload_model",
     "ANGEVOICE_OUTPUT_DIR": "output_dir",
     "ANGEVOICE_RUNTIME_CONFIG_FILE": "runtime_config_file",
-    "ANGEVOICE_UPDATE_REPOSITORY": "update_repository",
+    **{
+        declaration.env_name: declaration.attr
+        for declaration in UPDATE_CHECK_ENV_DECLARATIONS
+        if declaration.family == "str"
+    },
     "ANGEVOICE_CREDENTIALS_DIR": "credentials_dir",
     "ANGEVOICE_ADMIN_CREDENTIALS_FILE": "admin_credentials_file",
     "ANGEVOICE_MODEL_SOURCE": "model_source",
@@ -188,8 +193,15 @@ FLOAT_ENV: dict[str, FloatEnvSpec] = {
     "MOSS_VRAM_SNAPSHOT_TTL_SECONDS": FloatEnvSpec("moss_vram_snapshot_ttl_seconds", 0.0, 3600.0),
     "ANGEVOICE_MODEL_SOURCE_DETECT_TIMEOUT_SECONDS": FloatEnvSpec("model_source_detect_timeout_seconds", 0.1, 10.0),
     "ANGEVOICE_MODEL_SOURCE_PROBE_TIMEOUT_SECONDS": FloatEnvSpec("model_source_probe_timeout_seconds", 0.1, 10.0),
-    "ANGEVOICE_UPDATE_CHECK_TIMEOUT_SECONDS": FloatEnvSpec("update_check_timeout_seconds", 0.2, 10.0),
-    "ANGEVOICE_UPDATE_CHECK_CACHE_SECONDS": FloatEnvSpec("update_check_cache_seconds", 0.0, 604800.0),
+    **{
+        declaration.env_name: FloatEnvSpec(
+            declaration.attr,
+            declaration.min_value,
+            declaration.max_value,
+        )
+        for declaration in UPDATE_CHECK_ENV_DECLARATIONS
+        if declaration.family == "float"
+    },
     "ANGEVOICE_IDLE_TIMEOUT_SECONDS": FloatEnvSpec("model_idle_timeout_seconds", 0.0),
     "ANGEVOICE_IDLE_CHECK_INTERVAL": FloatEnvSpec("model_idle_check_interval", 5.0),
     "ANGEVOICE_RESTART_AFTER_IDLE_UNLOAD_DELAY_SECONDS": FloatEnvSpec("restart_after_idle_unload_delay_seconds", 0.0, 3600.0),
@@ -235,7 +247,11 @@ BOOL_ENV: dict[str, str] = {
     "ZIPVOICE_AUTO_FALLBACK_CPU": "zipvoice_auto_fallback_cpu",
     "KOKORO_TRUST_PROXY_HEADERS": "trust_proxy_headers",
     "KOKORO_PUBLIC_STATUS_ENDPOINTS": "public_status_endpoints",
-    "ANGEVOICE_UPDATE_CHECK_ENABLED": "update_check_enabled",
+    **{
+        declaration.env_name: declaration.attr
+        for declaration in UPDATE_CHECK_ENV_DECLARATIONS
+        if declaration.family == "bool"
+    },
     "ANGEVOICE_RESTART_AFTER_IDLE_UNLOAD": "restart_after_idle_unload_enabled",
 }
 

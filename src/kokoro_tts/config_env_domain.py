@@ -6,6 +6,7 @@ import logging
 import os
 from collections.abc import Callable
 from dataclasses import dataclass
+from typing import Literal
 
 
 @dataclass(frozen=True, slots=True)
@@ -57,9 +58,46 @@ def parse_int_env(
         return default
 
 
+@dataclass(frozen=True, slots=True)
+class UpdateCheckEnvDeclaration:
+    """A stable Update Check ENV mapping without defaults or behavior."""
+
+    env_name: str
+    attr: str
+    family: Literal["str", "float", "bool"]
+    min_value: float | None = None
+    max_value: float | None = None
+
+
+UPDATE_CHECK_ENV_DECLARATIONS = (
+    UpdateCheckEnvDeclaration(
+        "ANGEVOICE_UPDATE_CHECK_ENABLED", "update_check_enabled", "bool"
+    ),
+    UpdateCheckEnvDeclaration(
+        "ANGEVOICE_UPDATE_REPOSITORY", "update_repository", "str"
+    ),
+    UpdateCheckEnvDeclaration(
+        "ANGEVOICE_UPDATE_CHECK_TIMEOUT_SECONDS",
+        "update_check_timeout_seconds",
+        "float",
+        0.2,
+        10.0,
+    ),
+    UpdateCheckEnvDeclaration(
+        "ANGEVOICE_UPDATE_CHECK_CACHE_SECONDS",
+        "update_check_cache_seconds",
+        "float",
+        0.0,
+        604800.0,
+    ),
+)
+
+
 __all__ = [
     "BATCH_INT_DECLARATIONS",
     "CACHE_INT_DECLARATIONS",
     "EnvIntDeclaration",
     "parse_int_env",
+    "UPDATE_CHECK_ENV_DECLARATIONS",
+    "UpdateCheckEnvDeclaration",
 ]

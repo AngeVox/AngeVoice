@@ -12,6 +12,7 @@ from typing import Optional
 
 from . import __version__
 from .config import TTSConfig, load_config
+from .config_env_domain import UPDATE_CHECK_ENV_DECLARATIONS
 from .banner import format_startup_banner
 from .engine import TTSEngine
 from .engine_manager import EngineManager
@@ -88,10 +89,10 @@ _WORKER_ENV_EXPORTS = {
     "ANGEVOICE_SAVE_OUTPUTS": "save_outputs",
     "ANGEVOICE_OUTPUT_MAX_FILES": "output_max_files",
     "ANGEVOICE_RUNTIME_CONFIG_FILE": "runtime_config_file",
-    "ANGEVOICE_UPDATE_CHECK_ENABLED": "update_check_enabled",
-    "ANGEVOICE_UPDATE_REPOSITORY": "update_repository",
-    "ANGEVOICE_UPDATE_CHECK_TIMEOUT_SECONDS": "update_check_timeout_seconds",
-    "ANGEVOICE_UPDATE_CHECK_CACHE_SECONDS": "update_check_cache_seconds",
+    **{
+        declaration.env_name: declaration.attr
+        for declaration in UPDATE_CHECK_ENV_DECLARATIONS
+    },
     "ANGEVOICE_CREDENTIALS_DIR": "credentials_dir",
     "ANGEVOICE_ADMIN_CREDENTIALS_FILE": "admin_credentials_file",
     "ANGEVOICE_MODEL_SOURCE": "model_source",

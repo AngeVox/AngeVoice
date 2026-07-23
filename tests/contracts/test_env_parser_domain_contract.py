@@ -1,4 +1,4 @@
-"""Contracts for the first declaration-backed CACHE integer parser seam."""
+"""Contracts for ENV declarations and the compatibility integer parser seam."""
 
 from __future__ import annotations
 
@@ -16,6 +16,8 @@ from kokoro_tts.config_env_domain import (
     BATCH_INT_DECLARATIONS,
     CACHE_INT_DECLARATIONS,
     EnvIntDeclaration,
+    UPDATE_CHECK_ENV_DECLARATIONS,
+    UpdateCheckEnvDeclaration,
 )
 
 
@@ -42,6 +44,25 @@ EXPECTED_CACHE_DECLARATIONS = (
 EXPECTED_BATCH_DECLARATIONS = (
     ("KOKORO_BATCH_MAX_ITEMS", "batch_max_items", 1, None),
     ("KOKORO_BATCH_CONCURRENCY", "batch_concurrency", 1, None),
+)
+
+EXPECTED_UPDATE_CHECK_DECLARATIONS = (
+    ("ANGEVOICE_UPDATE_CHECK_ENABLED", "update_check_enabled", "bool", None, None),
+    ("ANGEVOICE_UPDATE_REPOSITORY", "update_repository", "str", None, None),
+    (
+        "ANGEVOICE_UPDATE_CHECK_TIMEOUT_SECONDS",
+        "update_check_timeout_seconds",
+        "float",
+        0.2,
+        10.0,
+    ),
+    (
+        "ANGEVOICE_UPDATE_CHECK_CACHE_SECONDS",
+        "update_check_cache_seconds",
+        "float",
+        0.0,
+        604800.0,
+    ),
 )
 
 
@@ -87,6 +108,8 @@ def test_batch_integer_declarations_are_frozen_exact_and_exported() -> None:
         "CACHE_INT_DECLARATIONS",
         "EnvIntDeclaration",
         "parse_int_env",
+        "UPDATE_CHECK_ENV_DECLARATIONS",
+        "UpdateCheckEnvDeclaration",
     ]
     with pytest.raises(dataclasses.FrozenInstanceError):
         BATCH_INT_DECLARATIONS[0].min_value = 2
@@ -110,6 +133,7 @@ def test_domain_module_has_no_forbidden_runtime_dependencies() -> None:
     } == {
         ("collections.abc", ("Callable",)),
         ("dataclasses", ("dataclass",)),
+        ("typing", ("Literal",)),
     }
     imported_modules = {
         node.module
@@ -122,7 +146,10 @@ def test_domain_module_has_no_forbidden_runtime_dependencies() -> None:
     assert not any(
         token in module.lower()
         for module in imported_modules
-        for token in ("kokoro_tts", "config", "admin", "model_sources", "loader", "route", "engine")
+        for token in (
+            "kokoro_tts", "config", "admin", "model_sources", "loader", "route", "engine",
+            "server", "update_checker", "urllib", "http",
+        )
     )
     called_names = {
         node.func.id
@@ -131,23 +158,44 @@ def test_domain_module_has_no_forbidden_runtime_dependencies() -> None:
     }
     assert "clamp" not in called_names
     assert not {"Path", "urlopen", "load_runtime_config"} & called_names
-    declarations = [
-        node
+    declarations = {
+        target.id
         for node in tree.body
         if isinstance(node, ast.Assign)
-        and any(
-            isinstance(target, ast.Name)
-            and target.id in {"CACHE_INT_DECLARATIONS", "BATCH_INT_DECLARATIONS"}
-            for target in node.targets
-        )
-    ]
-    assert len(declarations) == 2
-    assert not any(
-        isinstance(node, ast.Name)
-        and node.id.endswith("_DECLARATIONS")
-        and node.id not in {"CACHE_INT_DECLARATIONS", "BATCH_INT_DECLARATIONS"}
-        for node in ast.walk(tree)
+        for target in node.targets
+        if isinstance(target, ast.Name) and target.id.endswith("_DECLARATIONS")
+    }
+    assert declarations == {
+        "CACHE_INT_DECLARATIONS",
+        "BATCH_INT_DECLARATIONS",
+        "UPDATE_CHECK_ENV_DECLARATIONS",
+    }
+
+
+def test_update_check_declarations_are_frozen_exact_and_behavior_free() -> None:
+    assert dataclasses.is_dataclass(UpdateCheckEnvDeclaration)
+    assert UpdateCheckEnvDeclaration.__dataclass_params__.frozen is True
+    assert hasattr(UpdateCheckEnvDeclaration, "__slots__")
+    assert isinstance(UPDATE_CHECK_ENV_DECLARATIONS, tuple)
+    assert tuple(
+        (item.env_name, item.attr, item.family, item.min_value, item.max_value)
+        for item in UPDATE_CHECK_ENV_DECLARATIONS
+    ) == EXPECTED_UPDATE_CHECK_DECLARATIONS
+    assert {item.family for item in UPDATE_CHECK_ENV_DECLARATIONS} == {"str", "float", "bool"}
+    assert all(
+        (item.min_value, item.max_value) == (None, None)
+        for item in UPDATE_CHECK_ENV_DECLARATIONS
+        if item.family in {"str", "bool"}
     )
+    assert {item.attr for item in UPDATE_CHECK_ENV_DECLARATIONS} <= {
+        field.name for field in dataclasses.fields(TTSConfig)
+    }
+    with pytest.raises(dataclasses.FrozenInstanceError):
+        UPDATE_CHECK_ENV_DECLARATIONS[0].family = "str"
+
+    field_names = {field.name for field in dataclasses.fields(UpdateCheckEnvDeclaration)}
+    assert field_names == {"env_name", "attr", "family", "min_value", "max_value"}
+    assert not {"default", "parser", "serializer", "worker_export"} & field_names
 
 
 def test_parse_int_env_preserves_missing_and_integer_input_behavior(
@@ -189,6 +237,7 @@ def test_legacy_wrapper_signature_and_delegation(monkeypatch) -> None:
         in {inspect.Parameter.VAR_POSITIONAL, inspect.Parameter.VAR_KEYWORD}
         for parameter in parameters
     )
+
     seen = {}
 
     def fake_parser(name, default, *, warning_sink):
@@ -202,7 +251,6 @@ def test_legacy_wrapper_signature_and_delegation(monkeypatch) -> None:
         "default": 13,
         "logger_name": "kokoro_tts.config_env",
     }
-
 
 
 def test_legacy_wrapper_invalid_value_keeps_config_env_logger(monkeypatch, caplog) -> None:

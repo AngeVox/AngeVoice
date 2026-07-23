@@ -32,6 +32,78 @@ BATCH_INT_ENV_NAMES = (
     "KOKORO_BATCH_MAX_ITEMS",
     "KOKORO_BATCH_CONCURRENCY",
 )
+UPDATE_CHECK_ENV_NAMES = (
+    "ANGEVOICE_UPDATE_CHECK_ENABLED",
+    "ANGEVOICE_UPDATE_REPOSITORY",
+    "ANGEVOICE_UPDATE_CHECK_TIMEOUT_SECONDS",
+    "ANGEVOICE_UPDATE_CHECK_CACHE_SECONDS",
+)
+UPDATE_CHECK_DECLARATIONS = (
+    ("ANGEVOICE_UPDATE_CHECK_ENABLED", "update_check_enabled", "bool", None, None),
+    ("ANGEVOICE_UPDATE_REPOSITORY", "update_repository", "str", None, None),
+    (
+        "ANGEVOICE_UPDATE_CHECK_TIMEOUT_SECONDS",
+        "update_check_timeout_seconds",
+        "float",
+        0.2,
+        10.0,
+    ),
+    (
+        "ANGEVOICE_UPDATE_CHECK_CACHE_SECONDS",
+        "update_check_cache_seconds",
+        "float",
+        0.0,
+        604800.0,
+    ),
+)
+STR_ENV_KEY_ORDER = (
+    "KOKORO_HOST", "KOKORO_DEVICE", "ANGEVOICE_DEPLOYMENT_PROFILE", "KOKORO_DEFAULT_VOICE",
+    "KOKORO_STREAM_FORMAT", "KOKORO_MP3_BITRATE", "ANGEVOICE_AUDIO_MP3_BITRATE",
+    "ANGEVOICE_AUDIO_OPUS_BITRATE", "ANGEVOICE_AUDIO_AAC_BITRATE", "ANGEVOICE_FFMPEG_BINARY",
+    "ANGEVOICE_DEFAULT_MODEL", "ANGEVOICE_STARTUP_PRELOAD_MODEL", "ANGEVOICE_OUTPUT_DIR",
+    "ANGEVOICE_RUNTIME_CONFIG_FILE", "ANGEVOICE_UPDATE_REPOSITORY", "ANGEVOICE_CREDENTIALS_DIR",
+    "ANGEVOICE_ADMIN_CREDENTIALS_FILE", "ANGEVOICE_MODEL_SOURCE", "ANGEVOICE_MODEL_SOURCE_DETECT_URL",
+    "ANGEVOICE_MODEL_SOURCE_PROBE_HF_URL", "ANGEVOICE_MODEL_SOURCE_PROBE_MODELSCOPE_URL",
+    "ANGEVOICE_API_KEY_FILE", "ANGEVOICE_SINGLE_NEWLINE_POLICY", "ANGEVOICE_TN_ENGINE",
+    "KOKORO_HF_REPO", "KOKORO_MODELSCOPE_REPO", "MOSS_MODELSCOPE_REPO", "MOSS_HF_REPO",
+    "MOSS_AUDIO_TOKENIZER_MODELSCOPE_REPO", "MOSS_AUDIO_TOKENIZER_HF_REPO", "MOSS_EXECUTION_PROVIDER",
+    "ZIPVOICE_EXECUTION_PROVIDER", "MOSS_DEFAULT_VOICE", "MOSS_SAMPLE_MODE",
+    "MOSS_PROCESS_ISOLATION_PROVIDERS", "MOSS_APPLY_ANGEVOICE_RULES", "MOSS_MIXED_ENGLISH_POLICY",
+)
+FLOAT_ENV_KEY_ORDER = (
+    "KOKORO_DEFAULT_SPEED", "KOKORO_REQUEST_TIMEOUT_SECONDS", "ANGEVOICE_WEBSOCKET_STREAM_IDLE_TIMEOUT_SECONDS",
+    "KOKORO_STREAM_CHUNK_SECONDS", "KOKORO_STREAM_PREBUFFER_SECONDS", "ANGEVOICE_MODEL_SWITCH_TIMEOUT_SECONDS",
+    "MOSS_PROMPT_AUDIO_MAX_SECONDS", "ZIPVOICE_PROMPT_AUDIO_MAX_SECONDS", "ZIPVOICE_GUIDANCE_SCALE",
+    "ZIPVOICE_T_SHIFT", "ZIPVOICE_TARGET_RMS", "ZIPVOICE_FEAT_SCALE", "ZIPVOICE_CUDA_MAX_DURATION",
+    "MOSS_STREAM_CHUNK_SECONDS", "MOSS_STREAM_PREBUFFER_SECONDS", "MOSS_MAX_CLIP_RATIO",
+    "MOSS_OUTPUT_TARGET_PEAK", "MOSS_OUTPUT_GAIN", "KOKORO_RATE_LIMIT_QPS",
+    "MOSS_STREAM_BUDGET_THRESHOLD_LOW", "MOSS_STREAM_BUDGET_THRESHOLD_MID", "MOSS_STREAM_BUDGET_THRESHOLD_HIGH",
+    "MOSS_STREAM_CHUNK_MIN_FLOOR", "MOSS_PROCESS_KILL_GRACE_SECONDS", "ANGEVOICE_ENGINE_PROCESS_KILL_GRACE_SECONDS",
+    "ANGEVOICE_ENGINE_PROCESS_STREAM_DRAIN_SECONDS", "ANGEVOICE_ENGINE_PROCESS_STREAM_IDLE_TIMEOUT_SECONDS",
+    "ANGEVOICE_FFMPEG_TIMEOUT_SECONDS", "MOSS_OUTPUT_EDGE_FADE_MS", "MOSS_TRIM_SILENCE_DB",
+    "MOSS_MAX_SILENCE_MS", "MOSS_CROSSFADE_MS", "MOSS_SEGMENT_PAUSE_MS", "MOSS_RUNTIME_PAUSE_MAX_MS",
+    "MOSS_FULL_CODEC_OOM_COOLDOWN_SECONDS", "MOSS_VRAM_SNAPSHOT_TTL_SECONDS",
+    "ANGEVOICE_MODEL_SOURCE_DETECT_TIMEOUT_SECONDS", "ANGEVOICE_MODEL_SOURCE_PROBE_TIMEOUT_SECONDS",
+    "ANGEVOICE_UPDATE_CHECK_TIMEOUT_SECONDS", "ANGEVOICE_UPDATE_CHECK_CACHE_SECONDS",
+    "ANGEVOICE_IDLE_TIMEOUT_SECONDS", "ANGEVOICE_IDLE_CHECK_INTERVAL",
+    "ANGEVOICE_RESTART_AFTER_IDLE_UNLOAD_DELAY_SECONDS", "ANGEVOICE_RESTART_AFTER_IDLE_UNLOAD_COOLDOWN_SECONDS",
+)
+BOOL_ENV_KEY_ORDER = (
+    "KOKORO_STREAM_BINARY_ENABLED", "ANGEVOICE_ACCESS_LOG_ENABLED", "KOKORO_CACHE_ENABLED",
+    "KOKORO_QUEUE_STATUS_ENABLED", "KOKORO_METRICS_ENABLED", "KOKORO_BATCH_ENABLED",
+    "KOKORO_ADMIN_ENABLED", "KOKORO_VOICE_UPLOAD_ENABLED", "KOKORO_MP3_ENABLED",
+    "ANGEVOICE_FFMPEG_ENABLED", "ANGEVOICE_MODEL_SWITCH_ENABLED", "ANGEVOICE_MODEL_UNLOAD_ON_SWITCH",
+    "ANGEVOICE_SAVE_OUTPUTS", "ANGEVOICE_IDLE_UNLOAD_CURRENT", "KOKORO_PREFETCH_VOICES",
+    "MOSS_CUDA_ENABLED", "MOSS_ENABLE_WETEXT_PROCESSING", "MOSS_ENABLE_NORMALIZE_TTS_TEXT",
+    "MOSS_REALTIME_STREAMING_DECODE", "MOSS_CUDA_SELF_TEST_ENABLED", "MOSS_AUTO_FALLBACK_CPU",
+    "MOSS_QUALITY_GATE_ENABLED", "MOSS_OUTPUT_PEAK_NORMALIZE_ENABLED", "MOSS_PROCESS_ISOLATION_ENABLED",
+    "KOKORO_PROCESS_ISOLATION_ENABLED", "ZIPVOICE_PROCESS_ISOLATION_ENABLED", "ANGEVOICE_STARTUP_PRELOAD_ENABLED",
+    "MOSS_OUTPUT_DECLICK_ENABLED", "MOSS_AUDIO_POLISH_ENABLED", "MOSS_TRIM_SILENCE_ENABLED",
+    "MOSS_VRAM_GUARD_ENABLED", "MOSS_DISABLE_FULL_CODEC_AFTER_OOM", "ZIPVOICE_DOWNLOAD_ENABLED",
+    "ZIPVOICE_REMOVE_LONG_SIL", "ZIPVOICE_CUDA_ENABLED", "ZIPVOICE_AUTO_FALLBACK_CPU",
+    "KOKORO_TRUST_PROXY_HEADERS", "KOKORO_PUBLIC_STATUS_ENDPOINTS", "ANGEVOICE_UPDATE_CHECK_ENABLED",
+    "ANGEVOICE_RESTART_AFTER_IDLE_UNLOAD",
+)
 INT_ENV_KEY_ORDER = (
     "KOKORO_PORT",
     "KOKORO_WORKERS",
@@ -111,7 +183,130 @@ def test_mapping_tables_match_the_checked_in_surface() -> None:
         env: {"attr": spec.attr, "min": spec.min_value, "max": spec.max_value}
         for env, spec in sorted(config_env.FLOAT_ENV.items())
     } == SNAPSHOT["float_env"]
+    assert tuple(config_env.STR_ENV) == STR_ENV_KEY_ORDER
+    assert tuple(config_env.FLOAT_ENV) == FLOAT_ENV_KEY_ORDER
+    assert tuple(config_env.BOOL_ENV) == BOOL_ENV_KEY_ORDER
     assert tuple(config_env.INT_ENV) == INT_ENV_KEY_ORDER
+
+
+def test_update_check_declarations_project_exact_existing_maps_and_order() -> None:
+    declarations = config_env_domain.UPDATE_CHECK_ENV_DECLARATIONS
+    assert tuple(
+        (item.env_name, item.attr, item.family, item.min_value, item.max_value)
+        for item in declarations
+    ) == UPDATE_CHECK_DECLARATIONS
+
+    families = {
+        "str": config_env.STR_ENV,
+        "float": config_env.FLOAT_ENV,
+        "bool": config_env.BOOL_ENV,
+    }
+    for declaration in declarations:
+        mapping = families[declaration.family]
+        actual = mapping[declaration.env_name]
+        if declaration.family == "float":
+            assert actual == config_env.FloatEnvSpec(
+                declaration.attr, declaration.min_value, declaration.max_value
+            )
+        else:
+            assert actual == declaration.attr
+
+    assert tuple(name for name in config_env.STR_ENV if name in UPDATE_CHECK_ENV_NAMES) == (
+        "ANGEVOICE_UPDATE_REPOSITORY",
+    )
+    assert tuple(name for name in config_env.FLOAT_ENV if name in UPDATE_CHECK_ENV_NAMES) == (
+        "ANGEVOICE_UPDATE_CHECK_TIMEOUT_SECONDS",
+        "ANGEVOICE_UPDATE_CHECK_CACHE_SECONDS",
+    )
+    assert tuple(name for name in config_env.BOOL_ENV if name in UPDATE_CHECK_ENV_NAMES) == (
+        "ANGEVOICE_UPDATE_CHECK_ENABLED",
+    )
+
+    source_root = Path(config_env.__file__).parent
+    for relative in ("config_env.py", "server.py"):
+        source = (source_root / relative).read_text(encoding="utf-8")
+        assert "UPDATE_CHECK_ENV_DECLARATIONS" in source
+        assert not any(name in source for name in UPDATE_CHECK_ENV_NAMES)
+    domain_source = (source_root / "config_env_domain.py").read_text(encoding="utf-8")
+    assert all(domain_source.count(name) == 1 for name in UPDATE_CHECK_ENV_NAMES)
+
+
+def test_update_check_apply_env_keeps_bool_string_float_behavior(monkeypatch, tmp_path, caplog) -> None:
+    cfg = _cfg(tmp_path)
+    config_env.apply_env(cfg)
+    assert cfg.update_check_enabled is True
+    assert cfg.update_repository == "angevox/AngeVoice"
+    assert cfg.update_check_timeout_seconds == 3.0
+    assert cfg.update_check_cache_seconds == 21600.0
+
+    for raw in ("1", " true ", "YES", "On", "y"):
+        monkeypatch.setenv("ANGEVOICE_UPDATE_CHECK_ENABLED", raw)
+        caplog.clear()
+        config_env.apply_env(cfg)
+        assert cfg.update_check_enabled is True
+        assert caplog.records == []
+    for raw in ("", "false", "unknown"):
+        monkeypatch.setenv("ANGEVOICE_UPDATE_CHECK_ENABLED", raw)
+        caplog.clear()
+        config_env.apply_env(cfg)
+        assert cfg.update_check_enabled is False
+        assert caplog.records == []
+
+    for raw in (" owner/repository ", ""):
+        monkeypatch.setenv("ANGEVOICE_UPDATE_REPOSITORY", raw)
+        caplog.clear()
+        config_env.apply_env(cfg)
+        assert cfg.update_repository == raw
+        assert caplog.records == []
+
+    for env_name, attr, minimum, maximum, nan_result in (
+        ("ANGEVOICE_UPDATE_CHECK_TIMEOUT_SECONDS", "update_check_timeout_seconds", 0.2, 10.0, 0.2),
+        ("ANGEVOICE_UPDATE_CHECK_CACHE_SECONDS", "update_check_cache_seconds", 0.0, 604800.0, 0.0),
+    ):
+        monkeypatch.setenv(env_name, "7.5")
+        config_env.apply_env(cfg)
+        assert getattr(cfg, attr) == 7.5
+        for raw in ("nan", "inf", "-inf"):
+            monkeypatch.setenv(env_name, raw)
+            caplog.clear()
+            config_env.apply_env(cfg)
+            expected = {"nan": nan_result, "inf": maximum, "-inf": minimum}[raw]
+            assert getattr(cfg, attr) == expected
+            assert caplog.records == []
+        for raw in ("", "not-a-float"):
+            setattr(cfg, attr, 4.5)
+            monkeypatch.setenv(env_name, raw)
+            caplog.clear()
+            with caplog.at_level(logging.WARNING, logger="kokoro_tts.config_env"):
+                config_env.apply_env(cfg)
+            assert getattr(cfg, attr) == 4.5
+            records = [record for record in caplog.records if record.name == "kokoro_tts.config_env"]
+            assert len(records) == 1
+            assert records[0].msg == "忽略无效浮点环境变量 %s=%r"
+            assert records[0].args == (env_name, raw)
+        monkeypatch.setenv(env_name, str(minimum - 1))
+        config_env.apply_env(cfg)
+        assert getattr(cfg, attr) == minimum
+        monkeypatch.setenv(env_name, str(maximum + 1))
+        config_env.apply_env(cfg)
+        assert getattr(cfg, attr) == maximum
+
+
+def test_update_check_fields_remain_outside_admin_runtime_config(monkeypatch, tmp_path) -> None:
+    cfg = _cfg(tmp_path)
+    monkeypatch.setenv("ANGEVOICE_UPDATE_CHECK_ENABLED", "false")
+    monkeypatch.setenv("ANGEVOICE_UPDATE_REPOSITORY", "owner/repository")
+    config_env.apply_env(cfg)
+    runtime = tmp_path / "runtime-config.json"
+    runtime.write_bytes(
+        json.dumps(
+            {"values": {"update_check_enabled": True, "update_repository": "runtime/repository"}}
+        ).encode("utf-8")
+    )
+    cfg.runtime_config_file = runtime
+    load_runtime_config(cfg)
+    assert cfg.update_check_enabled is False
+    assert cfg.update_repository == "owner/repository"
 
 
 def test_all_mapping_attributes_are_ttsconfig_fields_and_env_names_are_unique() -> None:
