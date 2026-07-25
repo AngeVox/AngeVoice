@@ -513,7 +513,7 @@ def load_config(
     apply_env(config)
     load_runtime_config(config)
     if model_dir:
-        config.model_dir = Path(model_dir)
+        config.model_dir = Path(model_dir).expanduser()
     if device:
         config.device = device
     if host:

@@ -4,11 +4,11 @@ KNOWN LIMITATION 1: an explicit ``runtime_config_file`` override cannot choose
 the JSON file read during that same ``load_config`` call.
 KNOWN LIMITATION 2: named parameters use truthiness while ``**kwargs`` uses a
 non-``None`` check.
-KNOWN LIMITATION 3: a named ``model_dir`` override can bypass ``expanduser``.
 KNOWN LIMITATION 4: unknown keyword arguments are silently ignored.
 
 These contracts describe current compatibility behavior. Any future change needs
 separate authorization, explicit compatibility review, and a contract update.
+Named ``model_dir`` current-user shorthand is normalized with ``expanduser``.
 """
 
 from __future__ import annotations
@@ -34,7 +34,7 @@ def _write_runtime_config(path: Path, values: dict[str, object]) -> None:
 
 def _isolate_load_config_environment(monkeypatch, tmp_path: Path, runtime_path: Path) -> None:
     """Make facade tests independent from operator files and relevant ENV state."""
-    home = tmp_path / "home"
+    home = tmp_path / "fake-home"
     monkeypatch.setenv("HOME", str(home))
     monkeypatch.setenv("USERPROFILE", str(home))
     monkeypatch.setenv("ANGEVOICE_RUNTIME_CONFIG_FILE", str(runtime_path))
@@ -144,23 +144,53 @@ def test_named_port_override_uses_current_truthy_compatibility_rule(
     assert load_config(port=9000).port == 9000
 
 
-def test_explicit_path_overrides_keep_current_normalization_asymmetry(
+def test_explicit_path_overrides_normalize_named_model_dir_home(
     monkeypatch, tmp_path
 ) -> None:
-    """KNOWN LIMITATION: model_dir is converted before the later str expansion pass."""
+    """Freeze named model-dir expansion without changing other path semantics."""
     runtime = tmp_path / "runtime.json"
     _write_runtime_config(runtime, {})
     _isolate_load_config_environment(monkeypatch, tmp_path, runtime)
     _disable_validation(monkeypatch)
 
+    fake_home = tmp_path / "fake-home"
+    environment_model_dir = tmp_path / "models"
+    absolute_model_dir = tmp_path / "absolute-models"
     output_dir = load_config(output_dir="~/angevoice-p2c-output").output_dir
-    model_dir = load_config(model_dir="~/angevoice-p2c-model").model_dir
+    none_model_dir = load_config(model_dir=None).model_dir
+    empty_model_dir = load_config(model_dir="").model_dir
+    absolute_result = load_config(model_dir=str(absolute_model_dir)).model_dir
+    relative_result = load_config(model_dir="relative-models").model_dir
+    current_user_result = load_config(model_dir="~/models").model_dir
+    mapping_result = load_config(**{"model_dir": "~/models"}).model_dir
 
     assert isinstance(output_dir, Path)
-    assert output_dir == Path("~/angevoice-p2c-output").expanduser()
-    assert isinstance(model_dir, Path)
-    assert model_dir == Path("~/angevoice-p2c-model")
-    assert model_dir != Path("~/angevoice-p2c-model").expanduser()
+    assert output_dir == fake_home / "angevoice-p2c-output"
+    assert none_model_dir == environment_model_dir
+    assert empty_model_dir == environment_model_dir
+    assert absolute_result == absolute_model_dir
+    assert relative_result == Path("relative-models")
+    assert not relative_result.is_absolute()
+    assert current_user_result == fake_home / "models"
+    assert mapping_result == fake_home / "models"
+
+    original_expanduser = Path.expanduser
+    observed_paths: list[Path] = []
+    spy_target = Path("~/spy-models")
+    spy_result = tmp_path / "spy-expanded"
+
+    def expanduser_spy(path: Path) -> Path:
+        observed_paths.append(path)
+        if path == spy_target:
+            return spy_result
+        return original_expanduser(path)
+
+    monkeypatch.setattr(Path, "expanduser", expanduser_spy)
+
+    spy_config = load_config(model_dir=str(spy_target))
+
+    assert observed_paths.count(spy_target) == 1
+    assert spy_config.model_dir == spy_result
 
 
 def test_load_config_validates_after_explicit_overrides_and_path_normalization(
@@ -176,6 +206,7 @@ def test_load_config_validates_after_explicit_overrides_and_path_normalization(
     def validation_spy(config: TTSConfig) -> None:
         observed.update(
             cache_max_items=config.cache_max_items,
+            model_dir=config.model_dir,
             output_dir=config.output_dir,
             runtime_config_file=config.runtime_config_file,
         )
@@ -184,6 +215,7 @@ def test_load_config_validates_after_explicit_overrides_and_path_normalization(
 
     config = load_config(
         cache_max_items=91,
+        model_dir="~/validation-models",
         output_dir="~/angevoice-p2c-validation-output",
         runtime_config_file=str(runtime_b),
     )
@@ -191,6 +223,7 @@ def test_load_config_validates_after_explicit_overrides_and_path_normalization(
     assert config.cache_max_items == 91
     assert observed == {
         "cache_max_items": 91,
+        "model_dir": tmp_path / "fake-home" / "validation-models",
         "output_dir": Path("~/angevoice-p2c-validation-output").expanduser(),
         "runtime_config_file": runtime_b,
     }
