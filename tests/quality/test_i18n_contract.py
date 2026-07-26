@@ -896,7 +896,7 @@ def scan_admin_catalog_references(root: Path = PACKAGE_ROOT) -> I18nScanReport:
 
 
 def test_zh_and_en_catalogs_have_identical_keys_and_placeholders() -> None:
-    expected_counts = {"common": 15, "studio": 189, "admin": 186}
+    expected_counts = {"common": 15, "studio": 189, "admin": 201}
     for domain, expected in expected_counts.items():
         zh_domain = _domain_catalog(domain, "zh-cn")
         en_domain = _domain_catalog(domain, "en")
@@ -936,9 +936,28 @@ def test_current_static_and_javascript_translation_references_exist() -> None:
 def test_admin_catalog_keys_are_all_referenced_by_admin_production_sources() -> None:
     report = scan_admin_catalog_references()
     admin_keys = set(_domain_catalog("admin", "zh-cn"))
+    text_config_metadata_keys = {
+        "config.field.angevoice_tn_engine.label",
+        "config.field.angevoice_tn_engine.help",
+        "config.field.angevoice_tn_engine.choice.wetext",
+        "config.field.angevoice_tn_engine.choice.legacy",
+        "config.field.angevoice_tn_engine.choice.off",
+        "config.field.text_single_newline_policy.label",
+        "config.field.text_single_newline_policy.help",
+        "config.field.text_single_newline_policy.choice.auto",
+        "config.field.text_single_newline_policy.choice.preserve",
+        "config.field.text_single_newline_policy.choice.space",
+        "config.field.moss_apply_angevoice_rules.label",
+        "config.field.moss_apply_angevoice_rules.help",
+        "config.field.moss_apply_angevoice_rules.choice.auto",
+        "config.field.moss_apply_angevoice_rules.choice.true",
+        "config.field.moss_apply_angevoice_rules.choice.false",
+    }
     assert {"nav.config.text", "section.dictionary.title"} <= report.referenced
+    assert {key for key in admin_keys if key.startswith("config.field.")} == text_config_metadata_keys
+    assert text_config_metadata_keys <= report.referenced
     assert not report.errors, "\n".join(report.errors)
-    assert len(admin_keys) == len(report.referenced) == 186
+    assert len(admin_keys) == len(report.referenced) == 201
     assert admin_keys == report.referenced
 
 

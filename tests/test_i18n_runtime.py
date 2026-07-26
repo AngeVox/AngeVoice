@@ -353,8 +353,8 @@ def test_catalogs_are_frozen_side_effect_free_native_esm_modules() -> None:
     payload = json.loads(completed.stdout)
     assert payload["exportsOnlyMessages"] is True
     assert payload["allFrozen"] is True
-    assert payload["zhDomainCounts"][:3] == [15, 189, 186]
-    assert payload["enDomainCounts"][:3] == [15, 189, 186]
+    assert payload["zhDomainCounts"][:3] == [15, 189, 201]
+    assert payload["enDomainCounts"][:3] == [15, 189, 201]
     assert payload["zhDomainCounts"][3] == payload["enDomainCounts"][3]
     assert payload["zhCount"] == payload["enCount"] == sum(payload["zhDomainCounts"])
     assert payload["sameKeys"] is True

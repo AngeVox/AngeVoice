@@ -258,9 +258,92 @@ function renderRuntimeConfigNote(payload) {
   }
 }
 
+function localizeTextConfigField(field) {
+  if (field?.group !== 'text') return field;
+
+  let label;
+  let help;
+  let localizeChoice;
+  switch (field.key) {
+    case 'angevoice_tn_engine':
+      label = t('config.field.angevoice_tn_engine.label');
+      help = t('config.field.angevoice_tn_engine.help');
+      localizeChoice = choice => {
+        switch (choice.value) {
+          case 'wetext':
+            return t('config.field.angevoice_tn_engine.choice.wetext');
+          case 'legacy':
+            return t('config.field.angevoice_tn_engine.choice.legacy');
+          case 'off':
+            return t('config.field.angevoice_tn_engine.choice.off');
+          default:
+            return null;
+        }
+      };
+      break;
+    case 'text_single_newline_policy':
+      label = t('config.field.text_single_newline_policy.label');
+      help = t('config.field.text_single_newline_policy.help');
+      localizeChoice = choice => {
+        switch (choice.value) {
+          case 'auto':
+            return t('config.field.text_single_newline_policy.choice.auto');
+          case 'preserve':
+            return t('config.field.text_single_newline_policy.choice.preserve');
+          case 'space':
+            return t('config.field.text_single_newline_policy.choice.space');
+          default:
+            return null;
+        }
+      };
+      break;
+    case 'moss_apply_angevoice_rules':
+      label = t('config.field.moss_apply_angevoice_rules.label');
+      help = t('config.field.moss_apply_angevoice_rules.help');
+      localizeChoice = choice => {
+        switch (choice.value) {
+          case 'auto':
+            return t('config.field.moss_apply_angevoice_rules.choice.auto');
+          case 'true':
+            return t('config.field.moss_apply_angevoice_rules.choice.true');
+          case 'false':
+            return t('config.field.moss_apply_angevoice_rules.choice.false');
+          default:
+            return null;
+        }
+      };
+      break;
+    default:
+      return field;
+  }
+
+  const choices = Array.isArray(field.choices)
+    ? field.choices.map(choice => {
+      const localizedLabel = localizeChoice(choice);
+      return localizedLabel === null ? choice : { ...choice, label: localizedLabel };
+    })
+    : field.choices;
+  return { ...field, label, help, choices };
+}
+
+function localizedConfigPayload(payload) {
+  const fields = payload?.schema?.fields;
+  if (!Array.isArray(fields)) return payload;
+  const localizedFields = fields.map(localizeTextConfigField);
+  if (!localizedFields.some((field, index) => field !== fields[index])) return payload;
+  return {
+    ...payload,
+    schema: {
+      ...payload.schema,
+      fields: localizedFields,
+    },
+  };
+}
+
 function renderConfigForms(payload) {
   renderRuntimeConfigNote(payload);
-  const presentation = configPresentation(payload, activeGroup, currentAdminPresentationCopy());
+  const localizedPayload = localizedConfigPayload(payload);
+  const presentation = configPresentation(localizedPayload, activeGroup, currentAdminPresentationCopy());
   activeGroup = presentation.activeGroup;
   $('config-tabs').innerHTML = presentation.tabsHtml;
   $('config-form').innerHTML = presentation.standardHtml;

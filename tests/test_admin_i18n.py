@@ -1,12 +1,32 @@
 from __future__ import annotations
 
+import json
 from pathlib import Path
 import re
+import subprocess
 
 
 ROOT = Path(__file__).resolve().parents[1]
 ADMIN_HTML = ROOT / "src" / "kokoro_tts" / "templates" / "admin.html"
 ADMIN_JS = ROOT / "src" / "kokoro_tts" / "static" / "admin.js"
+
+TEXT_CONFIG_METADATA_KEYS = {
+    "config.field.angevoice_tn_engine.label",
+    "config.field.angevoice_tn_engine.help",
+    "config.field.angevoice_tn_engine.choice.wetext",
+    "config.field.angevoice_tn_engine.choice.legacy",
+    "config.field.angevoice_tn_engine.choice.off",
+    "config.field.text_single_newline_policy.label",
+    "config.field.text_single_newline_policy.help",
+    "config.field.text_single_newline_policy.choice.auto",
+    "config.field.text_single_newline_policy.choice.preserve",
+    "config.field.text_single_newline_policy.choice.space",
+    "config.field.moss_apply_angevoice_rules.label",
+    "config.field.moss_apply_angevoice_rules.help",
+    "config.field.moss_apply_angevoice_rules.choice.auto",
+    "config.field.moss_apply_angevoice_rules.choice.true",
+    "config.field.moss_apply_angevoice_rules.choice.false",
+}
 
 
 def test_b2a_template_localizes_only_authorized_static_action_nodes() -> None:
@@ -490,6 +510,136 @@ def test_b1b2_keeps_normal_refresh_and_group_switch_on_normal_config_rendering()
     assert "renderConfigFormsForLocale" not in refresh
     assert "renderConfigForms(lastConfigPayload);" in group_click
     assert "renderConfigFormsForLocale" not in group_click
+
+
+def test_text_config_metadata_overlay_uses_exact_static_keys_and_render_boundary() -> None:
+    source = ADMIN_JS.read_text(encoding="utf-8")
+    overlay = source[
+        source.index("function localizeTextConfigField")
+        : source.index("function renderConfigForms(")
+    ]
+    render = source[
+        source.index("function renderConfigForms(")
+        : source.index("function captureConfigFormUiState")
+    ]
+    listener = _locale_listener_body(source)
+
+    assert {
+        key
+        for key in TEXT_CONFIG_METADATA_KEYS
+        if overlay.count(f"t('{key}')") == 1
+    } == TEXT_CONFIG_METADATA_KEYS
+    assert len(re.findall(r"\bt\('config\.field\.[^']+'\)", overlay)) == 15
+    assert not re.search(r"\bt\s*\(\s*(?:`|[A-Za-z_$])", overlay)
+    assert "switch (field.key)" in overlay
+    assert set(re.findall(r"case '([^']+)':", overlay)) == {
+        "angevoice_tn_engine",
+        "wetext",
+        "legacy",
+        "off",
+        "text_single_newline_policy",
+        "auto",
+        "preserve",
+        "space",
+        "moss_apply_angevoice_rules",
+        "true",
+        "false",
+    }
+    assert "if (field?.group !== 'text') return field;" in overlay
+    assert "default:\n      return field;" in overlay
+    assert "renderRuntimeConfigNote(payload);" in render
+    assert "const localizedPayload = localizedConfigPayload(payload);" in render
+    assert "configPresentation(localizedPayload, activeGroup, currentAdminPresentationCopy())" in render
+    assert "configPresentation(payload," not in render
+    for forbidden in ("fetch(", "api(", "lastConfigPayload =", "payload.values =", "schema.groups"):
+        assert forbidden not in overlay
+    for forbidden in ("fetch(", "api(", "refresh(", "renderProfiles("):
+        assert forbidden not in listener
+
+
+def test_text_config_metadata_overlay_is_finite_nonmutating_and_value_preserving() -> None:
+    source = ADMIN_JS.read_text(encoding="utf-8")
+    overlay = source[
+        source.index("function localizeTextConfigField")
+        : source.index("function renderConfigForms(")
+    ]
+    script = f"""
+      const t = key => `translated:${{key}}`;
+      {overlay}
+      const unknownChoice = {{value: 'future', label: '未来值'}};
+      const payload = {{
+        values: {{angevoice_tn_engine: 'wetext'}},
+        runtime_config: {{exists: true, field_count: 1}},
+        schema: {{
+          groups: [{{key: 'text', label: '文本'}}],
+          profiles: [{{key: 'quality', label: '质量'}}],
+          fields: [
+            {{
+              key: 'angevoice_tn_engine',
+              group: 'text',
+              label: '默认文本处理',
+              help: '中文帮助',
+              choices: [
+                {{value: 'wetext', label: '标准'}},
+                {{value: 'legacy', label: '保守'}},
+                {{value: 'off', label: '关闭'}},
+                unknownChoice,
+              ],
+            }},
+            {{key: 'future_text_field', group: 'text', label: '未来字段'}},
+            {{key: 'other_field', group: 'security', label: '其他字段'}},
+          ],
+        }},
+      }};
+      const before = JSON.stringify(payload);
+      const localized = localizedConfigPayload(payload);
+      const withoutSchema = {{values: {{}}}};
+      console.log(JSON.stringify({{
+        originalUnchanged: JSON.stringify(payload) === before,
+        payloadCloned: localized !== payload,
+        schemaCloned: localized.schema !== payload.schema,
+        fieldsCloned: localized.schema.fields !== payload.schema.fields,
+        valuesPreserved: localized.values === payload.values,
+        groupsPreserved: localized.schema.groups === payload.schema.groups,
+        profilesPreserved: localized.schema.profiles === payload.schema.profiles,
+        knownFieldCloned: localized.schema.fields[0] !== payload.schema.fields[0],
+        unknownTextPreserved: localized.schema.fields[1] === payload.schema.fields[1],
+        nonTextPreserved: localized.schema.fields[2] === payload.schema.fields[2],
+        knownChoiceValues: localized.schema.fields[0].choices.map(choice => choice.value),
+        originalChoiceValues: payload.schema.fields[0].choices.map(choice => choice.value),
+        knownChoicesCloned: localized.schema.fields[0].choices.slice(0, 3).every(
+          (choice, index) => choice !== payload.schema.fields[0].choices[index]
+        ),
+        unknownChoicePreserved: localized.schema.fields[0].choices[3] === unknownChoice,
+        futureChoiceLabelPreserved: localized.schema.fields[0].choices[3].label,
+        missingSchemaPreserved: localizedConfigPayload(withoutSchema) === withoutSchema,
+      }}));
+    """
+    completed = subprocess.run(
+        ["node", "--input-type=module", "--eval", script],
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+    result = json.loads(completed.stdout)
+    assert result == {
+        "originalUnchanged": True,
+        "payloadCloned": True,
+        "schemaCloned": True,
+        "fieldsCloned": True,
+        "valuesPreserved": True,
+        "groupsPreserved": True,
+        "profilesPreserved": True,
+        "knownFieldCloned": True,
+        "unknownTextPreserved": True,
+        "nonTextPreserved": True,
+        "knownChoiceValues": ["wetext", "legacy", "off", "future"],
+        "originalChoiceValues": ["wetext", "legacy", "off", "future"],
+        "knownChoicesCloned": True,
+        "unknownChoicePreserved": True,
+        "futureChoiceLabelPreserved": "未来值",
+        "missingSchemaPreserved": True,
+    }
 
 
 def test_b1a_keeps_technical_identifiers_as_template_literals() -> None:
