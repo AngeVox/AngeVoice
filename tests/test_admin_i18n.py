@@ -141,9 +141,45 @@ def test_b2b_action_feedback_uses_static_translation_keys_without_changing_actio
     assert "t('confirm.repair_asset', { model: modelId })" in repair
     assert "JSON.stringify({force_unload: false})" in repair
     assert "if (!changed)" in save
-    assert save.index("if (!changed)") < save.index("else if ((result.rebuilt_models || []).length)") < save.index("else if (result.model_rebuild_required)")
-    for key in ("toast.config_unchanged", "toast.config_saved_rebuilt", "toast.config_saved_rebuild_pending", "toast.config_saved"):
+    assert (
+        save.index("if (!changed)")
+        < save.index("else if ((result.rebuilt_models || []).length)")
+        < save.index("else if (result.model_rebuild_required)")
+        < save.index("else if ((result.restart_required || []).length)")
+        < save.index("t('toast.config_saved', { count: changed })")
+    )
+    for key in (
+        "toast.config_unchanged",
+        "toast.config_saved_rebuilt",
+        "toast.config_saved_rebuild_pending",
+        "toast.config_saved_restart_required",
+        "toast.config_saved",
+    ):
         assert f"t('{key}'" in save
+    assert "(result.restart_required || []).length" in save
+    restart_fields = (
+        "max_concurrent_requests",
+        "startup_preload_enabled",
+        "startup_preload_model",
+        "rate_limit_qps",
+        "rate_limit_burst",
+        "max_queue_length",
+        "websocket_max_connections",
+        "websocket_max_message_bytes",
+        "trust_proxy_headers",
+        "moss_hf_repo",
+    )
+    assert not any(field in save for field in restart_fields)
+    locale_root = ROOT / "src" / "kokoro_tts" / "static" / "locale" / "admin"
+    for locale in ("zh-cn", "en"):
+        catalog = (locale_root / f"messages.{locale}.js").read_text(encoding="utf-8")
+        entry = re.search(
+            r"'toast\.config_saved_restart_required':\s*'(?P<message>[^']+)'",
+            catalog,
+        )
+        assert entry
+        assert catalog.count("'toast.config_saved_restart_required':") == 1
+        assert "{count}" in entry.group("message")
     assert "JSON.stringify({model: modelId, load: true, unload_previous: false})" in switch
     assert "toast(t('toast.action_failed', { message: err.message }), true);" in click
     assert not re.search(r"\bt\s*\(\s*(?!['\"])" , "\n".join((load, switch, unload, check, repair, save, profile, click)))

@@ -152,6 +152,7 @@ export const messages = Object.freeze({
     'toast.config_saved': 'Saved {count} configuration change(s)',
     'toast.config_saved_rebuilt': 'Saved {count} configuration change(s); MOSS rebuilt',
     'toast.config_saved_rebuild_pending': 'Saved {count} configuration change(s); busy models will rebuild later',
+    'toast.config_saved_restart_required': 'Saved {count} configuration change(s); restart the service for them to take effect',
     'toast.config_unchanged': 'No configuration changes',
     'toast.model_switched': 'Model switched',
     'toast.model_switching': 'Switching to {model}',

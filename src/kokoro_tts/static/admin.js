@@ -527,6 +527,8 @@ async function saveConfig() {
     toast(t('toast.config_saved_rebuilt', { count: changed }));
   } else if (result.model_rebuild_required) {
     toast(t('toast.config_saved_rebuild_pending', { count: changed }));
+  } else if ((result.restart_required || []).length) {
+    toast(t('toast.config_saved_restart_required', { count: changed }));
   } else {
     toast(t('toast.config_saved', { count: changed }));
   }

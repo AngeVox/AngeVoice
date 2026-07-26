@@ -896,7 +896,7 @@ def scan_admin_catalog_references(root: Path = PACKAGE_ROOT) -> I18nScanReport:
 
 
 def test_zh_and_en_catalogs_have_identical_keys_and_placeholders() -> None:
-    expected_counts = {"common": 15, "studio": 189, "admin": 185}
+    expected_counts = {"common": 15, "studio": 189, "admin": 186}
     for domain, expected in expected_counts.items():
         zh_domain = _domain_catalog(domain, "zh-cn")
         en_domain = _domain_catalog(domain, "en")
@@ -938,7 +938,7 @@ def test_admin_catalog_keys_are_all_referenced_by_admin_production_sources() -> 
     admin_keys = set(_domain_catalog("admin", "zh-cn"))
     assert {"nav.config.text", "section.dictionary.title"} <= report.referenced
     assert not report.errors, "\n".join(report.errors)
-    assert len(admin_keys) == len(report.referenced) == 185
+    assert len(admin_keys) == len(report.referenced) == 186
     assert admin_keys == report.referenced
 
 

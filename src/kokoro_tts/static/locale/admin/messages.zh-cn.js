@@ -152,6 +152,7 @@ export const messages = Object.freeze({
     'toast.config_saved': '已保存 {count} 项配置',
     'toast.config_saved_rebuilt': '已保存 {count} 项配置，MOSS 已重建',
     'toast.config_saved_rebuild_pending': '已保存 {count} 项配置，忙碌模型会稍后重建',
+    'toast.config_saved_restart_required': '已保存 {count} 项配置，重启服务后生效',
     'toast.config_unchanged': '配置没有变化',
     'toast.model_switched': '模型已切换',
     'toast.model_switching': '正在切换到 {model}',
