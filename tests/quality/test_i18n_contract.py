@@ -31,6 +31,154 @@ STUDIO_COPY_DEBT = Path(__file__).with_name("studio_copy_debt.json")
 ADMIN_COPY_DEBT = Path(__file__).with_name("admin_copy_debt.json")
 JS_STRING = re.compile(r"(?P<quote>['\"`])(?P<body>(?:\\.|(?!\1).)*?)(?P=quote)")
 HAN = re.compile(r"[\u3400-\u9fff]")
+REMAINING_ADMIN_METADATA_KEYS = frozenset(
+    """
+    config.field.default_speed.label
+    config.field.default_speed.help
+    config.field.segment_length.label
+    config.field.segment_length.help
+    config.field.moss_segment_length.label
+    config.field.moss_segment_length.help
+    config.field.moss_voice_clone_max_text_tokens.label
+    config.field.moss_max_new_frames.label
+    config.field.moss_max_silence_ms.label
+    config.field.moss_max_silence_ms.help
+    config.field.moss_crossfade_ms.label
+    config.field.moss_segment_pause_ms.label
+    config.field.moss_runtime_pause_max_ms.label
+    config.field.moss_output_target_peak.label
+    config.field.moss_output_gain.label
+    config.field.moss_audio_polish_enabled.label
+    config.field.moss_trim_silence_enabled.label
+    config.field.moss_mixed_english_policy.label
+    config.field.moss_mixed_english_policy.help
+    config.field.moss_mixed_english_policy.choice.translate
+    config.field.moss_mixed_english_policy.choice.preserve
+    config.field.moss_mixed_english_policy.choice.spell
+    config.field.moss_realtime_streaming_decode.label
+    config.field.moss_realtime_streaming_decode.help
+    config.field.stream_chunk_seconds.label
+    config.field.stream_prebuffer_seconds.label
+    config.field.kokoro_process_isolation_enabled.label
+    config.field.kokoro_process_isolation_enabled.help
+    config.field.moss_stream_chunk_seconds.label
+    config.field.moss_stream_prebuffer_seconds.label
+    config.field.moss_stream_prebuffer_seconds.help
+    config.field.moss_stream_queue_max_items.label
+    config.field.max_concurrent_requests.label
+    config.field.request_timeout_seconds.label
+    config.field.model_idle_timeout_seconds.label
+    config.field.model_idle_check_interval.label
+    config.field.model_idle_unload_current.label
+    config.field.restart_after_idle_unload_enabled.label
+    config.field.restart_after_idle_unload_enabled.help
+    config.field.restart_after_idle_unload_delay_seconds.label
+    config.field.restart_after_idle_unload_delay_seconds.help
+    config.field.restart_after_idle_unload_cooldown_seconds.label
+    config.field.restart_after_idle_unload_cooldown_seconds.help
+    config.field.restart_after_idle_unload_exit_code.label
+    config.field.restart_after_idle_unload_exit_code.help
+    config.field.startup_preload_enabled.label
+    config.field.startup_preload_enabled.help
+    config.field.startup_preload_model.label
+    config.field.startup_preload_model.help
+    config.field.startup_preload_model.choice.kokoro
+    config.field.startup_preload_model.choice.moss
+    config.field.startup_preload_model.choice.zipvoice
+    config.field.engine_process_kill_grace_seconds.label
+    config.field.engine_process_kill_grace_seconds.help
+    config.field.cache_max_items.label
+    config.field.cache_max_bytes.label
+    config.field.cache_max_bytes.help
+    config.field.cache_skip_text_over_chars.label
+    config.field.cache_skip_text_over_chars.help
+    config.field.cache_skip_audio_over_bytes.label
+    config.field.cache_skip_audio_over_bytes.help
+    config.field.save_outputs.label
+    config.field.ffmpeg_enabled.label
+    config.field.ffmpeg_enabled.help
+    config.field.ffmpeg_binary.label
+    config.field.ffmpeg_binary.help
+    config.field.mp3_bitrate.label
+    config.field.mp3_bitrate.help
+    config.field.audio_opus_bitrate.label
+    config.field.audio_opus_bitrate.help
+    config.field.audio_aac_bitrate.label
+    config.field.audio_aac_bitrate.help
+    config.field.ffmpeg_timeout_seconds.label
+    config.field.output_max_files.label
+    config.field.moss_vram_guard_enabled.label
+    config.field.moss_vram_guard_enabled.help
+    config.field.moss_vram_safe_free_mb.label
+    config.field.moss_vram_critical_free_mb.label
+    config.field.moss_low_vram_segment_length.label
+    config.field.moss_low_vram_max_new_frames.label
+    config.field.moss_low_vram_text_tokens.label
+    config.field.moss_disable_full_codec_after_oom.label
+    config.field.moss_full_codec_oom_cooldown_seconds.label
+    config.field.moss_vram_snapshot_ttl_seconds.label
+    config.field.moss_vram_snapshot_ttl_seconds.help
+    config.field.rate_limit_qps.label
+    config.field.rate_limit_burst.label
+    config.field.max_queue_length.label
+    config.field.websocket_max_connections.label
+    config.field.websocket_max_connections.help
+    config.field.websocket_max_message_bytes.label
+    config.field.websocket_max_message_bytes.help
+    config.field.trust_proxy_headers.label
+    config.field.public_status_endpoints.label
+    config.field.model_source.label
+    config.field.model_source.choice.auto
+    config.field.model_source.choice.modelscope
+    config.field.model_source.choice.huggingface
+    config.field.model_source.choice.offline
+    config.field.moss_hf_repo.label
+    config.field.moss_hf_repo.help
+    config.field.moss_prompt_audio_max_seconds.label
+    config.field.moss_output_peak_normalize_enabled.label
+    config.field.moss_output_declick_enabled.label
+    config.field.moss_output_edge_fade_ms.label
+    config.field.moss_trim_silence_db.label
+    config.field.moss_quality_gate_enabled.label
+    config.field.moss_process_isolation_enabled.label
+    config.field.moss_process_isolation_enabled.help
+    config.field.zipvoice_process_isolation_enabled.label
+    config.field.zipvoice_process_isolation_enabled.help
+    config.field.zipvoice_num_steps.label
+    config.field.zipvoice_num_steps.help
+    config.field.zipvoice_prompt_audio_max_seconds.label
+    config.field.zipvoice_prompt_audio_max_seconds.help
+    config.field.zipvoice_remove_long_sil.label
+    config.field.zipvoice_remove_long_sil.help
+    config.field.zipvoice_guidance_scale.label
+    config.field.zipvoice_t_shift.label
+    config.field.zipvoice_target_rms.label
+    config.field.zipvoice_feat_scale.label
+    config.group.kokoro.label
+    config.group.moss.label
+    config.group.zipvoice.label
+    config.group.text.label
+    config.group.service.label
+    config.group.audio.label
+    config.group.security.label
+    config.profile.deploy_lan_default.label
+    config.profile.deploy_lan_default.description
+    config.profile.deploy_public_hardened.label
+    config.profile.deploy_public_hardened.description
+    config.profile.nas_stable.label
+    config.profile.nas_stable.description
+    config.profile.nas_deep_sleep_cpu.label
+    config.profile.nas_deep_sleep_cpu.description
+    config.profile.balanced.label
+    config.profile.balanced.description
+    config.profile.long_narration.label
+    config.profile.long_narration.description
+    config.profile.low_latency.label
+    config.profile.low_latency.description
+    config.profile.clone_quality.label
+    config.profile.clone_quality.description
+    """.split()
+)
 
 
 @dataclass(frozen=True)
@@ -896,7 +1044,7 @@ def scan_admin_catalog_references(root: Path = PACKAGE_ROOT) -> I18nScanReport:
 
 
 def test_zh_and_en_catalogs_have_identical_keys_and_placeholders() -> None:
-    expected_counts = {"common": 15, "studio": 189, "admin": 201}
+    expected_counts = {"common": 15, "studio": 189, "admin": 345}
     for domain, expected in expected_counts.items():
         zh_domain = _domain_catalog(domain, "zh-cn")
         en_domain = _domain_catalog(domain, "en")
@@ -954,10 +1102,17 @@ def test_admin_catalog_keys_are_all_referenced_by_admin_production_sources() -> 
         "config.field.moss_apply_angevoice_rules.choice.false",
     }
     assert {"nav.config.text", "section.dictionary.title"} <= report.referenced
-    assert {key for key in admin_keys if key.startswith("config.field.")} == text_config_metadata_keys
+    metadata_keys = {
+        key
+        for key in admin_keys
+        if key.startswith(("config.field.", "config.group.", "config.profile."))
+    }
+    assert metadata_keys == text_config_metadata_keys | REMAINING_ADMIN_METADATA_KEYS
+    assert len(REMAINING_ADMIN_METADATA_KEYS) == 144
     assert text_config_metadata_keys <= report.referenced
+    assert REMAINING_ADMIN_METADATA_KEYS <= report.referenced
     assert not report.errors, "\n".join(report.errors)
-    assert len(admin_keys) == len(report.referenced) == 201
+    assert len(admin_keys) == len(report.referenced) == 345
     assert admin_keys == report.referenced
 
 

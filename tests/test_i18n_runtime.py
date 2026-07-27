@@ -353,8 +353,8 @@ def test_catalogs_are_frozen_side_effect_free_native_esm_modules() -> None:
     payload = json.loads(completed.stdout)
     assert payload["exportsOnlyMessages"] is True
     assert payload["allFrozen"] is True
-    assert payload["zhDomainCounts"][:3] == [15, 189, 201]
-    assert payload["enDomainCounts"][:3] == [15, 189, 201]
+    assert payload["zhDomainCounts"][:3] == [15, 189, 345]
+    assert payload["enDomainCounts"][:3] == [15, 189, 345]
     assert payload["zhDomainCounts"][3] == payload["enDomainCounts"][3]
     assert payload["zhCount"] == payload["enCount"] == sum(payload["zhDomainCounts"])
     assert payload["sameKeys"] is True
@@ -580,6 +580,7 @@ def test_admin_removes_lite_map_and_rerenders_safe_locale_dependent_regions() ->
         "renderQuality",
         "renderRequests",
         "renderConfigFormsForLocale",
+        "renderProfiles",
         "renderUpdate",
         "renderCredentialFeedback",
     ]
@@ -590,7 +591,6 @@ def test_admin_removes_lite_map_and_rerenders_safe_locale_dependent_regions() ->
             "api",
             "checkUpdate",
             "renderConfigForms",
-        "renderProfiles",
         "collectConfigValues",
     ):
         assert not re.search(rf"\b{forbidden}\s*\(", body)

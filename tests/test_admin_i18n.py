@@ -9,6 +9,30 @@ import subprocess
 ROOT = Path(__file__).resolve().parents[1]
 ADMIN_HTML = ROOT / "src" / "kokoro_tts" / "templates" / "admin.html"
 ADMIN_JS = ROOT / "src" / "kokoro_tts" / "static" / "admin.js"
+ADMIN_CSS = ROOT / "src" / "kokoro_tts" / "static" / "admin.css"
+ADMIN_EN_MESSAGES = ROOT / "src" / "kokoro_tts" / "static" / "locale" / "admin" / "messages.en.js"
+
+FINAL_METADATA_COPY_FIXUPS = {
+    "config.field.moss_segment_length.help": (
+        "The default is 120, trading a little throughput for more stable mixed Chinese-English "
+        "and long-text output. When more VRAM is available, you can switch to the long narration profile."
+    ),
+    "config.field.moss_realtime_streaming_decode.help": (
+        "Enabled by default to preserve the official MOSS frame-by-frame streaming experience. "
+        "You can disable it in Admin if a specific device exhibits boundary noise or VRAM pressure."
+    ),
+    "config.field.moss_process_isolation_enabled.help": (
+        "Keeping this enabled is recommended. If a timeout or low-level hang occurs, the isolated worker "
+        "can be terminated and recovered automatically instead of leaving the engine permanently blocked."
+    ),
+    "config.field.zipvoice_num_steps.help": (
+        "More steps may improve quality but increase latency. Starting with 8 is recommended on CPU/NAS; "
+        "GPU users can test 16."
+    ),
+    "config.profile.clone_quality.description": (
+        "Recommended for 16GB+ configurations. Time to first audio is slower, but cloning is more stable."
+    ),
+}
 
 TEXT_CONFIG_METADATA_KEYS = {
     "config.field.angevoice_tn_engine.label",
@@ -27,6 +51,242 @@ TEXT_CONFIG_METADATA_KEYS = {
     "config.field.moss_apply_angevoice_rules.choice.true",
     "config.field.moss_apply_angevoice_rules.choice.false",
 }
+
+REMAINING_ADMIN_METADATA_KEYS = frozenset(
+    """
+    config.field.default_speed.label
+    config.field.default_speed.help
+    config.field.segment_length.label
+    config.field.segment_length.help
+    config.field.moss_segment_length.label
+    config.field.moss_segment_length.help
+    config.field.moss_voice_clone_max_text_tokens.label
+    config.field.moss_max_new_frames.label
+    config.field.moss_max_silence_ms.label
+    config.field.moss_max_silence_ms.help
+    config.field.moss_crossfade_ms.label
+    config.field.moss_segment_pause_ms.label
+    config.field.moss_runtime_pause_max_ms.label
+    config.field.moss_output_target_peak.label
+    config.field.moss_output_gain.label
+    config.field.moss_audio_polish_enabled.label
+    config.field.moss_trim_silence_enabled.label
+    config.field.moss_mixed_english_policy.label
+    config.field.moss_mixed_english_policy.help
+    config.field.moss_mixed_english_policy.choice.translate
+    config.field.moss_mixed_english_policy.choice.preserve
+    config.field.moss_mixed_english_policy.choice.spell
+    config.field.moss_realtime_streaming_decode.label
+    config.field.moss_realtime_streaming_decode.help
+    config.field.stream_chunk_seconds.label
+    config.field.stream_prebuffer_seconds.label
+    config.field.kokoro_process_isolation_enabled.label
+    config.field.kokoro_process_isolation_enabled.help
+    config.field.moss_stream_chunk_seconds.label
+    config.field.moss_stream_prebuffer_seconds.label
+    config.field.moss_stream_prebuffer_seconds.help
+    config.field.moss_stream_queue_max_items.label
+    config.field.max_concurrent_requests.label
+    config.field.request_timeout_seconds.label
+    config.field.model_idle_timeout_seconds.label
+    config.field.model_idle_check_interval.label
+    config.field.model_idle_unload_current.label
+    config.field.restart_after_idle_unload_enabled.label
+    config.field.restart_after_idle_unload_enabled.help
+    config.field.restart_after_idle_unload_delay_seconds.label
+    config.field.restart_after_idle_unload_delay_seconds.help
+    config.field.restart_after_idle_unload_cooldown_seconds.label
+    config.field.restart_after_idle_unload_cooldown_seconds.help
+    config.field.restart_after_idle_unload_exit_code.label
+    config.field.restart_after_idle_unload_exit_code.help
+    config.field.startup_preload_enabled.label
+    config.field.startup_preload_enabled.help
+    config.field.startup_preload_model.label
+    config.field.startup_preload_model.help
+    config.field.startup_preload_model.choice.kokoro
+    config.field.startup_preload_model.choice.moss
+    config.field.startup_preload_model.choice.zipvoice
+    config.field.engine_process_kill_grace_seconds.label
+    config.field.engine_process_kill_grace_seconds.help
+    config.field.cache_max_items.label
+    config.field.cache_max_bytes.label
+    config.field.cache_max_bytes.help
+    config.field.cache_skip_text_over_chars.label
+    config.field.cache_skip_text_over_chars.help
+    config.field.cache_skip_audio_over_bytes.label
+    config.field.cache_skip_audio_over_bytes.help
+    config.field.save_outputs.label
+    config.field.ffmpeg_enabled.label
+    config.field.ffmpeg_enabled.help
+    config.field.ffmpeg_binary.label
+    config.field.ffmpeg_binary.help
+    config.field.mp3_bitrate.label
+    config.field.mp3_bitrate.help
+    config.field.audio_opus_bitrate.label
+    config.field.audio_opus_bitrate.help
+    config.field.audio_aac_bitrate.label
+    config.field.audio_aac_bitrate.help
+    config.field.ffmpeg_timeout_seconds.label
+    config.field.output_max_files.label
+    config.field.moss_vram_guard_enabled.label
+    config.field.moss_vram_guard_enabled.help
+    config.field.moss_vram_safe_free_mb.label
+    config.field.moss_vram_critical_free_mb.label
+    config.field.moss_low_vram_segment_length.label
+    config.field.moss_low_vram_max_new_frames.label
+    config.field.moss_low_vram_text_tokens.label
+    config.field.moss_disable_full_codec_after_oom.label
+    config.field.moss_full_codec_oom_cooldown_seconds.label
+    config.field.moss_vram_snapshot_ttl_seconds.label
+    config.field.moss_vram_snapshot_ttl_seconds.help
+    config.field.rate_limit_qps.label
+    config.field.rate_limit_burst.label
+    config.field.max_queue_length.label
+    config.field.websocket_max_connections.label
+    config.field.websocket_max_connections.help
+    config.field.websocket_max_message_bytes.label
+    config.field.websocket_max_message_bytes.help
+    config.field.trust_proxy_headers.label
+    config.field.public_status_endpoints.label
+    config.field.model_source.label
+    config.field.model_source.choice.auto
+    config.field.model_source.choice.modelscope
+    config.field.model_source.choice.huggingface
+    config.field.model_source.choice.offline
+    config.field.moss_hf_repo.label
+    config.field.moss_hf_repo.help
+    config.field.moss_prompt_audio_max_seconds.label
+    config.field.moss_output_peak_normalize_enabled.label
+    config.field.moss_output_declick_enabled.label
+    config.field.moss_output_edge_fade_ms.label
+    config.field.moss_trim_silence_db.label
+    config.field.moss_quality_gate_enabled.label
+    config.field.moss_process_isolation_enabled.label
+    config.field.moss_process_isolation_enabled.help
+    config.field.zipvoice_process_isolation_enabled.label
+    config.field.zipvoice_process_isolation_enabled.help
+    config.field.zipvoice_num_steps.label
+    config.field.zipvoice_num_steps.help
+    config.field.zipvoice_prompt_audio_max_seconds.label
+    config.field.zipvoice_prompt_audio_max_seconds.help
+    config.field.zipvoice_remove_long_sil.label
+    config.field.zipvoice_remove_long_sil.help
+    config.field.zipvoice_guidance_scale.label
+    config.field.zipvoice_t_shift.label
+    config.field.zipvoice_target_rms.label
+    config.field.zipvoice_feat_scale.label
+    config.group.kokoro.label
+    config.group.moss.label
+    config.group.zipvoice.label
+    config.group.text.label
+    config.group.service.label
+    config.group.audio.label
+    config.group.security.label
+    config.profile.deploy_lan_default.label
+    config.profile.deploy_lan_default.description
+    config.profile.deploy_public_hardened.label
+    config.profile.deploy_public_hardened.description
+    config.profile.nas_stable.label
+    config.profile.nas_stable.description
+    config.profile.nas_deep_sleep_cpu.label
+    config.profile.nas_deep_sleep_cpu.description
+    config.profile.balanced.label
+    config.profile.balanced.description
+    config.profile.long_narration.label
+    config.profile.long_narration.description
+    config.profile.low_latency.label
+    config.profile.low_latency.description
+    config.profile.clone_quality.label
+    config.profile.clone_quality.description
+    """.split()
+)
+
+REMAINING_ADMIN_FIELD_KEYS = frozenset(
+    """
+    default_speed
+    segment_length
+    moss_segment_length
+    moss_voice_clone_max_text_tokens
+    moss_max_new_frames
+    moss_max_silence_ms
+    moss_crossfade_ms
+    moss_segment_pause_ms
+    moss_runtime_pause_max_ms
+    moss_output_target_peak
+    moss_output_gain
+    moss_audio_polish_enabled
+    moss_trim_silence_enabled
+    moss_mixed_english_policy
+    moss_realtime_streaming_decode
+    stream_chunk_seconds
+    stream_prebuffer_seconds
+    kokoro_process_isolation_enabled
+    moss_stream_chunk_seconds
+    moss_stream_prebuffer_seconds
+    moss_stream_queue_max_items
+    max_concurrent_requests
+    request_timeout_seconds
+    model_idle_timeout_seconds
+    model_idle_check_interval
+    model_idle_unload_current
+    restart_after_idle_unload_enabled
+    restart_after_idle_unload_delay_seconds
+    restart_after_idle_unload_cooldown_seconds
+    restart_after_idle_unload_exit_code
+    startup_preload_enabled
+    startup_preload_model
+    engine_process_kill_grace_seconds
+    cache_max_items
+    cache_max_bytes
+    cache_skip_text_over_chars
+    cache_skip_audio_over_bytes
+    save_outputs
+    ffmpeg_enabled
+    ffmpeg_binary
+    mp3_bitrate
+    audio_opus_bitrate
+    audio_aac_bitrate
+    ffmpeg_timeout_seconds
+    output_max_files
+    moss_vram_guard_enabled
+    moss_vram_safe_free_mb
+    moss_vram_critical_free_mb
+    moss_low_vram_segment_length
+    moss_low_vram_max_new_frames
+    moss_low_vram_text_tokens
+    moss_disable_full_codec_after_oom
+    moss_full_codec_oom_cooldown_seconds
+    moss_vram_snapshot_ttl_seconds
+    rate_limit_qps
+    rate_limit_burst
+    max_queue_length
+    websocket_max_connections
+    websocket_max_message_bytes
+    trust_proxy_headers
+    public_status_endpoints
+    model_source
+    moss_hf_repo
+    moss_prompt_audio_max_seconds
+    moss_output_peak_normalize_enabled
+    moss_output_declick_enabled
+    moss_output_edge_fade_ms
+    moss_trim_silence_db
+    moss_quality_gate_enabled
+    moss_process_isolation_enabled
+    zipvoice_process_isolation_enabled
+    zipvoice_num_steps
+    zipvoice_prompt_audio_max_seconds
+    zipvoice_remove_long_sil
+    zipvoice_guidance_scale
+    zipvoice_t_shift
+    zipvoice_target_rms
+    zipvoice_feat_scale
+    """.split()
+)
+
+REMAINING_ADMIN_GROUP_KEYS = frozenset("kokoro moss zipvoice text service audio security".split())
+REMAINING_ADMIN_PROFILE_KEYS = frozenset("deploy_lan_default deploy_public_hardened nas_stable nas_deep_sleep_cpu balanced long_narration low_latency clone_quality".split())
+
 
 
 def test_b2a_template_localizes_only_authorized_static_action_nodes() -> None:
@@ -244,6 +504,7 @@ def test_b1b2_locale_listener_rerenders_only_safe_cached_regions() -> None:
         "renderQuality",
         "renderRequests",
         "renderConfigFormsForLocale",
+        "renderProfiles",
         "renderUpdate",
         "renderCredentialFeedback",
     ]
@@ -256,7 +517,6 @@ def test_b1b2_locale_listener_rerenders_only_safe_cached_regions() -> None:
         "fetch",
         "checkUpdate",
         "renderConfigForms",
-        "renderProfiles",
         "collectConfigValues",
     ):
         assert not re.search(rf"\b{forbidden}\s*\(", body)
@@ -438,13 +698,14 @@ def test_b3a_update_lifecycle_uses_raw_cached_data_and_static_translation_keys()
         "renderModels",
         "renderSecurity",
         "renderApiKeyStatusForLocale",
-        "renderQuality",
-        "renderRequests",
-        "renderConfigFormsForLocale",
-        "renderUpdate",
-        "renderCredentialFeedback",
-    ]
-    for forbidden in ("checkUpdate", "refresh", "api", "fetch", "renderProfiles", "collectConfigValues"):
+            "renderQuality",
+            "renderRequests",
+            "renderConfigFormsForLocale",
+            "renderProfiles",
+            "renderUpdate",
+            "renderCredentialFeedback",
+        ]
+    for forbidden in ("checkUpdate", "refresh", "api", "fetch", "collectConfigValues"):
         assert not re.search(rf"\b{forbidden}\s*\(", listener)
 
 
@@ -551,29 +812,114 @@ def test_text_config_metadata_overlay_uses_exact_static_keys_and_render_boundary
     assert "const localizedPayload = localizedConfigPayload(payload);" in render
     assert "configPresentation(localizedPayload, activeGroup, currentAdminPresentationCopy())" in render
     assert "configPresentation(payload," not in render
-    for forbidden in ("fetch(", "api(", "lastConfigPayload =", "payload.values =", "schema.groups"):
+    for forbidden in ("fetch(", "api(", "lastConfigPayload =", "payload.values ="):
         assert forbidden not in overlay
-    for forbidden in ("fetch(", "api(", "refresh(", "renderProfiles("):
+    for forbidden in ("fetch(", "api(", "refresh("):
+        assert forbidden not in listener
+
+
+def test_remaining_metadata_overlay_uses_exact_static_keys_and_scopes() -> None:
+    source = ADMIN_JS.read_text(encoding="utf-8")
+    copy_source = source[
+        source.index("function currentRemainingAdminMetadataCopy")
+        : source.index("function localizeTextConfigField")
+    ]
+    overlay = source[
+        source.index("function currentRemainingAdminMetadataCopy")
+        : source.index("function renderConfigForms(")
+    ]
+    references = re.findall(r"\bt\('([^']+)'\)", copy_source)
+    assert len(references) == len(set(references)) == 144
+    assert set(references) == REMAINING_ADMIN_METADATA_KEYS
+    assert not re.search(r"\bt\s*\(\s*(?:`|[A-Za-z_$])", overlay)
+
+    script = f"""
+      const t = key => key;
+      {copy_source}
+      const copy = currentRemainingAdminMetadataCopy();
+      console.log(JSON.stringify({{
+        fieldKeys: Object.keys(copy.fields),
+        groupKeys: Object.keys(copy.groups),
+        profileKeys: Object.keys(copy.profiles),
+      }}));
+    """
+    completed = subprocess.run(
+        ["node", "--input-type=module", "--eval", script],
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+    result = json.loads(completed.stdout)
+    assert set(result["fieldKeys"]) == REMAINING_ADMIN_FIELD_KEYS
+    assert set(result["groupKeys"]) == REMAINING_ADMIN_GROUP_KEYS
+    assert set(result["profileKeys"]) == REMAINING_ADMIN_PROFILE_KEYS
+    assert len(result["fieldKeys"]) == 78
+    assert len(result["groupKeys"]) == 7
+    assert len(result["profileKeys"]) == 8
+
+
+def test_remaining_metadata_overlay_is_used_for_forms_profiles_and_locale_rerender() -> None:
+    source = ADMIN_JS.read_text(encoding="utf-8")
+    forms = source[
+        source.index("function renderConfigForms(")
+        : source.index("function captureConfigFormUiState")
+    ]
+    profiles = source[
+        source.index("function renderProfiles(")
+        : source.index("function renderApiKeySummary")
+    ]
+    listener = _locale_listener_body(source)
+    assert "const localizedPayload = localizedConfigPayload(payload);" in forms
+    assert "configPresentation(localizedPayload, activeGroup, currentAdminPresentationCopy())" in forms
+    assert "const localizedPayload = localizedConfigPayload(payload);" in profiles
+    assert "profilesPresentation(localizedPayload)" in profiles
+    assert "renderConfigFormsForLocale(lastConfigPayload);" in listener
+    assert "renderProfiles(lastConfigPayload);" in listener
+    for forbidden in ("fetch(", "api(", "refresh(", "PATCH", "applyProfile("):
         assert forbidden not in listener
 
 
 def test_text_config_metadata_overlay_is_finite_nonmutating_and_value_preserving() -> None:
     source = ADMIN_JS.read_text(encoding="utf-8")
     overlay = source[
-        source.index("function localizeTextConfigField")
+        source.index("function currentRemainingAdminMetadataCopy")
         : source.index("function renderConfigForms(")
     ]
     script = f"""
       const t = key => `translated:${{key}}`;
       {overlay}
-      const unknownChoice = {{value: 'future', label: '未来值'}};
+      const unknownChoice = {{value: 'future', label: 'Future value', machine: {{stable: true}}}};
+      const textUnknownChoice = {{value: 'future-text', label: 'Future text value'}};
+      const profileValues = {{moss_segment_length: 160}};
       const payload = {{
-        values: {{angevoice_tn_engine: 'wetext'}},
+        values: {{model_source: 'auto', angevoice_tn_engine: 'wetext'}},
         runtime_config: {{exists: true, field_count: 1}},
         schema: {{
-          groups: [{{key: 'text', label: '文本'}}],
-          profiles: [{{key: 'quality', label: '质量'}}],
+          groups: [
+            {{key: 'service', label: '服务与存储', machine: {{order: 1}}}},
+            {{key: 'future-group', label: 'Future group'}},
+          ],
+          profiles: [
+            {{key: 'balanced', label: '均衡推荐', description: '中文描述', values: profileValues}},
+            {{key: 'future-profile', label: 'Future profile', values: {{future: true}}}},
+          ],
           fields: [
+            {{
+              key: 'model_source',
+              group: 'security',
+              label: '模型下载源',
+              help: 'Future-safe machine help',
+              type: 'choice',
+              default: 'auto',
+              restart: false,
+              choices: [
+                {{value: 'auto', label: '自动'}},
+                {{value: 'modelscope', label: 'ModelScope'}},
+                {{value: 'huggingface', label: 'Hugging Face'}},
+                {{value: 'offline', label: '离线'}},
+                unknownChoice,
+              ],
+            }},
             {{
               key: 'angevoice_tn_engine',
               group: 'text',
@@ -583,36 +929,55 @@ def test_text_config_metadata_overlay_is_finite_nonmutating_and_value_preserving
                 {{value: 'wetext', label: '标准'}},
                 {{value: 'legacy', label: '保守'}},
                 {{value: 'off', label: '关闭'}},
-                unknownChoice,
+                textUnknownChoice,
               ],
             }},
-            {{key: 'future_text_field', group: 'text', label: '未来字段'}},
-            {{key: 'other_field', group: 'security', label: '其他字段'}},
+            {{key: 'future_field', group: 'future', label: 'Future field'}},
           ],
         }},
       }};
       const before = JSON.stringify(payload);
       const localized = localizedConfigPayload(payload);
       const withoutSchema = {{values: {{}}}};
+      const futureOnly = {{
+        schema: {{
+          fields: [{{key: 'future_field'}}],
+          groups: [{{key: 'future-group'}}],
+          profiles: [{{key: 'future-profile'}}],
+        }},
+      }};
       console.log(JSON.stringify({{
         originalUnchanged: JSON.stringify(payload) === before,
         payloadCloned: localized !== payload,
         schemaCloned: localized.schema !== payload.schema,
         fieldsCloned: localized.schema.fields !== payload.schema.fields,
         valuesPreserved: localized.values === payload.values,
-        groupsPreserved: localized.schema.groups === payload.schema.groups,
-        profilesPreserved: localized.schema.profiles === payload.schema.profiles,
+        runtimeConfigPreserved: localized.runtime_config === payload.runtime_config,
+        groupsCloned: localized.schema.groups !== payload.schema.groups,
+        profilesCloned: localized.schema.profiles !== payload.schema.profiles,
         knownFieldCloned: localized.schema.fields[0] !== payload.schema.fields[0],
-        unknownTextPreserved: localized.schema.fields[1] === payload.schema.fields[1],
-        nonTextPreserved: localized.schema.fields[2] === payload.schema.fields[2],
+        knownTextFieldCloned: localized.schema.fields[1] !== payload.schema.fields[1],
+        unknownFieldPreserved: localized.schema.fields[2] === payload.schema.fields[2],
         knownChoiceValues: localized.schema.fields[0].choices.map(choice => choice.value),
         originalChoiceValues: payload.schema.fields[0].choices.map(choice => choice.value),
-        knownChoicesCloned: localized.schema.fields[0].choices.slice(0, 3).every(
+        knownChoicesCloned: localized.schema.fields[0].choices.slice(0, 4).every(
           (choice, index) => choice !== payload.schema.fields[0].choices[index]
         ),
-        unknownChoicePreserved: localized.schema.fields[0].choices[3] === unknownChoice,
-        futureChoiceLabelPreserved: localized.schema.fields[0].choices[3].label,
+        unknownChoicePreserved: localized.schema.fields[0].choices[4] === unknownChoice,
+        textUnknownChoicePreserved: localized.schema.fields[1].choices[3] === textUnknownChoice,
+        machineFieldMetadataPreserved:
+          localized.schema.fields[0].type === payload.schema.fields[0].type
+          && localized.schema.fields[0].default === payload.schema.fields[0].default
+          && localized.schema.fields[0].restart === payload.schema.fields[0].restart,
+        knownGroupCloned: localized.schema.groups[0] !== payload.schema.groups[0],
+        unknownGroupPreserved: localized.schema.groups[1] === payload.schema.groups[1],
+        groupMachineMetadataPreserved:
+          localized.schema.groups[0].machine === payload.schema.groups[0].machine,
+        knownProfileCloned: localized.schema.profiles[0] !== payload.schema.profiles[0],
+        unknownProfilePreserved: localized.schema.profiles[1] === payload.schema.profiles[1],
+        profileValuesPreserved: localized.schema.profiles[0].values === profileValues,
         missingSchemaPreserved: localizedConfigPayload(withoutSchema) === withoutSchema,
+        futureOnlyPreserved: localizedConfigPayload(futureOnly) === futureOnly,
       }}));
     """
     completed = subprocess.run(
@@ -628,17 +993,26 @@ def test_text_config_metadata_overlay_is_finite_nonmutating_and_value_preserving
         "schemaCloned": True,
         "fieldsCloned": True,
         "valuesPreserved": True,
-        "groupsPreserved": True,
-        "profilesPreserved": True,
+        "runtimeConfigPreserved": True,
+        "groupsCloned": True,
+        "profilesCloned": True,
         "knownFieldCloned": True,
-        "unknownTextPreserved": True,
-        "nonTextPreserved": True,
-        "knownChoiceValues": ["wetext", "legacy", "off", "future"],
-        "originalChoiceValues": ["wetext", "legacy", "off", "future"],
+        "knownTextFieldCloned": True,
+        "unknownFieldPreserved": True,
+        "knownChoiceValues": ["auto", "modelscope", "huggingface", "offline", "future"],
+        "originalChoiceValues": ["auto", "modelscope", "huggingface", "offline", "future"],
         "knownChoicesCloned": True,
         "unknownChoicePreserved": True,
-        "futureChoiceLabelPreserved": "未来值",
+        "textUnknownChoicePreserved": True,
+        "machineFieldMetadataPreserved": True,
+        "knownGroupCloned": True,
+        "unknownGroupPreserved": True,
+        "groupMachineMetadataPreserved": True,
+        "knownProfileCloned": True,
+        "unknownProfilePreserved": True,
+        "profileValuesPreserved": True,
         "missingSchemaPreserved": True,
+        "futureOnlyPreserved": True,
     }
 
 
@@ -646,3 +1020,37 @@ def test_b1a_keeps_technical_identifiers_as_template_literals() -> None:
     html = ADMIN_HTML.read_text(encoding="utf-8")
     for value in ("AngeVoice Studio", ">Studio<", ">API<", ">Admin<", "ENV Patch", "Raw State", "PBKDF2"):
         assert value in html
+
+
+def test_final_metadata_controls_are_contained_by_their_grid_cells() -> None:
+    css = ADMIN_CSS.read_text(encoding="utf-8")
+    match = re.search(
+        r"\.config-field input,\s*\.config-field select\s*\{(?P<body>[^}]*)\}",
+        css,
+    )
+    assert match is not None
+    declarations = {
+        name.strip(): value.strip()
+        for name, value in re.findall(r"([\w-]+)\s*:\s*([^;]+);", match.group("body"))
+    }
+    assert declarations["width"] == "100%"
+    assert declarations["min-width"] == "0"
+    assert declarations["max-width"] == "100%"
+    assert "overflow" not in declarations
+    assert "font-size" not in declarations
+
+
+def test_final_metadata_english_copy_fixups_are_exact() -> None:
+    catalog_url = ADMIN_EN_MESSAGES.resolve().as_uri()
+    script = f"""
+      const {{ messages }} = await import({json.dumps(catalog_url)});
+      const keys = {json.dumps(list(FINAL_METADATA_COPY_FIXUPS))};
+      console.log(JSON.stringify(Object.fromEntries(keys.map(key => [key, messages[key]]))));
+    """
+    completed = subprocess.run(
+        ["node", "--input-type=module", "--eval", script],
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+    assert json.loads(completed.stdout) == FINAL_METADATA_COPY_FIXUPS

@@ -258,6 +258,339 @@ function renderRuntimeConfigNote(payload) {
   }
 }
 
+function currentRemainingAdminMetadataCopy() {
+  return {
+    fields: {
+      default_speed: {
+        label: t('config.field.default_speed.label'),
+        help: t('config.field.default_speed.help'),
+      },
+      segment_length: {
+        label: t('config.field.segment_length.label'),
+        help: t('config.field.segment_length.help'),
+      },
+      moss_segment_length: {
+        label: t('config.field.moss_segment_length.label'),
+        help: t('config.field.moss_segment_length.help'),
+      },
+      moss_voice_clone_max_text_tokens: {
+        label: t('config.field.moss_voice_clone_max_text_tokens.label'),
+      },
+      moss_max_new_frames: {
+        label: t('config.field.moss_max_new_frames.label'),
+      },
+      moss_max_silence_ms: {
+        label: t('config.field.moss_max_silence_ms.label'),
+        help: t('config.field.moss_max_silence_ms.help'),
+      },
+      moss_crossfade_ms: {
+        label: t('config.field.moss_crossfade_ms.label'),
+      },
+      moss_segment_pause_ms: {
+        label: t('config.field.moss_segment_pause_ms.label'),
+      },
+      moss_runtime_pause_max_ms: {
+        label: t('config.field.moss_runtime_pause_max_ms.label'),
+      },
+      moss_output_target_peak: {
+        label: t('config.field.moss_output_target_peak.label'),
+      },
+      moss_output_gain: {
+        label: t('config.field.moss_output_gain.label'),
+      },
+      moss_audio_polish_enabled: {
+        label: t('config.field.moss_audio_polish_enabled.label'),
+      },
+      moss_trim_silence_enabled: {
+        label: t('config.field.moss_trim_silence_enabled.label'),
+      },
+      moss_mixed_english_policy: {
+        label: t('config.field.moss_mixed_english_policy.label'),
+        help: t('config.field.moss_mixed_english_policy.help'),
+        choices: {
+          translate: t('config.field.moss_mixed_english_policy.choice.translate'),
+          preserve: t('config.field.moss_mixed_english_policy.choice.preserve'),
+          spell: t('config.field.moss_mixed_english_policy.choice.spell'),
+        },
+      },
+      moss_realtime_streaming_decode: {
+        label: t('config.field.moss_realtime_streaming_decode.label'),
+        help: t('config.field.moss_realtime_streaming_decode.help'),
+      },
+      stream_chunk_seconds: {
+        label: t('config.field.stream_chunk_seconds.label'),
+      },
+      stream_prebuffer_seconds: {
+        label: t('config.field.stream_prebuffer_seconds.label'),
+      },
+      kokoro_process_isolation_enabled: {
+        label: t('config.field.kokoro_process_isolation_enabled.label'),
+        help: t('config.field.kokoro_process_isolation_enabled.help'),
+      },
+      moss_stream_chunk_seconds: {
+        label: t('config.field.moss_stream_chunk_seconds.label'),
+      },
+      moss_stream_prebuffer_seconds: {
+        label: t('config.field.moss_stream_prebuffer_seconds.label'),
+        help: t('config.field.moss_stream_prebuffer_seconds.help'),
+      },
+      moss_stream_queue_max_items: {
+        label: t('config.field.moss_stream_queue_max_items.label'),
+      },
+      max_concurrent_requests: {
+        label: t('config.field.max_concurrent_requests.label'),
+      },
+      request_timeout_seconds: {
+        label: t('config.field.request_timeout_seconds.label'),
+      },
+      model_idle_timeout_seconds: {
+        label: t('config.field.model_idle_timeout_seconds.label'),
+      },
+      model_idle_check_interval: {
+        label: t('config.field.model_idle_check_interval.label'),
+      },
+      model_idle_unload_current: {
+        label: t('config.field.model_idle_unload_current.label'),
+      },
+      restart_after_idle_unload_enabled: {
+        label: t('config.field.restart_after_idle_unload_enabled.label'),
+        help: t('config.field.restart_after_idle_unload_enabled.help'),
+      },
+      restart_after_idle_unload_delay_seconds: {
+        label: t('config.field.restart_after_idle_unload_delay_seconds.label'),
+        help: t('config.field.restart_after_idle_unload_delay_seconds.help'),
+      },
+      restart_after_idle_unload_cooldown_seconds: {
+        label: t('config.field.restart_after_idle_unload_cooldown_seconds.label'),
+        help: t('config.field.restart_after_idle_unload_cooldown_seconds.help'),
+      },
+      restart_after_idle_unload_exit_code: {
+        label: t('config.field.restart_after_idle_unload_exit_code.label'),
+        help: t('config.field.restart_after_idle_unload_exit_code.help'),
+      },
+      startup_preload_enabled: {
+        label: t('config.field.startup_preload_enabled.label'),
+        help: t('config.field.startup_preload_enabled.help'),
+      },
+      startup_preload_model: {
+        label: t('config.field.startup_preload_model.label'),
+        help: t('config.field.startup_preload_model.help'),
+        choices: {
+          kokoro: t('config.field.startup_preload_model.choice.kokoro'),
+          moss: t('config.field.startup_preload_model.choice.moss'),
+          zipvoice: t('config.field.startup_preload_model.choice.zipvoice'),
+        },
+      },
+      engine_process_kill_grace_seconds: {
+        label: t('config.field.engine_process_kill_grace_seconds.label'),
+        help: t('config.field.engine_process_kill_grace_seconds.help'),
+      },
+      cache_max_items: {
+        label: t('config.field.cache_max_items.label'),
+      },
+      cache_max_bytes: {
+        label: t('config.field.cache_max_bytes.label'),
+        help: t('config.field.cache_max_bytes.help'),
+      },
+      cache_skip_text_over_chars: {
+        label: t('config.field.cache_skip_text_over_chars.label'),
+        help: t('config.field.cache_skip_text_over_chars.help'),
+      },
+      cache_skip_audio_over_bytes: {
+        label: t('config.field.cache_skip_audio_over_bytes.label'),
+        help: t('config.field.cache_skip_audio_over_bytes.help'),
+      },
+      save_outputs: {
+        label: t('config.field.save_outputs.label'),
+      },
+      ffmpeg_enabled: {
+        label: t('config.field.ffmpeg_enabled.label'),
+        help: t('config.field.ffmpeg_enabled.help'),
+      },
+      ffmpeg_binary: {
+        label: t('config.field.ffmpeg_binary.label'),
+        help: t('config.field.ffmpeg_binary.help'),
+      },
+      mp3_bitrate: {
+        label: t('config.field.mp3_bitrate.label'),
+        help: t('config.field.mp3_bitrate.help'),
+      },
+      audio_opus_bitrate: {
+        label: t('config.field.audio_opus_bitrate.label'),
+        help: t('config.field.audio_opus_bitrate.help'),
+      },
+      audio_aac_bitrate: {
+        label: t('config.field.audio_aac_bitrate.label'),
+        help: t('config.field.audio_aac_bitrate.help'),
+      },
+      ffmpeg_timeout_seconds: {
+        label: t('config.field.ffmpeg_timeout_seconds.label'),
+      },
+      output_max_files: {
+        label: t('config.field.output_max_files.label'),
+      },
+      moss_vram_guard_enabled: {
+        label: t('config.field.moss_vram_guard_enabled.label'),
+        help: t('config.field.moss_vram_guard_enabled.help'),
+      },
+      moss_vram_safe_free_mb: {
+        label: t('config.field.moss_vram_safe_free_mb.label'),
+      },
+      moss_vram_critical_free_mb: {
+        label: t('config.field.moss_vram_critical_free_mb.label'),
+      },
+      moss_low_vram_segment_length: {
+        label: t('config.field.moss_low_vram_segment_length.label'),
+      },
+      moss_low_vram_max_new_frames: {
+        label: t('config.field.moss_low_vram_max_new_frames.label'),
+      },
+      moss_low_vram_text_tokens: {
+        label: t('config.field.moss_low_vram_text_tokens.label'),
+      },
+      moss_disable_full_codec_after_oom: {
+        label: t('config.field.moss_disable_full_codec_after_oom.label'),
+      },
+      moss_full_codec_oom_cooldown_seconds: {
+        label: t('config.field.moss_full_codec_oom_cooldown_seconds.label'),
+      },
+      moss_vram_snapshot_ttl_seconds: {
+        label: t('config.field.moss_vram_snapshot_ttl_seconds.label'),
+        help: t('config.field.moss_vram_snapshot_ttl_seconds.help'),
+      },
+      rate_limit_qps: {
+        label: t('config.field.rate_limit_qps.label'),
+      },
+      rate_limit_burst: {
+        label: t('config.field.rate_limit_burst.label'),
+      },
+      max_queue_length: {
+        label: t('config.field.max_queue_length.label'),
+      },
+      websocket_max_connections: {
+        label: t('config.field.websocket_max_connections.label'),
+        help: t('config.field.websocket_max_connections.help'),
+      },
+      websocket_max_message_bytes: {
+        label: t('config.field.websocket_max_message_bytes.label'),
+        help: t('config.field.websocket_max_message_bytes.help'),
+      },
+      trust_proxy_headers: {
+        label: t('config.field.trust_proxy_headers.label'),
+      },
+      public_status_endpoints: {
+        label: t('config.field.public_status_endpoints.label'),
+      },
+      model_source: {
+        label: t('config.field.model_source.label'),
+        choices: {
+          auto: t('config.field.model_source.choice.auto'),
+          modelscope: t('config.field.model_source.choice.modelscope'),
+          huggingface: t('config.field.model_source.choice.huggingface'),
+          offline: t('config.field.model_source.choice.offline'),
+        },
+      },
+      moss_hf_repo: {
+        label: t('config.field.moss_hf_repo.label'),
+        help: t('config.field.moss_hf_repo.help'),
+      },
+      moss_prompt_audio_max_seconds: {
+        label: t('config.field.moss_prompt_audio_max_seconds.label'),
+      },
+      moss_output_peak_normalize_enabled: {
+        label: t('config.field.moss_output_peak_normalize_enabled.label'),
+      },
+      moss_output_declick_enabled: {
+        label: t('config.field.moss_output_declick_enabled.label'),
+      },
+      moss_output_edge_fade_ms: {
+        label: t('config.field.moss_output_edge_fade_ms.label'),
+      },
+      moss_trim_silence_db: {
+        label: t('config.field.moss_trim_silence_db.label'),
+      },
+      moss_quality_gate_enabled: {
+        label: t('config.field.moss_quality_gate_enabled.label'),
+      },
+      moss_process_isolation_enabled: {
+        label: t('config.field.moss_process_isolation_enabled.label'),
+        help: t('config.field.moss_process_isolation_enabled.help'),
+      },
+      zipvoice_process_isolation_enabled: {
+        label: t('config.field.zipvoice_process_isolation_enabled.label'),
+        help: t('config.field.zipvoice_process_isolation_enabled.help'),
+      },
+      zipvoice_num_steps: {
+        label: t('config.field.zipvoice_num_steps.label'),
+        help: t('config.field.zipvoice_num_steps.help'),
+      },
+      zipvoice_prompt_audio_max_seconds: {
+        label: t('config.field.zipvoice_prompt_audio_max_seconds.label'),
+        help: t('config.field.zipvoice_prompt_audio_max_seconds.help'),
+      },
+      zipvoice_remove_long_sil: {
+        label: t('config.field.zipvoice_remove_long_sil.label'),
+        help: t('config.field.zipvoice_remove_long_sil.help'),
+      },
+      zipvoice_guidance_scale: {
+        label: t('config.field.zipvoice_guidance_scale.label'),
+      },
+      zipvoice_t_shift: {
+        label: t('config.field.zipvoice_t_shift.label'),
+      },
+      zipvoice_target_rms: {
+        label: t('config.field.zipvoice_target_rms.label'),
+      },
+      zipvoice_feat_scale: {
+        label: t('config.field.zipvoice_feat_scale.label'),
+      },
+    },
+    groups: {
+      kokoro: { label: t('config.group.kokoro.label') },
+      moss: { label: t('config.group.moss.label') },
+      zipvoice: { label: t('config.group.zipvoice.label') },
+      text: { label: t('config.group.text.label') },
+      service: { label: t('config.group.service.label') },
+      audio: { label: t('config.group.audio.label') },
+      security: { label: t('config.group.security.label') },
+    },
+    profiles: {
+      deploy_lan_default: {
+        label: t('config.profile.deploy_lan_default.label'),
+        description: t('config.profile.deploy_lan_default.description'),
+      },
+      deploy_public_hardened: {
+        label: t('config.profile.deploy_public_hardened.label'),
+        description: t('config.profile.deploy_public_hardened.description'),
+      },
+      nas_stable: {
+        label: t('config.profile.nas_stable.label'),
+        description: t('config.profile.nas_stable.description'),
+      },
+      nas_deep_sleep_cpu: {
+        label: t('config.profile.nas_deep_sleep_cpu.label'),
+        description: t('config.profile.nas_deep_sleep_cpu.description'),
+      },
+      balanced: {
+        label: t('config.profile.balanced.label'),
+        description: t('config.profile.balanced.description'),
+      },
+      long_narration: {
+        label: t('config.profile.long_narration.label'),
+        description: t('config.profile.long_narration.description'),
+      },
+      low_latency: {
+        label: t('config.profile.low_latency.label'),
+        description: t('config.profile.low_latency.description'),
+      },
+      clone_quality: {
+        label: t('config.profile.clone_quality.label'),
+        description: t('config.profile.clone_quality.description'),
+      },
+    },
+  };
+}
+
 function localizeTextConfigField(field) {
   if (field?.group !== 'text') return field;
 
@@ -326,16 +659,65 @@ function localizeTextConfigField(field) {
   return { ...field, label, help, choices };
 }
 
+function localizeRemainingConfigField(field, copy) {
+  const fieldCopy = copy.fields[field?.key];
+  if (!fieldCopy) return field;
+  const choices = Array.isArray(field.choices) && fieldCopy.choices
+    ? field.choices.map(choice => {
+      const localizedLabel = fieldCopy.choices[choice.value];
+      return localizedLabel === undefined ? choice : { ...choice, label: localizedLabel };
+    })
+    : field.choices;
+  return {
+    ...field,
+    label: fieldCopy.label,
+    ...('help' in fieldCopy ? { help: fieldCopy.help } : {}),
+    choices,
+  };
+}
+
+function localizeConfigGroup(group, copy) {
+  const groupCopy = copy.groups[group?.key];
+  return groupCopy ? { ...group, label: groupCopy.label } : group;
+}
+
+function localizeConfigProfile(profile, copy) {
+  const profileCopy = copy.profiles[profile?.key];
+  return profileCopy
+    ? { ...profile, label: profileCopy.label, description: profileCopy.description }
+    : profile;
+}
+
 function localizedConfigPayload(payload) {
-  const fields = payload?.schema?.fields;
-  if (!Array.isArray(fields)) return payload;
-  const localizedFields = fields.map(localizeTextConfigField);
-  if (!localizedFields.some((field, index) => field !== fields[index])) return payload;
+  const schema = payload?.schema;
+  if (!schema) return payload;
+  const copy = currentRemainingAdminMetadataCopy();
+  const fields = schema.fields;
+  const groups = schema.groups;
+  const profiles = schema.profiles;
+  const localizedFields = Array.isArray(fields)
+    ? fields.map(field => localizeRemainingConfigField(localizeTextConfigField(field), copy))
+    : fields;
+  const localizedGroups = Array.isArray(groups)
+    ? groups.map(group => localizeConfigGroup(group, copy))
+    : groups;
+  const localizedProfiles = Array.isArray(profiles)
+    ? profiles.map(profile => localizeConfigProfile(profile, copy))
+    : profiles;
+  const fieldsChanged = Array.isArray(fields)
+    && localizedFields.some((field, index) => field !== fields[index]);
+  const groupsChanged = Array.isArray(groups)
+    && localizedGroups.some((group, index) => group !== groups[index]);
+  const profilesChanged = Array.isArray(profiles)
+    && localizedProfiles.some((profile, index) => profile !== profiles[index]);
+  if (!fieldsChanged && !groupsChanged && !profilesChanged) return payload;
   return {
     ...payload,
     schema: {
-      ...payload.schema,
-      fields: localizedFields,
+      ...schema,
+      ...(fieldsChanged ? { fields: localizedFields } : {}),
+      ...(groupsChanged ? { groups: localizedGroups } : {}),
+      ...(profilesChanged ? { profiles: localizedProfiles } : {}),
     },
   };
 }
@@ -437,7 +819,8 @@ function renderConfigFormsForLocale(payload) {
 }
 
 function renderProfiles(payload) {
-  const presentation = profilesPresentation(payload);
+  const localizedPayload = localizedConfigPayload(payload);
+  const presentation = profilesPresentation(localizedPayload);
   $('profile-grid').innerHTML = presentation.tuningHtml;
   $('deploy-profile-grid').innerHTML = presentation.deployHtml;
 }
@@ -679,7 +1062,10 @@ document.addEventListener('angevoice:locale-changed', () => {
     renderQuality(lastData);
     renderRequests(lastData);
   }
-  if (lastConfigPayload) renderConfigFormsForLocale(lastConfigPayload);
+  if (lastConfigPayload) {
+    renderConfigFormsForLocale(lastConfigPayload);
+    renderProfiles(lastConfigPayload);
+  }
   if (lastUpdateData) renderUpdate(lastUpdateData);
   renderCredentialFeedback();
 });

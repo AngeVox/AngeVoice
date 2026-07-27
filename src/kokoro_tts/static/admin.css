@@ -287,6 +287,9 @@
 
 .config-field input,
 .config-field select {
+  width: 100%;
+  min-width: 0;
+  max-width: 100%;
   min-height: 40px;
   padding: 0 11px;
   border: 1px solid var(--line);
