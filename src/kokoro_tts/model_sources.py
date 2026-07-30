@@ -338,6 +338,23 @@ def _huggingface_snapshot_download(
     return Path(path)
 
 
+def _log_provider_failure_for_fallback(
+    provider: str,
+    repo_id: str,
+    exc: Exception,
+    *,
+    logger: logging.Logger,
+) -> None:
+    """Log a safe summary before continuing a generic provider plan."""
+
+    logger.warning(
+        "Provider download failed; continuing fallback: provider=%s repo=%s error_type=%s",
+        provider,
+        repo_id,
+        type(exc).__name__,
+    )
+
+
 def _generic_download_plan(config, *, hf_attr: str, ms_attr: str) -> list[tuple[str, str]]:
     source = resolve_model_source(config)
     hf_repo = str(getattr(config, hf_attr, "") or "").strip()
@@ -464,22 +481,29 @@ def _download_kokoro_assets(config, target: Path, *, logger: logging.Logger, man
         verify_managed_kokoro_present_core_assets(target)
         verify_managed_kokoro_present_voices(target)
     for source, repo, revision in _kokoro_download_plan(config, managed=managed):
-        try:
-            if source == "modelscope":
-                kwargs = {"logger": logger}
-                if revision:
-                    kwargs["revision"] = revision
+        if source == "modelscope":
+            kwargs = {"logger": logger}
+            if revision:
+                kwargs["revision"] = revision
+            try:
                 path = _modelscope_snapshot_download(repo, target, **kwargs)
-            else:
-                kwargs = {"logger": logger, "allow_patterns": _KOKORO_HF_ALLOW_PATTERNS}
-                if revision:
-                    kwargs["revision"] = revision
+            except Exception as exc:
+                if managed:
+                    _verify_managed_provider_candidates(_provider_candidate_dirs(target, None))
+                    raise KokoroAssetIntegrityError("Kokoro managed provider download failed") from exc
+                _log_provider_failure_for_fallback(source, repo, exc, logger=logger)
+                continue
+        else:
+            kwargs = {"logger": logger, "allow_patterns": _KOKORO_HF_ALLOW_PATTERNS}
+            if revision:
+                kwargs["revision"] = revision
+            try:
                 path = _huggingface_snapshot_download(repo, target, **kwargs)
-        except Exception as exc:
-            if not managed:
-                raise
-            _verify_managed_provider_candidates(_provider_candidate_dirs(target, None))
-            raise KokoroAssetIntegrityError("Kokoro managed provider download failed") from exc
+            except Exception as exc:
+                if not managed:
+                    raise
+                _verify_managed_provider_candidates(_provider_candidate_dirs(target, None))
+                raise KokoroAssetIntegrityError("Kokoro managed provider download failed") from exc
         candidates = _provider_candidate_dirs(target, path)
         if managed:
             if any(not is_managed_kokoro_mode(config, candidate) for candidate in candidates):
@@ -550,7 +574,11 @@ def _download_moss_model_assets(config, target: Path, *, logger: logging.Logger)
 
     for source, repo in _moss_download_plan(config):
         if source == "modelscope":
-            path = _modelscope_snapshot_download(repo, target, logger=logger)
+            try:
+                path = _modelscope_snapshot_download(repo, target, logger=logger)
+            except Exception as exc:
+                _log_provider_failure_for_fallback(source, repo, exc, logger=logger)
+                continue
         else:
             path = _huggingface_snapshot_download(repo, target, logger=logger)
         candidates = [target]
@@ -568,7 +596,11 @@ def _download_moss_audio_tokenizer_assets(config, target: Path, *, logger: loggi
 
     for source, repo in _moss_audio_tokenizer_download_plan(config):
         if source == "modelscope":
-            path = _modelscope_snapshot_download(repo, target, logger=logger)
+            try:
+                path = _modelscope_snapshot_download(repo, target, logger=logger)
+            except Exception as exc:
+                _log_provider_failure_for_fallback(source, repo, exc, logger=logger)
+                continue
         else:
             path = _huggingface_snapshot_download(repo, target, logger=logger)
         candidates = [target]
