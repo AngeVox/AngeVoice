@@ -9,9 +9,10 @@ Contract classifications:
 * load order, envelope, atomic replace, merge, and current-worker dispatch:
   BEHAVIOR/OWNERSHIP CONTRACT;
 * fcntl and concrete Admin/request owners: STATIC/BEHAVIOR CONTRACT;
-* mutation-before-save, Windows process-local locking, stale workers, missing
-  convergence observability, and UI wording: CURRENT-BEHAVIOR
-  CHARACTERIZATION (not design endorsement).
+* persistence-first current-worker mutation: BEHAVIOR/OWNERSHIP CONTRACT;
+* Windows process-local locking, stale workers, missing convergence
+  observability, and UI wording: CURRENT-BEHAVIOR CHARACTERIZATION
+  (not design endorsement).
 """
 
 from __future__ import annotations
@@ -486,65 +487,345 @@ class TestRuntimeConfigMergeSemantics:
         }
 
 
-class TestAdminMutationBeforePersistence:
+class TestAdminPersistenceFirstPreparation:
+    def test_patch_and_profile_share_one_shallow_candidate_sequencing_owner(self):
+        """STATIC OWNERSHIP CONTRACT for candidate, persistence, and live apply."""
+
+        tree = _module_tree("routes/admin_runtime.py")
+        helper = _definition(tree, "_apply_persisted_admin_config_values")
+        calls = [
+            (call.func.id if isinstance(call.func, ast.Name) else call.func.attr, call.lineno)
+            for call in ast.walk(helper)
+            if isinstance(call, ast.Call)
+            and isinstance(call.func, (ast.Name, ast.Attribute))
+        ]
+        by_name: dict[str, list[int]] = {}
+        for name, lineno in calls:
+            by_name.setdefault(name, []).append(lineno)
+
+        apply_lines = sorted(by_name["apply_admin_config_values"])
+        assert len(apply_lines) == 2
+        assert (
+            by_name["copy"][0]
+            < apply_lines[0]
+            < by_name["_apply_quality_runtime_guards"][0]
+            < by_name["save_runtime_config_values"][0]
+            < apply_lines[1]
+        )
+        assert "deepcopy" not in by_name
+
+        for owner in ("apply_config_patch", "apply_config_profile"):
+            node = _definition(tree, owner)
+            expected = {"_apply_persisted_admin_config_values"}
+            expected.add(
+                "model_dump" if owner == "apply_config_patch" else "profile_values"
+            )
+            assert _call_names(node) == expected
+
+    def test_current_admin_mutation_surface_does_not_mutate_cfg_shared_collections(
+        self,
+    ):
+        """STATIC SAFETY CONTRACT for the audited shallow-copy boundary."""
+
+        schema_apply = _definition(
+            _module_tree("admin_config/schema.py"), "apply_admin_config_values"
+        )
+        guards = _definition(
+            _module_tree("routes/admin_runtime.py"), "_apply_quality_runtime_guards"
+        )
+        mutators = {"append", "extend", "update", "clear", "pop", "remove"}
+
+        for owner in (schema_apply, guards):
+            for call in (
+                node for node in ast.walk(owner) if isinstance(node, ast.Call)
+            ):
+                if not isinstance(call.func, ast.Attribute):
+                    continue
+                receiver = call.func.value
+                mutates_cfg_attribute = (
+                    isinstance(receiver, ast.Attribute)
+                    and isinstance(receiver.value, ast.Name)
+                    and receiver.value.id == "cfg"
+                )
+                assert not (
+                    mutates_cfg_attribute and call.func.attr in mutators
+                )
+
     @pytest.mark.parametrize("owner", ["patch", "profile"])
-    def test_persistence_failure_leaves_current_cfg_mutated_without_rollback(
+    def test_no_canonical_change_skips_persistence_and_live_mutation(
         self, monkeypatch, tmp_path, owner
     ):
-        """CURRENT-BEHAVIOR CHARACTERIZATION; NOT TRANSACTIONAL GUARANTEE."""
+        """BEHAVIOR CONTRACT for the unchanged patch/profile path."""
+
+        cfg = _synthetic_config(tmp_path, value=10)
+        before = dict(vars(cfg))
+        monkeypatch.setattr(
+            admin_runtime,
+            "profile_values",
+            lambda _profile: {"cache_max_items": 10},
+        )
+
+        def unexpected_save(_cfg, _changed):
+            pytest.fail("unchanged candidate must not be persisted")
+
+        monkeypatch.setattr(
+            admin_runtime, "save_runtime_config_values", unexpected_save
+        )
+
+        if owner == "patch":
+            result = admin_runtime.apply_config_patch(
+                cfg, AdminConfigPatch(cache_max_items=10)
+            )
+        else:
+            result = admin_runtime.apply_config_profile(
+                cfg, "synthetic-profile"
+            )
+
+        assert result == ([], [], False)
+        assert vars(cfg) == before
+        assert not admin_schema.runtime_config_path(cfg).exists()
+
+
+class TestAdminPersistenceFailureIsolation:
+    @pytest.mark.parametrize("owner", ["patch", "profile"])
+    def test_persistence_failure_keeps_live_fields_cache_file_and_shared_values(
+        self, monkeypatch, tmp_path, owner
+    ):
+        """BEHAVIOR CONTRACT for both public sequencing entry points."""
 
         cfg = _synthetic_config(tmp_path, value=10)
         other_worker = _synthetic_config(tmp_path / "other", value=10)
         path = admin_schema.runtime_config_path(cfg)
         _write_runtime(path, {"cache_max_items": 10})
-        events: list[object] = []
-
-        monkeypatch.setattr(
-            admin_runtime,
-            "apply_admin_config_values",
-            lambda received, values: (
-                setattr(received, "cache_max_items", values["cache_max_items"]),
-                events.append(("apply", received.cache_max_items)),
-                (["cache_max_items"], [], False),
-            )[-1],
-        )
-        monkeypatch.setattr(
-            admin_runtime,
-            "_apply_quality_runtime_guards",
-            lambda _cfg: [],
-        )
+        file_before = path.read_bytes()
+        cfg.model_source_effective = "huggingface"
+        cfg.model_source_country = "US"
+        cfg.model_source_hf_reachable = True
+        cfg.model_source_modelscope_reachable = False
+        origins = cfg.cors_origins
+        enabled_models = cfg.enabled_models
+        values = {
+            "cache_max_items": 27,
+            "moss_vram_safe_free_mb": 1000,
+            "moss_vram_critical_free_mb": 1200,
+            "model_source": "modelscope",
+        }
         monkeypatch.setattr(
             admin_runtime,
             "profile_values",
-            lambda _profile: {"cache_max_items": 27},
+            lambda _profile: dict(values),
         )
+        original = OSError("synthetic persistence failure")
+        writes: list[dict[str, object]] = []
 
         def failing_save(received, changed):
-            events.append(("save", received.cache_max_items, dict(changed)))
-            assert received.cache_max_items == 27
-            raise OSError("synthetic persistence failure")
+            assert received is cfg
+            assert cfg.cache_max_items == 10
+            assert cfg.moss_vram_safe_free_mb == 1200
+            assert cfg.moss_vram_critical_free_mb == 600
+            assert cfg.model_source == "auto"
+            assert cfg.model_source_effective == "huggingface"
+            assert cfg.model_source_country == "US"
+            assert cfg.model_source_hf_reachable is True
+            assert cfg.model_source_modelscope_reachable is False
+            writes.append(dict(changed))
+            raise original
 
         monkeypatch.setattr(
             admin_runtime, "save_runtime_config_values", failing_save
         )
 
-        with pytest.raises(OSError, match="synthetic persistence failure"):
+        with pytest.raises(OSError) as raised:
             if owner == "patch":
-                admin_runtime.apply_config_patch(
-                    cfg, AdminConfigPatch(cache_max_items=27)
-                )
+                admin_runtime.apply_config_patch(cfg, AdminConfigPatch(**values))
             else:
                 admin_runtime.apply_config_profile(cfg, "synthetic-profile")
 
-        assert events == [
-            ("apply", 27),
-            ("save", 27, {"cache_max_items": 27}),
+        assert raised.value is original
+        assert writes == [
+            {
+                "cache_max_items": 27,
+                "moss_vram_safe_free_mb": 1000,
+                "moss_vram_critical_free_mb": 900,
+                "model_source": "modelscope",
+            }
         ]
-        assert cfg.cache_max_items == 27
+        assert cfg.cache_max_items == 10
+        assert cfg.moss_vram_safe_free_mb == 1200
+        assert cfg.moss_vram_critical_free_mb == 600
+        assert cfg.model_source == "auto"
+        assert cfg.model_source_effective == "huggingface"
+        assert cfg.model_source_country == "US"
+        assert cfg.model_source_hf_reachable is True
+        assert cfg.model_source_modelscope_reachable is False
+        assert cfg.cors_origins is origins
+        assert cfg.enabled_models is enabled_models
         assert other_worker.cache_max_items == 10
+        assert path.read_bytes() == file_before
+
+    def test_route_persistence_failure_precedes_manager_and_child_side_effects(
+        self, monkeypatch, tmp_path
+    ):
+        """BEHAVIOR CONTRACT via direct route invocation."""
+
+        cfg = _synthetic_config(tmp_path)
+        manager = _FakeManager()
+        original = OSError("synthetic route persistence failure")
+
+        def failing_save(_cfg, _changed):
+            raise original
+
+        monkeypatch.setattr(
+            admin_runtime, "save_runtime_config_values", failing_save
+        )
+        router = _build_admin_router(monkeypatch, cfg, manager)
+        endpoint = _admin_endpoint(router, "/admin/api/config", "PATCH")
+
+        with pytest.raises(OSError) as raised:
+            asyncio.run(endpoint(AdminConfigPatch(moss_segment_length=200), _=None))
+
+        assert raised.value is original
+        assert cfg.moss_segment_length == 120
+        assert manager.events == []
+
+
+class TestAdminPersistenceIdenticalRetry:
+    def test_identical_patch_retries_persistence_after_first_failure(
+        self, monkeypatch, tmp_path
+    ):
+        """BEHAVIOR CONTRACT: a failed attempt cannot turn retry into a no-op."""
+
+        cfg = _synthetic_config(tmp_path, value=10)
+        path = admin_schema.runtime_config_path(cfg)
+        _write_runtime(path, {"cache_max_items": 10})
+        original = OSError("first write fails")
+        attempts: list[dict[str, object]] = []
+
+        def flaky_save(received, changed):
+            attempts.append(dict(changed))
+            if len(attempts) == 1:
+                raise original
+            return admin_schema.save_runtime_config_values(received, changed)
+
+        monkeypatch.setattr(
+            admin_runtime, "save_runtime_config_values", flaky_save
+        )
+        patch = AdminConfigPatch(cache_max_items=27)
+
+        with pytest.raises(OSError) as raised:
+            admin_runtime.apply_config_patch(cfg, patch)
+
+        assert raised.value is original
+        assert cfg.cache_max_items == 10
         assert admin_schema.read_runtime_config_values(path) == {
             "cache_max_items": 10
         }
+
+        result = admin_runtime.apply_config_patch(cfg, patch)
+
+        assert result == (["cache_max_items"], [], False)
+        assert attempts == [
+            {"cache_max_items": 27},
+            {"cache_max_items": 27},
+        ]
+        assert cfg.cache_max_items == 27
+        assert admin_schema.read_runtime_config_values(path) == {
+            "cache_max_items": 27
+        }
+
+
+class TestAdminCanonicalPersistence:
+    def test_profile_persists_schema_coerced_values_and_applies_same_types_live(
+        self, monkeypatch, tmp_path
+    ):
+        """BEHAVIOR CONTRACT: raw profile strings never reach persistence."""
+
+        cfg = _synthetic_config(tmp_path, value=10)
+        monkeypatch.setattr(
+            admin_runtime,
+            "profile_values",
+            lambda _profile: {
+                "cache_max_items": "27",
+                "public_status_endpoints": "false",
+            },
+        )
+
+        result = admin_runtime.apply_config_profile(cfg, "synthetic-profile")
+        persisted = admin_schema.read_runtime_config_values(
+            admin_schema.runtime_config_path(cfg)
+        )
+
+        assert result == (
+            ["cache_max_items", "public_status_endpoints"],
+            [],
+            False,
+        )
+        assert persisted == {
+            "cache_max_items": 27,
+            "public_status_endpoints": False,
+        }
+        assert type(persisted["cache_max_items"]) is int
+        assert type(persisted["public_status_endpoints"]) is bool
+        assert cfg.cache_max_items == persisted["cache_max_items"]
+        assert cfg.public_status_endpoints is persisted["public_status_endpoints"]
+
+    def test_quality_guard_canonical_pair_is_persisted_then_applied_live(
+        self, tmp_path
+    ):
+        """BEHAVIOR CONTRACT through the real guard and writer owners."""
+
+        cfg = _synthetic_config(tmp_path)
+        changed, restart, rebuild = admin_runtime.apply_config_patch(
+            cfg,
+            AdminConfigPatch(
+                moss_vram_safe_free_mb=1000,
+                moss_vram_critical_free_mb=1200,
+            ),
+        )
+        persisted = admin_schema.read_runtime_config_values(
+            admin_schema.runtime_config_path(cfg)
+        )
+
+        assert (restart, rebuild) == ([], False)
+        assert changed == [
+            "moss_vram_safe_free_mb",
+            "moss_vram_critical_free_mb",
+        ]
+        assert persisted == {
+            "moss_vram_safe_free_mb": 1000,
+            "moss_vram_critical_free_mb": 900,
+        }
+        assert cfg.moss_vram_safe_free_mb == persisted["moss_vram_safe_free_mb"]
+        assert (
+            cfg.moss_vram_critical_free_mb
+            == persisted["moss_vram_critical_free_mb"]
+        )
+
+    def test_model_source_success_resets_cache_without_persisting_derived_state(
+        self, tmp_path
+    ):
+        """BEHAVIOR CONTRACT through the existing ModelSource apply owner."""
+
+        cfg = _synthetic_config(tmp_path)
+        cfg.model_source_effective = "huggingface"
+        cfg.model_source_country = "US"
+        cfg.model_source_hf_reachable = True
+        cfg.model_source_modelscope_reachable = False
+
+        result = admin_runtime.apply_config_patch(
+            cfg, AdminConfigPatch(model_source="modelscope")
+        )
+        persisted = admin_schema.read_runtime_config_values(
+            admin_schema.runtime_config_path(cfg)
+        )
+
+        assert result == (["model_source"], [], False)
+        assert persisted == {"model_source": "modelscope"}
+        assert cfg.model_source == "modelscope"
+        assert cfg.model_source_effective == "auto"
+        assert cfg.model_source_country == ""
+        assert cfg.model_source_hf_reachable is None
+        assert cfg.model_source_modelscope_reachable is None
 
 
 class TestExistingWorkerAndNewWorkerConvergence:
@@ -663,6 +944,55 @@ class _FakeManager:
 
 
 class TestCurrentWorkerModelRebuild:
+    def test_persistence_and_live_apply_complete_before_current_manager_rebuild(
+        self, monkeypatch, tmp_path
+    ):
+        """BEHAVIOR CONTRACT for the successful route ordering."""
+
+        cfg = _synthetic_config(tmp_path)
+        path = admin_schema.runtime_config_path(cfg)
+        events: list[object] = []
+        real_save = admin_schema.save_runtime_config_values
+
+        def observed_save(received, changed):
+            assert received is cfg
+            assert cfg.moss_segment_length == 120
+            result = real_save(received, changed)
+            events.append(("persisted", dict(changed)))
+            return result
+
+        class OrderingManager:
+            def __init__(self):
+                self.events = events
+
+            def drop_model(self, model_id, *, force, raise_if_busy):
+                persisted = admin_schema.read_runtime_config_values(path)
+                assert persisted["moss_segment_length"] == 200
+                assert cfg.moss_segment_length == 200
+                self.events.append(
+                    ("drop_model", model_id, force, raise_if_busy)
+                )
+                return True
+
+        monkeypatch.setattr(
+            admin_runtime, "save_runtime_config_values", observed_save
+        )
+        router = _build_admin_router(monkeypatch, cfg, OrderingManager())
+        endpoint = _admin_endpoint(router, "/admin/api/config", "PATCH")
+
+        result = asyncio.run(
+            endpoint(AdminConfigPatch(moss_segment_length=200), _=None)
+        )
+
+        assert events == [
+            ("persisted", {"moss_segment_length": 200}),
+            ("drop_model", "moss", False, False),
+            ("cache_clear",),
+        ]
+        assert result["changed"] == ["moss_segment_length"]
+        assert result["model_rebuild_required"] is True
+        assert result["rebuilt_models"] == ["moss"]
+
     @pytest.mark.parametrize(
         ("field", "target"),
         [
@@ -749,6 +1079,54 @@ class TestCurrentWorkerModelRebuild:
         assert result["model_rebuild_required"] is True
         assert result["rebuilt_models"] == []
         assert manager.events == [("drop_model", "moss", False, False)]
+
+    def test_profile_success_response_shape_remains_compatible(
+        self, monkeypatch, tmp_path
+    ):
+        """BEHAVIOR CONTRACT for the existing profile response surface."""
+
+        cfg = _synthetic_config(tmp_path)
+        manager = _FakeManager()
+        field = "cache_max_items"
+        monkeypatch.setattr(
+            admin_routes,
+            "apply_config_profile",
+            lambda _cfg, _profile: ([field], [], False),
+        )
+        monkeypatch.setattr(
+            admin_routes,
+            "config_snapshot",
+            lambda _cfg: {"worker": "current"},
+        )
+        monkeypatch.setattr(
+            admin_routes,
+            "admin_config_payload",
+            lambda _cfg: {"values": {field: 27}},
+        )
+        monkeypatch.setattr(
+            admin_routes,
+            "export_env_patch",
+            lambda _values, *, only: f"only={','.join(only)}",
+        )
+        router = _build_admin_router(monkeypatch, cfg, manager)
+        endpoint = _admin_endpoint(
+            router, "/admin/api/config/profile", "POST"
+        )
+        request = SimpleNamespace(profile="synthetic-profile")
+
+        result = asyncio.run(endpoint(request, _=None))
+
+        assert result == {
+            "ok": True,
+            "profile": "synthetic-profile",
+            "changed": [field],
+            "restart_required": [],
+            "model_rebuild_required": False,
+            "rebuilt_models": [],
+            "config": {"worker": "current"},
+            "env_patch": f"only={field}",
+        }
+        assert manager.events == []
 
 
 class TestRestartAdvisoryBoundary:

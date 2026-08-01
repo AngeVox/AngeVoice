@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from copy import copy
 from pathlib import Path
 
 from ..admin_credentials import AdminCredentialStore
@@ -58,6 +59,33 @@ def _apply_quality_runtime_guards(cfg) -> list[str]:
         adjusted.append("moss_output_gain")
 
     return adjusted
+
+
+def _apply_persisted_admin_config_values(
+    cfg, values: dict
+) -> tuple[list[str], list[str], bool]:
+    """Persist canonical candidate values before changing the live config."""
+    candidate = copy(cfg)
+    changed, restart_required, rebuild_moss = apply_admin_config_values(
+        candidate, values
+    )
+    adjusted = _apply_quality_runtime_guards(candidate)
+    for key in adjusted:
+        if key not in changed:
+            changed.append(key)
+        field_def = ADMIN_CONFIG_FIELDS.get(key)
+        if field_def and getattr(field_def, "rebuild_moss", False):
+            rebuild_moss = True
+
+    if changed:
+        canonical_values = {
+            name: getattr(candidate, name)
+            for name in changed
+        }
+        save_runtime_config_values(cfg, canonical_values)
+        apply_admin_config_values(cfg, canonical_values)
+
+    return changed, restart_required, rebuild_moss
 
 
 def mask_secret(value: str) -> str:
@@ -145,33 +173,12 @@ def config_snapshot(cfg) -> dict:
 
 def apply_config_patch(cfg, patch: AdminConfigPatch) -> tuple[list[str], list[str], bool]:
     values = patch.model_dump(exclude_none=True)
-    changed, restart_required, rebuild_moss = apply_admin_config_values(cfg, values)
-    adjusted = _apply_quality_runtime_guards(cfg)
-    for key in adjusted:
-        if key not in changed:
-            changed.append(key)
-        # 校验逻辑调整了 rebuild_moss 字段时，需要重新标记。
-        field_def = ADMIN_CONFIG_FIELDS.get(key)
-        if field_def and getattr(field_def, "rebuild_moss", False):
-            rebuild_moss = True
-    if changed:
-        save_runtime_config_values(cfg, {name: getattr(cfg, name) for name in changed})
-    return changed, restart_required, rebuild_moss
+    return _apply_persisted_admin_config_values(cfg, values)
 
 
 def apply_config_profile(cfg, profile: str) -> tuple[list[str], list[str], bool]:
     values = profile_values(profile)
-    changed, restart_required, rebuild_moss = apply_admin_config_values(cfg, values)
-    adjusted = _apply_quality_runtime_guards(cfg)
-    for key in adjusted:
-        if key not in changed:
-            changed.append(key)
-        field_def = ADMIN_CONFIG_FIELDS.get(key)
-        if field_def and getattr(field_def, "rebuild_moss", False):
-            rebuild_moss = True
-    if changed:
-        save_runtime_config_values(cfg, {name: getattr(cfg, name) for name in changed})
-    return changed, restart_required, rebuild_moss
+    return _apply_persisted_admin_config_values(cfg, values)
 
 
 def admin_config_payload(cfg) -> dict:
