@@ -912,6 +912,7 @@ def test_worker_stream_injects_generation_scoped_cancel_check(monkeypatch):
             if self.cancel_check_value:
                 return
             yield {"type": "audio", "index": 0}
+            yield {"type": "done", "total_audio_chunks": 1}
 
     engine = FakeEngine()
     monkeypatch.setattr(process_worker, "create_worker_engine", lambda *args, **kwargs: engine)
@@ -951,6 +952,7 @@ def test_worker_stream_skips_cancel_check_for_legacy_engine(monkeypatch):
         def synthesize_stream(self, text):
             self.text = text
             yield {"type": "audio", "index": 0}
+            yield {"type": "done", "total_audio_chunks": 1}
 
     engine = FakeEngine()
     monkeypatch.setattr(process_worker, "create_worker_engine", lambda *args, **kwargs: engine)
@@ -1169,8 +1171,8 @@ def test_worker_stream_keeps_queue_done_separate_from_protocol_frames(monkeypatc
     assert result_queue.get_nowait() == ("req-stream", "done", None)
 
 
-def test_worker_stream_adds_protocol_done_when_child_iterator_finishes(monkeypatch):
-    """子进程模型迭代器自然结束但缺少协议 done 时，worker 补齐协议完成帧。"""
+def test_worker_stream_marks_missing_terminal_before_protocol_done(monkeypatch):
+    """缺失语义终止帧时先报告失败，再发送协议与队列关闭标记。"""
     import queue
     from kokoro_tts.workers import process_worker
 
@@ -1200,6 +1202,12 @@ def test_worker_stream_adds_protocol_done_when_child_iterator_finishes(monkeypat
     assert result_queue.get_nowait() == ("req-stream", "event", {"type": "started", "segments": 2})
     assert result_queue.get_nowait() == ("req-stream", "event", {"type": "audio", "index": 0})
     assert result_queue.get_nowait() == ("req-stream", "event", {"type": "audio", "index": 1})
+    missing_terminal = result_queue.get_nowait()
+    assert missing_terminal[:2] == ("req-stream", "event")
+    assert missing_terminal[2]["type"] == "segment_error"
+    assert set(missing_terminal[2]) == {"type", "message"}
+    assert isinstance(missing_terminal[2]["message"], str)
+    assert missing_terminal[2]["message"]
     assert result_queue.get_nowait() == ("req-stream", "event", {"type": "done", "total_audio_chunks": 2, "total_segments": 2})
     assert result_queue.get_nowait() == ("req-stream", "done", None)
 

@@ -444,6 +444,11 @@ def _worker_main(config, engine_id: str, requested_provider: str | None,
                             saw_terminal_event = True
                     result_queue.put((request_id, "event", item))
                 if not saw_terminal_event and not cancelled_by_generation and not worker_cancelled():
+                    result_queue.put((
+                        request_id,
+                        "event",
+                        {"type": "segment_error", "message": "流式合成提前结束，未收到语义终止帧"},
+                    ))
                     done_payload = {"type": "done", "total_audio_chunks": audio_chunks}
                     if total_segments is not None:
                         done_payload["total_segments"] = total_segments
