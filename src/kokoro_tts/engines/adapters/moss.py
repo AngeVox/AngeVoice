@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import Any
+from typing import Any, Callable
 
 from ...config import TTSConfig
 from ...moss_engine import MossNanoEngine
@@ -47,6 +47,58 @@ class MossAdapter:
 
     def unload(self, *args, **kwargs) -> None:
         self._engine.unload(*args, **kwargs)
+
+    def synthesize(
+        self,
+        text: str,
+        voice: str = "",
+        speed: float = 1.0,
+        prompt_audio_path: str | None = None,
+        **kwargs,
+    ) -> bytes:
+        return self._engine.synthesize(
+            text=text,
+            voice=voice,
+            speed=speed,
+            prompt_audio_path=prompt_audio_path,
+            **kwargs,
+        )
+
+    def synthesize_array(
+        self,
+        text: str,
+        voice: str = "",
+        speed: float = 1.0,
+        prompt_audio_path: str | None = None,
+        **kwargs,
+    ):
+        return self._engine.synthesize_array(
+            text=text,
+            voice=voice,
+            speed=speed,
+            prompt_audio_path=prompt_audio_path,
+            **kwargs,
+        )
+
+    def synthesize_stream(
+        self,
+        text: str,
+        voice: str = "",
+        speed: float = 1.0,
+        fmt: str = "pcm_s16le",
+        prompt_audio_path: str | None = None,
+        cancel_check: Callable[[], bool] | None = None,
+        **kwargs,
+    ):
+        return self._engine.synthesize_stream(
+            text=text,
+            voice=voice,
+            speed=speed,
+            fmt=fmt,
+            prompt_audio_path=prompt_audio_path,
+            cancel_check=cancel_check,
+            **kwargs,
+        )
 
     def capabilities(self) -> EngineCapabilities:
         text_rules_mode = str(getattr(self._cfg, "moss_apply_angevoice_rules", "auto")).strip().lower()
