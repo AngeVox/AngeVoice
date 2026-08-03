@@ -19,6 +19,20 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 
+def _close_stream_iterator(iterator, *, request_id: str, model_id: str) -> None:
+    close_iterator = getattr(iterator, "close", None)
+    if not callable(close_iterator):
+        return
+    try:
+        close_iterator()
+    except Exception:
+        logger.warning(
+            "关闭流式引擎迭代器失败",
+            exc_info=True,
+            extra={"request_id": request_id, "model_id": model_id},
+        )
+
+
 class StreamingService:
     def __init__(self, state: "ServiceState"):
         self.state = state
@@ -98,18 +112,32 @@ class StreamingService:
                     candidates["prompt_text_prepared"] = True
             kwargs = self._supported_kwargs(engine.synthesize_stream, candidates)
             saw_terminal_frame = False
-            for chunk in engine.synthesize_stream(request.text, request.voice, request.speed, request.audio_format, **kwargs):
-                if cancellation.cancelled():
-                    # 取消后关闭底层生成器，由进程隔离 worker 设置软取消标志；
-                    # 新请求不需要等待旧长文本完整跑完。
-                    break
-                if isinstance(chunk, dict):
-                    event_type = str(chunk.get("type") or "")
-                    if event_type in {"done", "cancelled", "error", "segment_error"}:
-                        saw_terminal_frame = True
-                    yield StreamingResult.from_frame(chunk, model_id=request.model_id, request_id=request.request_id).as_frame()
-                else:
-                    yield chunk
+            engine_iterator = iter(
+                engine.synthesize_stream(request.text, request.voice, request.speed, request.audio_format, **kwargs)
+            )
+            try:
+                for chunk in engine_iterator:
+                    if cancellation.cancelled():
+                        # 取消后关闭底层生成器，由进程隔离 worker 设置软取消标志；
+                        # 新请求不需要等待旧长文本完整跑完。
+                        break
+                    if isinstance(chunk, dict):
+                        event_type = str(chunk.get("type") or "")
+                        if event_type in {"done", "cancelled", "error", "segment_error"}:
+                            saw_terminal_frame = True
+                        yield StreamingResult.from_frame(
+                            chunk,
+                            model_id=request.model_id,
+                            request_id=request.request_id,
+                        ).as_frame()
+                    else:
+                        yield chunk
+            finally:
+                _close_stream_iterator(
+                    engine_iterator,
+                    request_id=request.request_id,
+                    model_id=request.model_id,
+                )
             if not saw_terminal_frame and cancellation.cancelled():
                 logger.info("流式合成在取消状态下结束，补发取消终止帧", extra={"request_id": request.request_id})
                 yield StreamingResult.from_frame(

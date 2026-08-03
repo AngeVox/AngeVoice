@@ -26,6 +26,20 @@ from .workers.process_worker import EngineProcessTimeoutError
 logger = logging.getLogger(__name__)
 
 
+def _close_process_iterator(iterator, *, model_id: str) -> None:
+    close_iterator = getattr(iterator, "close", None)
+    if not callable(close_iterator):
+        return
+    try:
+        close_iterator()
+    except Exception:
+        logger.warning(
+            "关闭 MOSS 隔离流式迭代器失败",
+            exc_info=True,
+            extra={"model_id": model_id},
+        )
+
+
 def _cancel_requested(cancel_check: Callable[[], bool] | None) -> bool:
     if cancel_check is None:
         return False
@@ -220,32 +234,38 @@ class MossStreamingMixin:
         saw_terminal_error = False
         next_error_index = 0
         try:
-            for event in self._process_client.stream(
-                {
-                    "text": text,
-                    "voice": voice,
-                    "speed": speed,
-                    "fmt": fmt,
-                    "prompt_audio_path": prompt_audio_path,
-                    # 跨进程不能传递 cancel_check callable，
-                    # 父进程通过 EngineProcessClient.stream(cancel_check=...) 在帧间隙控制取消。
-                    "cancel_check": None,
-                },
-                timeout=stream_timeout,
-                cancel_check=cancel_check,
-            ):
-                if isinstance(event, dict):
-                    event_type = str(event.get("type") or "")
-                    if event_type == "done":
-                        saw_protocol_done = True
-                    elif event_type in {"error", "segment_error", "cancelled"}:
-                        saw_terminal_error = True
-                    if event_type == "audio":
-                        try:
-                            next_error_index = max(next_error_index, int(event.get("index", -1)) + 1)
-                        except (TypeError, ValueError):
-                            next_error_index += 1
-                yield event
+            process_iterator = iter(
+                self._process_client.stream(
+                    {
+                        "text": text,
+                        "voice": voice,
+                        "speed": speed,
+                        "fmt": fmt,
+                        "prompt_audio_path": prompt_audio_path,
+                        # 跨进程不能传递 cancel_check callable，
+                        # 父进程通过 EngineProcessClient.stream(cancel_check=...) 在帧间隙控制取消。
+                        "cancel_check": None,
+                    },
+                    timeout=stream_timeout,
+                    cancel_check=cancel_check,
+                )
+            )
+            try:
+                for event in process_iterator:
+                    if isinstance(event, dict):
+                        event_type = str(event.get("type") or "")
+                        if event_type == "done":
+                            saw_protocol_done = True
+                        elif event_type in {"error", "segment_error", "cancelled"}:
+                            saw_terminal_error = True
+                        if event_type == "audio":
+                            try:
+                                next_error_index = max(next_error_index, int(event.get("index", -1)) + 1)
+                            except (TypeError, ValueError):
+                                next_error_index += 1
+                    yield event
+            finally:
+                _close_process_iterator(process_iterator, model_id=self.engine_id)
             if not saw_protocol_done and not saw_terminal_error and not _cancel_requested(cancel_check):
                 logger.warning("MOSS 隔离流式合成提前结束，未收到协议完成帧")
                 yield {
