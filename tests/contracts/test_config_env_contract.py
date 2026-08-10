@@ -14,6 +14,7 @@ import pytest
 from kokoro_tts import config_env
 from kokoro_tts import config_env_domain
 from kokoro_tts.admin_config import load_runtime_config
+from kokoro_tts.cache_config_metadata import CACHE_CONFIG_METADATA
 from kokoro_tts.config import TTSConfig
 
 
@@ -367,8 +368,8 @@ def test_cache_integer_declarations_preserve_mapping_content_order_and_owners() 
         for name in CACHE_INT_ENV_NAMES
     )
 
-    # P2B owns parser/mapping declarations only. Worker export and Admin field
-    # metadata remain compatibility/presentation consumers until later phases.
+    # P2B remains the ENV parser/mapping owner. The later Cache declaration
+    # owner reuses those exact objects instead of repeating ENV declarations.
     package_root = Path(config_env.__file__).parent
     source_paths = {
         relative: package_root / relative
@@ -376,7 +377,7 @@ def test_cache_integer_declarations_preserve_mapping_content_order_and_owners() 
             "config_env.py",
             "config_env_domain.py",
             "server.py",
-            "admin_config/groups/cache.py",
+            "cache_config_metadata.py",
         )
     }
     trees = {
@@ -430,7 +431,6 @@ def test_cache_integer_declarations_preserve_mapping_content_order_and_owners() 
     expected_contexts = {
         "config_env_domain.py",
         "server.py",
-        "admin_config/groups/cache.py",
     }
     for env_name in CACHE_INT_ENV_NAMES:
         assert set(literal_occurrences[env_name]) == expected_contexts
@@ -478,22 +478,20 @@ def test_cache_integer_declarations_preserve_mapping_content_order_and_owners() 
         assert len(matches) == 1
         assert constant_value(matches[0]) == SNAPSHOT["int_env"][env_name]["attr"]
 
-    admin_fields = assignment_value(trees["admin_config/groups/cache.py"], "FIELDS")
-    admin_calls = [
-        node
-        for node in ast.walk(admin_fields)
-        if isinstance(node, ast.Call)
-        and isinstance(node.func, ast.Name)
-        and node.func.id == "field_def"
-    ]
+    metadata_by_env = {
+        item.env_name: item
+        for item in CACHE_CONFIG_METADATA
+        if item.env_declaration is not None
+    }
+    declarations_by_env = {
+        item.env_name: item for item in config_env_domain.CACHE_INT_DECLARATIONS
+    }
+    assert tuple(metadata_by_env) == CACHE_INT_ENV_NAMES
     for env_name in CACHE_INT_ENV_NAMES:
-        matches = [
-            call
-            for call in admin_calls
-            if len(call.args) >= 2 and constant_value(call.args[1]) == env_name
-        ]
-        assert len(matches) == 1
-        assert constant_value(matches[0].args[0]) == SNAPSHOT["int_env"][env_name]["attr"]
+        metadata = metadata_by_env[env_name]
+        declaration = declarations_by_env[env_name]
+        assert metadata.env_declaration is declaration
+        assert metadata.key == declaration.attr
 
     config_tree = trees["config_env.py"]
     assert any(

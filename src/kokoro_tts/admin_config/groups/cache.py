@@ -2,7 +2,52 @@
 
 from __future__ import annotations
 
+from ...cache_config_metadata import CACHE_CONFIG_METADATA
 from ..fields import AdminConfigField, field_def
+
+
+_CACHE_ADMIN_COPY = {
+    "cache_max_items": ("音频缓存数量", ""),
+    "cache_max_bytes": (
+        "缓存上限",
+        "前端以 MiB 显示和编辑；0 表示不限制，默认约 512 MiB。",
+    ),
+    "cache_skip_text_over_chars": (
+        "长文本跳过缓存",
+        "超过该字符数的 HTTP 合成结果不写入缓存，0 表示关闭。",
+    ),
+    "cache_skip_audio_over_bytes": (
+        "大音频跳过缓存",
+        "前端以 MiB 显示和编辑；超过该大小的音频不写入缓存，0 表示关闭。",
+    ),
+}
+
+
+def _cache_admin_fields() -> tuple[AdminConfigField, ...]:
+    fields: list[AdminConfigField] = []
+    for metadata in CACHE_CONFIG_METADATA:
+        admin = metadata.admin
+        if admin is None:
+            continue
+        label, help_text = _CACHE_ADMIN_COPY[metadata.key]
+        fields.append(
+            field_def(
+                metadata.key,
+                metadata.env_name,
+                label,
+                admin.group,
+                admin.type,
+                metadata.default,
+                admin.min_value,
+                admin.max_value,
+                admin.step,
+                restart=admin.restart,
+                rebuild_moss=admin.rebuild_moss,
+                advanced=admin.advanced,
+                help=help_text,
+            )
+        )
+    return tuple(fields)
 
 
 FIELDS: tuple[AdminConfigField, ...] = (
@@ -142,53 +187,7 @@ FIELDS: tuple[AdminConfigField, ...] = (
         advanced=True,
         help="Kokoro/ZipVoice 隔离 Worker 优雅退出宽限，超时后将终止进程以释放资源。",
     ),
-    field_def(
-        "cache_max_items",
-        "KOKORO_CACHE_MAX_ITEMS",
-        "音频缓存数量",
-        "service",
-        "int",
-        64,
-        0,
-        2000,
-        1,
-    ),
-    field_def(
-        "cache_max_bytes",
-        "KOKORO_CACHE_MAX_BYTES",
-        "缓存上限",
-        "service",
-        "int",
-        536870912,
-        0,
-        8589934592,
-        1048576,
-        help="前端以 MiB 显示和编辑；0 表示不限制，默认约 512 MiB。",
-    ),
-    field_def(
-        "cache_skip_text_over_chars",
-        "KOKORO_CACHE_SKIP_TEXT_OVER_CHARS",
-        "长文本跳过缓存",
-        "service",
-        "int",
-        1200,
-        0,
-        100000,
-        100,
-        help="超过该字符数的 HTTP 合成结果不写入缓存，0 表示关闭。",
-    ),
-    field_def(
-        "cache_skip_audio_over_bytes",
-        "KOKORO_CACHE_SKIP_AUDIO_OVER_BYTES",
-        "大音频跳过缓存",
-        "service",
-        "int",
-        20971520,
-        0,
-        2147483647,
-        1048576,
-        help="前端以 MiB 显示和编辑；超过该大小的音频不写入缓存，0 表示关闭。",
-    ),
+    *_cache_admin_fields(),
     field_def(
         "save_outputs",
         "ANGEVOICE_SAVE_OUTPUTS",

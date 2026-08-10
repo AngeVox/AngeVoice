@@ -16,6 +16,7 @@ from typing import Optional
 logger = logging.getLogger(__name__)
 
 from .admin_config_schema import load_runtime_config
+from .cache_config_metadata import CACHE_CONFIG_BY_KEY
 from .config_env import apply_env
 from .kokoro_assets import (
     default_kokoro_model_dir,
@@ -112,11 +113,15 @@ class TTSConfig:
     # 支持 base64 解码后最多 20 MiB 参考音频上传加 JSON 开销。
     websocket_max_message_bytes: int = 32 * 1024 * 1024
 
-    cache_enabled: bool = True
-    cache_max_items: int = 64
-    cache_max_bytes: int = 512 * 1024 * 1024
-    cache_skip_text_over_chars: int = 1200
-    cache_skip_audio_over_bytes: int = 20 * 1024 * 1024
+    cache_enabled: bool = CACHE_CONFIG_BY_KEY["cache_enabled"].default
+    cache_max_items: int = CACHE_CONFIG_BY_KEY["cache_max_items"].default
+    cache_max_bytes: int = CACHE_CONFIG_BY_KEY["cache_max_bytes"].default
+    cache_skip_text_over_chars: int = CACHE_CONFIG_BY_KEY[
+        "cache_skip_text_over_chars"
+    ].default
+    cache_skip_audio_over_bytes: int = CACHE_CONFIG_BY_KEY[
+        "cache_skip_audio_over_bytes"
+    ].default
     queue_status_enabled: bool = True
     metrics_enabled: bool = True
     request_timeout_seconds: float = 300.0
