@@ -34,6 +34,7 @@ from .config_ids import (
     normalize_config_model_id,
 )
 from .model_source_metadata import MODEL_SOURCE_METADATA
+from .update_check_config_metadata import UPDATE_CHECK_CONFIG_BY_KEY
 
 def _find_models_dir() -> Path:
     """查找可用的 Kokoro 模型目录。
@@ -157,10 +158,18 @@ class TTSConfig:
     output_dir: Path = field(default_factory=lambda: Path("/app/outputs"))
     output_max_files: int = 1000
     runtime_config_file: Path = field(default_factory=lambda: Path("/app/config/runtime-config.json"))
-    update_check_enabled: bool = True
-    update_repository: str = "angevox/AngeVoice"
-    update_check_timeout_seconds: float = 3.0
-    update_check_cache_seconds: float = 21600.0
+    update_check_enabled: bool = UPDATE_CHECK_CONFIG_BY_KEY[
+        "update_check_enabled"
+    ].default
+    update_repository: str = UPDATE_CHECK_CONFIG_BY_KEY[
+        "update_repository"
+    ].default
+    update_check_timeout_seconds: float = UPDATE_CHECK_CONFIG_BY_KEY[
+        "update_check_timeout_seconds"
+    ].default
+    update_check_cache_seconds: float = UPDATE_CHECK_CONFIG_BY_KEY[
+        "update_check_cache_seconds"
+    ].default
 
     # 模型源站：auto 先短超时探测 HF/ModelScope 可达性，再做国家/地区判断。
     model_source: str = MODEL_SOURCE_METADATA.default
