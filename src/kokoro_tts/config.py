@@ -16,6 +16,7 @@ from typing import Optional
 logger = logging.getLogger(__name__)
 
 from .admin_config_schema import load_runtime_config
+from .batch_config_metadata import BATCH_CONFIG_BY_KEY
 from .cache_config_metadata import CACHE_CONFIG_BY_KEY
 from .config_env import apply_env
 from .kokoro_assets import (
@@ -129,9 +130,9 @@ class TTSConfig:
     # 可能需要数秒到数十秒，不能直接复用普通 HTTP 请求超时。
     websocket_stream_idle_timeout_seconds: float = 120.0
 
-    batch_enabled: bool = True
-    batch_max_items: int = 20
-    batch_concurrency: int = 1
+    batch_enabled: bool = BATCH_CONFIG_BY_KEY["batch_enabled"].default
+    batch_max_items: int = BATCH_CONFIG_BY_KEY["batch_max_items"].default
+    batch_concurrency: int = BATCH_CONFIG_BY_KEY["batch_concurrency"].default
     admin_enabled: bool = False
     voice_upload_enabled: bool = False
     voice_upload_max_bytes: int = 10 * 1024 * 1024
