@@ -34,6 +34,7 @@ from .config_ids import (
     normalize_config_model_id,
 )
 from .model_source_metadata import MODEL_SOURCE_METADATA
+from .rate_limit_config_metadata import RATE_LIMIT_CONFIG_BY_KEY
 from .update_check_config_metadata import UPDATE_CHECK_CONFIG_BY_KEY
 
 def _find_models_dir() -> Path:
@@ -274,8 +275,8 @@ class TTSConfig:
     zipvoice_prompt_audio_max_seconds: float = 15.0
 
     # 限流：默认提供基础入口保护；可信内网可显式配置为 0 关闭。
-    rate_limit_qps: float = 10.0
-    rate_limit_burst: int = 20
+    rate_limit_qps: float = RATE_LIMIT_CONFIG_BY_KEY["rate_limit_qps"].default
+    rate_limit_burst: int = RATE_LIMIT_CONFIG_BY_KEY["rate_limit_burst"].default
     max_queue_length: int = 50
     trust_proxy_headers: bool = False
     public_status_endpoints: bool = True
