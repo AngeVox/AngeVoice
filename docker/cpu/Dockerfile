@@ -17,6 +17,7 @@ ARG MOSS_REPO=https://github.com/OpenMOSS/MOSS-TTS-Nano.git
 ARG MOSS_REF=b09d1962a7df4d4007146ea53880c4b282d83e39
 ARG MOSS_RUNTIME_PACKAGE=onnxruntime>=1.20.0
 ARG PYTORCH_VERSION=2.5.1
+ARG PIP_BOOTSTRAP_VERSION=26.2.1
 ARG INSTALL_ZIPVOICE=true
 ENV MOSS_TTS_NANO_PATH=/opt/MOSS-TTS-Nano
 ENV ZIPVOICE_REPO_PATH=/opt/ZipVoice
@@ -28,6 +29,10 @@ COPY constraints.txt ./
 # 这样同一 Dockerfile 可同时解析 linux/amd64 与 linux/arm64 wheel。
 # AngeVoice/MOSS 推理不需要 torchvision，保持镜像更轻。
 # 注意：不使用 -c constraints.txt，因为 PyTorch 专用 index 无法解析其中的 jinja2 等非 torch 依赖。
+# Pin pip before CPU-index resolution to avoid the old PEP 658 non-canonical-name bug.
+RUN python3 -m pip install --no-cache-dir \
+    "pip==${PIP_BOOTSTRAP_VERSION}"
+
 RUN python3 -m pip install --no-cache-dir \
     "torch==${PYTORCH_VERSION}" \
     "torchaudio==${PYTORCH_VERSION}" \
