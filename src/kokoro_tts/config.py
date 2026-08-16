@@ -34,6 +34,7 @@ from .config_ids import (
     normalize_config_model_id,
 )
 from .model_source_metadata import MODEL_SOURCE_METADATA
+from .moss_stream_budget_config_metadata import MOSS_STREAM_BUDGET_CONFIG_BY_KEY
 from .rate_limit_config_metadata import RATE_LIMIT_CONFIG_BY_KEY
 from .startup_preload_config_metadata import STARTUP_PRELOAD_CONFIG_BY_KEY
 from .update_check_config_metadata import UPDATE_CHECK_CONFIG_BY_KEY
@@ -287,10 +288,18 @@ class TTSConfig:
     public_status_endpoints: bool = True
 
     # MOSS 流式解码预算阈值：按已输出音频领先实时播放的秒数决定解码帧数。
-    moss_stream_budget_threshold_low: float = 0.25
-    moss_stream_budget_threshold_mid: float = 0.65
-    moss_stream_budget_threshold_high: float = 1.20
-    moss_stream_chunk_min_floor: float = 0.10
+    moss_stream_budget_threshold_low: float = MOSS_STREAM_BUDGET_CONFIG_BY_KEY[
+        "moss_stream_budget_threshold_low"
+    ].default
+    moss_stream_budget_threshold_mid: float = MOSS_STREAM_BUDGET_CONFIG_BY_KEY[
+        "moss_stream_budget_threshold_mid"
+    ].default
+    moss_stream_budget_threshold_high: float = MOSS_STREAM_BUDGET_CONFIG_BY_KEY[
+        "moss_stream_budget_threshold_high"
+    ].default
+    moss_stream_chunk_min_floor: float = MOSS_STREAM_BUDGET_CONFIG_BY_KEY[
+        "moss_stream_chunk_min_floor"
+    ].default
 
     # 空闲释放：默认 10 分钟无人使用后释放所有已加载模型。
     model_idle_timeout_seconds: float = 600
