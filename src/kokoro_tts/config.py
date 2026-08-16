@@ -35,6 +35,7 @@ from .config_ids import (
 )
 from .model_source_metadata import MODEL_SOURCE_METADATA
 from .rate_limit_config_metadata import RATE_LIMIT_CONFIG_BY_KEY
+from .startup_preload_config_metadata import STARTUP_PRELOAD_CONFIG_BY_KEY
 from .update_check_config_metadata import UPDATE_CHECK_CONFIG_BY_KEY
 
 def _find_models_dir() -> Path:
@@ -150,8 +151,12 @@ class TTSConfig:
     enabled_models: list[str] = field(default_factory=lambda: ["kokoro"])
     default_model: str = "kokoro"
     # Studio 默认选择与可选冷启动预加载独立。
-    startup_preload_enabled: bool = False
-    startup_preload_model: str = "kokoro"
+    startup_preload_enabled: bool = STARTUP_PRELOAD_CONFIG_BY_KEY[
+        "startup_preload_enabled"
+    ].default
+    startup_preload_model: str = STARTUP_PRELOAD_CONFIG_BY_KEY[
+        "startup_preload_model"
+    ].default
     model_switch_enabled: bool = True
     model_unload_on_switch: bool = True
     model_switch_timeout_seconds: float = 300.0
