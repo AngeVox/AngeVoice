@@ -1,9 +1,8 @@
 """MOSS stream-budget declaration/default ownership contract freeze.
 
-Current-state tests characterize the four-field flat ``TTSConfig`` facade and
-preserve the runtime, ENV, worker, Admin, and pure-helper owners.  The two
-future-state gates intentionally remain independent RED tests until a narrow
-defaults-only metadata module exists and ``TTSConfig`` consumes it.
+These tests characterize the four-field flat ``TTSConfig`` facade and preserve
+the declaration/default, runtime-reader, ENV, worker, Admin, and pure-helper
+ownership boundaries established by P2-001.
 
 Streaming algorithms, waveform splitting, ENV validation, worker propagation,
 and Admin ownership are explicitly outside this P2-001 contract.
@@ -109,8 +108,8 @@ def _ttsconfig_assignments(tree: ast.Module) -> dict[str, ast.AnnAssign]:
     }
 
 
-def _literal_getattr_fallbacks(node: ast.AST) -> dict[str, object]:
-    fallbacks: dict[str, object] = {}
+def _field_bound_getattr_calls(node: ast.AST) -> dict[str, ast.Call]:
+    calls: dict[str, ast.Call] = {}
     for item in ast.walk(node):
         if not (
             isinstance(item, ast.Call)
@@ -121,8 +120,10 @@ def _literal_getattr_fallbacks(node: ast.AST) -> dict[str, object]:
             and item.args[1].value in MOSS_STREAM_BUDGET_FIELDS
         ):
             continue
-        fallbacks[str(item.args[1].value)] = ast.literal_eval(item.args[2])
-    return fallbacks
+        field = str(item.args[1].value)
+        assert field not in calls, f"duplicate runtime read for {field}"
+        calls[field] = item
+    return calls
 
 
 def _canonical_owner_default_key(node: ast.AST) -> str | None:
@@ -176,26 +177,35 @@ def test_current_moss_stream_budget_facade_declarations_are_exact() -> None:
         assert runtime_fields[key].init is True
 
 
-def test_current_moss_stream_budget_runtime_readers_and_fallbacks_are_exact() -> None:
+def test_current_moss_stream_budget_runtime_reader_boundaries_are_exact() -> None:
     tree = _module_tree(moss_engine_streaming)
     decode = _definition(tree, "_resolve_stream_decode_frame_budget")
     split = _definition(tree, "_split_waveform_for_stream")
 
-    assert _literal_getattr_fallbacks(decode) == {
-        "moss_stream_budget_threshold_low": 0.25,
-        "moss_stream_budget_threshold_mid": 0.65,
-        "moss_stream_budget_threshold_high": 1.20,
-    }
-    assert _literal_getattr_fallbacks(split) == {
-        "moss_stream_chunk_min_floor": 0.10,
-    }
+    decode_calls = _field_bound_getattr_calls(decode)
+    split_calls = _field_bound_getattr_calls(split)
+    assert tuple(decode_calls) == MOSS_STREAM_BUDGET_FIELDS[:3]
+    assert tuple(split_calls) == MOSS_STREAM_BUDGET_FIELDS[3:]
+    assert all(
+        len(call.args) >= 3 and ast.unparse(call.args[0]) == "self.config"
+        for call in (*decode_calls.values(), *split_calls.values())
+    )
 
-    decode_source = ast.unparse(decode)
-    split_source = ast.unparse(split)
-    assert "StreamBudgetThresholds" in decode_source
-    assert "resolve_stream_decode_frame_budget" in decode_source
-    assert "split_waveform_for_stream" in split_source
-    assert FUTURE_OWNER_MODULE.rsplit(".", 1)[-1] not in ast.unparse(tree)
+    decode_call_names = {
+        item.func.id
+        for item in ast.walk(decode)
+        if isinstance(item, ast.Call) and isinstance(item.func, ast.Name)
+    }
+    split_call_names = {
+        item.func.id
+        for item in ast.walk(split)
+        if isinstance(item, ast.Call) and isinstance(item.func, ast.Name)
+    }
+    assert {
+        "StreamBudgetThresholds",
+        "resolve_stream_decode_frame_budget",
+    } <= decode_call_names
+    assert "split_waveform_for_stream" in split_call_names
 
 
 def test_current_moss_stream_budget_pure_helper_defaults_match_facade() -> None:

@@ -21,6 +21,7 @@ from .moss_runtime.streaming import (
     runtime_supports_frame_streaming,
 )
 from .moss_runtime.audio import split_waveform_for_stream
+from .moss_stream_budget_config_metadata import MOSS_STREAM_BUDGET_CONFIG_BY_KEY
 from .workers.process_worker import EngineProcessTimeoutError
 
 logger = logging.getLogger(__name__)
@@ -443,9 +444,33 @@ class MossStreamingMixin:
         first_audio_emitted_at_perf: float | None,
     ) -> int:
         thresholds = StreamBudgetThresholds(
-            low=float(getattr(self.config, "moss_stream_budget_threshold_low", 0.25)),
-            mid=float(getattr(self.config, "moss_stream_budget_threshold_mid", 0.65)),
-            high=float(getattr(self.config, "moss_stream_budget_threshold_high", 1.20)),
+            low=float(
+                getattr(
+                    self.config,
+                    "moss_stream_budget_threshold_low",
+                    MOSS_STREAM_BUDGET_CONFIG_BY_KEY[
+                        "moss_stream_budget_threshold_low"
+                    ].default,
+                )
+            ),
+            mid=float(
+                getattr(
+                    self.config,
+                    "moss_stream_budget_threshold_mid",
+                    MOSS_STREAM_BUDGET_CONFIG_BY_KEY[
+                        "moss_stream_budget_threshold_mid"
+                    ].default,
+                )
+            ),
+            high=float(
+                getattr(
+                    self.config,
+                    "moss_stream_budget_threshold_high",
+                    MOSS_STREAM_BUDGET_CONFIG_BY_KEY[
+                        "moss_stream_budget_threshold_high"
+                    ].default,
+                )
+            ),
         )
         return resolve_stream_decode_frame_budget(
             emitted_samples_total,
@@ -497,5 +522,13 @@ class MossStreamingMixin:
             waveform,
             sample_rate=self.sample_rate,
             chunk_seconds=float(chunk_seconds or self.config.moss_stream_chunk_seconds),
-            min_floor=float(getattr(self.config, "moss_stream_chunk_min_floor", 0.10)),
+            min_floor=float(
+                getattr(
+                    self.config,
+                    "moss_stream_chunk_min_floor",
+                    MOSS_STREAM_BUDGET_CONFIG_BY_KEY[
+                        "moss_stream_chunk_min_floor"
+                    ].default,
+                )
+            ),
         )
