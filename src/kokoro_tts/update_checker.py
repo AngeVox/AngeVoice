@@ -15,6 +15,7 @@ from typing import Any, Callable
 from urllib.request import Request, urlopen
 
 from . import __version__
+from .update_check_config_metadata import UPDATE_CHECK_CONFIG_BY_KEY
 
 _VERSION_RE = re.compile(r"(?:^|[^0-9])(\d+(?:\.\d+){1,3})(?:[^0-9]|$)")
 
@@ -65,11 +66,32 @@ class UpdateChecker:
         self.cfg = cfg
         self._opener = opener or urlopen
         self._snapshot = UpdateSnapshot(
-            enabled=bool(getattr(cfg, "update_check_enabled", True)),
-            repository=str(getattr(cfg, "update_repository", "angevox/AngeVoice") or "").strip(),
+            enabled=bool(
+                getattr(
+                    cfg,
+                    "update_check_enabled",
+                    UPDATE_CHECK_CONFIG_BY_KEY["update_check_enabled"].default,
+                )
+            ),
+            repository=str(
+                getattr(
+                    cfg,
+                    "update_repository",
+                    UPDATE_CHECK_CONFIG_BY_KEY["update_repository"].default,
+                )
+                or ""
+            ).strip(),
             current_version=__version__,
         )
-        self._cache_seconds = float(getattr(cfg, "update_check_cache_seconds", 21600.0))
+        self._cache_seconds = float(
+            getattr(
+                cfg,
+                "update_check_cache_seconds",
+                UPDATE_CHECK_CONFIG_BY_KEY[
+                    "update_check_cache_seconds"
+                ].default,
+            )
+        )
 
     def snapshot(self) -> dict[str, Any]:
         return self._snapshot.as_dict()
@@ -89,7 +111,18 @@ class UpdateChecker:
         url = f"https://api.github.com/repos/{self._snapshot.repository}/releases/latest"
         req = Request(url, headers={"Accept": "application/vnd.github+json", "User-Agent": f"AngeVoice/{__version__}"})
         try:
-            response = self._opener(req, timeout=float(getattr(self.cfg, "update_check_timeout_seconds", 3.0)))
+            response = self._opener(
+                req,
+                timeout=float(
+                    getattr(
+                        self.cfg,
+                        "update_check_timeout_seconds",
+                        UPDATE_CHECK_CONFIG_BY_KEY[
+                            "update_check_timeout_seconds"
+                        ].default,
+                    )
+                ),
+            )
             raw = response.read()
             payload = json.loads(raw.decode("utf-8"))
             tag = str(payload.get("tag_name") or "")
