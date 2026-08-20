@@ -11,6 +11,7 @@ from .config_api_key import AUTO_API_KEY_SENTINELS, load_or_generate_api_key
 from .config_env_domain import (
     BATCH_INT_DECLARATIONS,
     CACHE_INT_DECLARATIONS,
+    MOSS_STREAM_BUDGET_ENV_DECLARATIONS,
     UPDATE_CHECK_ENV_DECLARATIONS,
     parse_int_env,
 )
@@ -174,10 +175,14 @@ FLOAT_ENV: dict[str, FloatEnvSpec] = {
     "MOSS_OUTPUT_TARGET_PEAK": FloatEnvSpec("moss_output_target_peak", 0.1, 1.0),
     "MOSS_OUTPUT_GAIN": FloatEnvSpec("moss_output_gain", 0.1, 2.0),
     "KOKORO_RATE_LIMIT_QPS": FloatEnvSpec("rate_limit_qps", 0.0),
-    "MOSS_STREAM_BUDGET_THRESHOLD_LOW": FloatEnvSpec("moss_stream_budget_threshold_low", 0.0),
-    "MOSS_STREAM_BUDGET_THRESHOLD_MID": FloatEnvSpec("moss_stream_budget_threshold_mid", 0.0),
-    "MOSS_STREAM_BUDGET_THRESHOLD_HIGH": FloatEnvSpec("moss_stream_budget_threshold_high", 0.0),
-    "MOSS_STREAM_CHUNK_MIN_FLOOR": FloatEnvSpec("moss_stream_chunk_min_floor", 0.01),
+    **{
+        declaration.env_name: FloatEnvSpec(
+            declaration.attr,
+            declaration.min_value,
+            declaration.max_value,
+        )
+        for declaration in MOSS_STREAM_BUDGET_ENV_DECLARATIONS
+    },
     "MOSS_PROCESS_KILL_GRACE_SECONDS": FloatEnvSpec("moss_process_kill_grace_seconds", 0.1, 30.0),
     "ANGEVOICE_ENGINE_PROCESS_KILL_GRACE_SECONDS": FloatEnvSpec("engine_process_kill_grace_seconds", 0.1, 30.0),
     "ANGEVOICE_ENGINE_PROCESS_STREAM_DRAIN_SECONDS": FloatEnvSpec("engine_process_stream_drain_seconds", 0.1, 60.0),

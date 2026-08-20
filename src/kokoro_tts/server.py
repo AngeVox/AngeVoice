@@ -12,7 +12,10 @@ from typing import Optional
 
 from . import __version__
 from .config import TTSConfig, load_config
-from .config_env_domain import UPDATE_CHECK_ENV_DECLARATIONS
+from .config_env_domain import (
+    MOSS_STREAM_BUDGET_ENV_DECLARATIONS,
+    UPDATE_CHECK_ENV_DECLARATIONS,
+)
 from .banner import format_startup_banner
 from .engine import TTSEngine
 from .engine_manager import EngineManager
@@ -179,10 +182,10 @@ _WORKER_ENV_EXPORTS = {
     "MOSS_LOW_VRAM_TEXT_TOKENS": "moss_low_vram_text_tokens",
     "MOSS_DISABLE_FULL_CODEC_AFTER_OOM": "moss_disable_full_codec_after_oom",
     "MOSS_FULL_CODEC_OOM_COOLDOWN_SECONDS": "moss_full_codec_oom_cooldown_seconds",
-    "MOSS_STREAM_BUDGET_THRESHOLD_LOW": "moss_stream_budget_threshold_low",
-    "MOSS_STREAM_BUDGET_THRESHOLD_MID": "moss_stream_budget_threshold_mid",
-    "MOSS_STREAM_BUDGET_THRESHOLD_HIGH": "moss_stream_budget_threshold_high",
-    "MOSS_STREAM_CHUNK_MIN_FLOOR": "moss_stream_chunk_min_floor",
+    **{
+        declaration.env_name: declaration.attr
+        for declaration in MOSS_STREAM_BUDGET_ENV_DECLARATIONS
+    },
     "KOKORO_RATE_LIMIT_QPS": "rate_limit_qps",
     "KOKORO_RATE_LIMIT_BURST": "rate_limit_burst",
     "KOKORO_MAX_QUEUE_LENGTH": "max_queue_length",

@@ -19,6 +19,16 @@ class EnvIntDeclaration:
     max_value: int | None = None
 
 
+@dataclass(frozen=True, slots=True)
+class EnvFloatDeclaration:
+    """A floating-point ENV mapping without defaults or execution behavior."""
+
+    env_name: str
+    attr: str
+    min_value: float | None = None
+    max_value: float | None = None
+
+
 CACHE_INT_DECLARATIONS = (
     EnvIntDeclaration("KOKORO_CACHE_MAX_ITEMS", "cache_max_items", 0),
     EnvIntDeclaration("KOKORO_CACHE_MAX_BYTES", "cache_max_bytes", 0),
@@ -33,6 +43,29 @@ CACHE_INT_DECLARATIONS = (
 BATCH_INT_DECLARATIONS = (
     EnvIntDeclaration("KOKORO_BATCH_MAX_ITEMS", "batch_max_items", 1),
     EnvIntDeclaration("KOKORO_BATCH_CONCURRENCY", "batch_concurrency", 1),
+)
+
+MOSS_STREAM_BUDGET_ENV_DECLARATIONS = (
+    EnvFloatDeclaration(
+        "MOSS_STREAM_BUDGET_THRESHOLD_LOW",
+        "moss_stream_budget_threshold_low",
+        0.0,
+    ),
+    EnvFloatDeclaration(
+        "MOSS_STREAM_BUDGET_THRESHOLD_MID",
+        "moss_stream_budget_threshold_mid",
+        0.0,
+    ),
+    EnvFloatDeclaration(
+        "MOSS_STREAM_BUDGET_THRESHOLD_HIGH",
+        "moss_stream_budget_threshold_high",
+        0.0,
+    ),
+    EnvFloatDeclaration(
+        "MOSS_STREAM_CHUNK_MIN_FLOOR",
+        "moss_stream_chunk_min_floor",
+        0.01,
+    ),
 )
 
 
@@ -96,7 +129,9 @@ UPDATE_CHECK_ENV_DECLARATIONS = (
 __all__ = [
     "BATCH_INT_DECLARATIONS",
     "CACHE_INT_DECLARATIONS",
+    "EnvFloatDeclaration",
     "EnvIntDeclaration",
+    "MOSS_STREAM_BUDGET_ENV_DECLARATIONS",
     "parse_int_env",
     "UPDATE_CHECK_ENV_DECLARATIONS",
     "UpdateCheckEnvDeclaration",

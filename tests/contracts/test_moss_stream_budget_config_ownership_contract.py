@@ -83,6 +83,17 @@ FUTURE_OWNER_MODULE = "kokoro_tts.moss_stream_budget_config_metadata"
 FUTURE_OWNER_TYPE = "MossStreamBudgetConfigMetadata"
 FUTURE_METADATA_SYMBOL = "MOSS_STREAM_BUDGET_CONFIG_METADATA"
 FUTURE_BY_KEY_SYMBOL = "MOSS_STREAM_BUDGET_CONFIG_BY_KEY"
+REQUIRED_OWNER_FIELDS = ("key", "annotation", "default")
+PERMITTED_OWNER_FIELDS = (*REQUIRED_OWNER_FIELDS, "env_declaration")
+OPTIONAL_ENV_BY_KEY_SYMBOL = "_MOSS_STREAM_BUDGET_ENV_BY_KEY"
+PERMITTED_OWNER_ASSIGNMENTS = frozenset(
+    {
+        FUTURE_METADATA_SYMBOL,
+        FUTURE_BY_KEY_SYMBOL,
+        OPTIONAL_ENV_BY_KEY_SYMBOL,
+        "__all__",
+    }
+)
 
 
 def _module_tree(module) -> ast.Module:  # noqa: ANN001
@@ -138,6 +149,50 @@ def _canonical_owner_default_key(node: ast.AST) -> str | None:
     ):
         return None
     return node.value.slice.value
+
+
+def _owner_fields_are_permitted(field_names: tuple[str, ...]) -> bool:
+    return field_names in (REQUIRED_OWNER_FIELDS, PERMITTED_OWNER_FIELDS)
+
+
+def _owner_import_is_permitted(imported: str) -> bool:
+    components = tuple(
+        component for component in imported.lower().split(".") if component
+    )
+    leaf = components[-1] if components else ""
+    if leaf == "config_env":
+        return False
+    if leaf.startswith("config_env_") and leaf != "config_env_domain":
+        return False
+    return not any(
+        token in component
+        for component in components
+        for token in (
+            "admin",
+            "audio",
+            "engine",
+            "network",
+            "process",
+            "runtime",
+            "server",
+            "worker",
+        )
+    )
+
+
+def _env_domain_symbol_is_permitted(symbol: str) -> bool:
+    lowered = symbol.lower()
+    has_os_behavior_name = (
+        lowered == "os" or lowered.startswith("os_") or lowered.endswith("_os")
+    )
+    return (
+        "declaration" in lowered
+        and not has_os_behavior_name
+        and not any(
+            token in lowered
+            for token in ("logger", "parse", "resolve", "runtime")
+        )
+    )
 
 
 def test_current_moss_stream_budget_facade_declarations_are_exact() -> None:
@@ -283,16 +338,19 @@ def test_future_owner_module_gate_a() -> None:
     assert declaration_type.__name__ == FUTURE_OWNER_TYPE
     assert dataclasses.is_dataclass(declaration_type)
     assert declaration_type.__dataclass_params__.frozen is True
-    assert tuple(field.name for field in dataclasses.fields(declaration_type)) == (
-        "key",
-        "annotation",
-        "default",
+    declaration_fields = tuple(
+        field.name for field in dataclasses.fields(declaration_type)
     )
-    assert tuple(getattr(declaration_type, "__slots__", ())) == (
-        "key",
-        "annotation",
-        "default",
+    assert _owner_fields_are_permitted(REQUIRED_OWNER_FIELDS)
+    assert _owner_fields_are_permitted(PERMITTED_OWNER_FIELDS)
+    assert not _owner_fields_are_permitted(
+        (*REQUIRED_OWNER_FIELDS, "runtime_policy")
     )
+    assert _owner_fields_are_permitted(declaration_fields)
+    assert declaration_fields[: len(REQUIRED_OWNER_FIELDS)] == (
+        REQUIRED_OWNER_FIELDS
+    )
+    assert tuple(getattr(declaration_type, "__slots__", ())) == declaration_fields
     assert all(not hasattr(item, "__dict__") for item in metadata)
     for item in metadata:
         with pytest.raises(
@@ -317,20 +375,27 @@ def test_future_owner_module_gate_a() -> None:
         if isinstance(node, ast.Import)
         for alias in node.names
     }
-    assert not any(
-        token in imported.lower()
-        for imported in imported_modules
-        for token in (
-            "admin",
-            "audio",
-            "config_env",
-            "engine",
-            "network",
-            "process",
-            "runtime",
-            "server",
-            "worker",
-        )
+    assert _owner_import_is_permitted("config_env_domain")
+    assert _owner_import_is_permitted("kokoro_tts.config_env_domain")
+    assert not _owner_import_is_permitted("config_env")
+    assert not _owner_import_is_permitted("kokoro_tts.config_env")
+    assert all(_owner_import_is_permitted(imported) for imported in imported_modules)
+
+    env_domain_imports = [
+        node
+        for node in owner_tree.body
+        if isinstance(node, ast.ImportFrom)
+        and (node.module or "").split(".")[-1] == "config_env_domain"
+    ]
+    assert _env_domain_symbol_is_permitted("EnvFloatDeclaration")
+    assert _env_domain_symbol_is_permitted(
+        "MOSS_STREAM_BUDGET_ENV_DECLARATIONS"
+    )
+    assert not _env_domain_symbol_is_permitted("parse_float_env")
+    assert all(
+        _env_domain_symbol_is_permitted(alias.name)
+        for node in env_domain_imports
+        for alias in node.names
     )
     assert not any(
         isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))
@@ -351,11 +416,19 @@ def test_future_owner_module_gate_a() -> None:
         assignment_names.update(
             target.id for target in targets if isinstance(target, ast.Name)
         )
-    assert assignment_names <= {
+    assert {
         FUTURE_METADATA_SYMBOL,
         FUTURE_BY_KEY_SYMBOL,
         "__all__",
-    }
+    } <= PERMITTED_OWNER_ASSIGNMENTS
+    assert assignment_names <= PERMITTED_OWNER_ASSIGNMENTS
+    assert not (assignment_names | {"_RUNTIME_CACHE"}) <= (
+        PERMITTED_OWNER_ASSIGNMENTS
+    )
+    if OPTIONAL_ENV_BY_KEY_SYMBOL in assignment_names:
+        env_by_key = getattr(module, OPTIONAL_ENV_BY_KEY_SYMBOL)
+        assert isinstance(env_by_key, MappingProxyType)
+        assert tuple(env_by_key) == MOSS_STREAM_BUDGET_FIELDS
 
 
 def test_future_ttsconfig_consumption_gate_b() -> None:
