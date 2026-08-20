@@ -74,7 +74,10 @@ def _call_names(node: ast.AST) -> set[str]:
     return names
 
 
-def _update_check_export_mapping() -> dict[str, str]:
+def _declaration_export_mapping(
+    declaration_name: str,
+    constructor_name: str,
+) -> dict[str, str]:
     tree = _module_tree("config_env_domain.py")
     assignment = next(
         node
@@ -82,7 +85,7 @@ def _update_check_export_mapping() -> dict[str, str]:
         if isinstance(node, ast.Assign)
         and any(
             isinstance(target, ast.Name)
-            and target.id == "UPDATE_CHECK_ENV_DECLARATIONS"
+            and target.id == declaration_name
             for target in node.targets
         )
     )
@@ -92,7 +95,7 @@ def _update_check_export_mapping() -> dict[str, str]:
     for declaration in assignment.value.elts:
         assert isinstance(declaration, ast.Call)
         assert isinstance(declaration.func, ast.Name)
-        assert declaration.func.id == "UpdateCheckEnvDeclaration"
+        assert declaration.func.id == constructor_name
         env_name = ast.literal_eval(declaration.args[0])
         attr = ast.literal_eval(declaration.args[1])
         mapping[env_name] = attr
@@ -100,7 +103,7 @@ def _update_check_export_mapping() -> dict[str, str]:
 
 
 def _expanded_worker_export_mapping() -> tuple[dict[str, str], int, int]:
-    """Expand only the declared UPDATE_CHECK_ENV_DECLARATIONS dict-comprehension."""
+    """Expand only the two explicitly owned declaration projections."""
 
     tree = _module_tree("server.py")
     assignment = next(
@@ -117,20 +120,51 @@ def _expanded_worker_export_mapping() -> tuple[dict[str, str], int, int]:
     mapping: dict[str, str] = {}
     literal_count = 0
     expansion_count = 0
-    update_mapping = _update_check_export_mapping()
+    projection_mappings = {
+        "MOSS_STREAM_BUDGET_ENV_DECLARATIONS": _declaration_export_mapping(
+            "MOSS_STREAM_BUDGET_ENV_DECLARATIONS",
+            "EnvFloatDeclaration",
+        ),
+        "UPDATE_CHECK_ENV_DECLARATIONS": _declaration_export_mapping(
+            "UPDATE_CHECK_ENV_DECLARATIONS",
+            "UpdateCheckEnvDeclaration",
+        ),
+    }
+    seen_projections: set[str] = set()
     for key, value in zip(assignment.value.keys, assignment.value.values):
         if key is None:
             assert isinstance(value, ast.DictComp)
             assert len(value.generators) == 1
-            iterator = value.generators[0].iter
+            generator = value.generators[0]
+            assert isinstance(generator.target, ast.Name)
+            assert generator.target.id == "declaration"
+            assert generator.ifs == []
+            assert generator.is_async == 0
+            iterator = generator.iter
             assert isinstance(iterator, ast.Name)
-            assert iterator.id == "UPDATE_CHECK_ENV_DECLARATIONS"
-            mapping.update(update_mapping)
-            expansion_count += len(update_mapping)
+            assert iterator.id in projection_mappings
+            assert iterator.id not in seen_projections
+            assert isinstance(value.key, ast.Attribute)
+            assert isinstance(value.key.value, ast.Name)
+            assert (value.key.value.id, value.key.attr) == (
+                "declaration",
+                "env_name",
+            )
+            assert isinstance(value.value, ast.Attribute)
+            assert isinstance(value.value.value, ast.Name)
+            assert (value.value.value.id, value.value.attr) == (
+                "declaration",
+                "attr",
+            )
+            declared_mapping = projection_mappings[iterator.id]
+            mapping.update(declared_mapping)
+            expansion_count += len(declared_mapping)
+            seen_projections.add(iterator.id)
             continue
         mapping[ast.literal_eval(key)] = ast.literal_eval(value)
         literal_count += 1
 
+    assert seen_projections == set(projection_mappings)
     assert mapping == server._WORKER_ENV_EXPORTS
     return mapping, literal_count, expansion_count
 
@@ -454,7 +488,7 @@ class TestWorkerEnvironmentExportInventory:
         """STATIC OWNERSHIP CONTRACT: structured AST expansion, not literal_eval."""
 
         mapping, literal_count, expansion_count = _expanded_worker_export_mapping()
-        assert (literal_count, expansion_count, len(mapping)) == (153, 4, 157)
+        assert (literal_count, expansion_count, len(mapping)) == (149, 8, 157)
         assert {
             prefix: sum(name.startswith(f"{prefix}_") for name in mapping)
             for prefix in ("ANGEVOICE", "KOKORO", "MOSS", "ZIPVOICE")

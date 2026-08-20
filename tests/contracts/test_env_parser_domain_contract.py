@@ -106,7 +106,9 @@ def test_batch_integer_declarations_are_frozen_exact_and_exported() -> None:
     assert config_env_domain.__all__ == [
         "BATCH_INT_DECLARATIONS",
         "CACHE_INT_DECLARATIONS",
+        "EnvFloatDeclaration",
         "EnvIntDeclaration",
+        "MOSS_STREAM_BUDGET_ENV_DECLARATIONS",
         "parse_int_env",
         "UPDATE_CHECK_ENV_DECLARATIONS",
         "UpdateCheckEnvDeclaration",
@@ -168,6 +170,7 @@ def test_domain_module_has_no_forbidden_runtime_dependencies() -> None:
     assert declarations == {
         "CACHE_INT_DECLARATIONS",
         "BATCH_INT_DECLARATIONS",
+        "MOSS_STREAM_BUDGET_ENV_DECLARATIONS",
         "UPDATE_CHECK_ENV_DECLARATIONS",
     }
 
