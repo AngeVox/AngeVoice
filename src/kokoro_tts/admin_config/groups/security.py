@@ -2,7 +2,12 @@
 
 from __future__ import annotations
 
+from ...rate_limit_config_metadata import RATE_LIMIT_CONFIG_BY_KEY
 from ..fields import AdminConfigField, field_def
+
+
+_RATE_LIMIT_QPS_METADATA = RATE_LIMIT_CONFIG_BY_KEY["rate_limit_qps"]
+_RATE_LIMIT_BURST_METADATA = RATE_LIMIT_CONFIG_BY_KEY["rate_limit_burst"]
 
 
 FIELDS: tuple[AdminConfigField, ...] = (
@@ -12,10 +17,10 @@ FIELDS: tuple[AdminConfigField, ...] = (
         "限流 QPS",
         "security",
         "float",
-        10.0,
-        0,
-        1000,
-        0.1,
+        _RATE_LIMIT_QPS_METADATA.default,
+        _RATE_LIMIT_QPS_METADATA.validation.admin_min_value,
+        _RATE_LIMIT_QPS_METADATA.validation.admin_max_value,
+        _RATE_LIMIT_QPS_METADATA.validation.admin_step,
         restart=True,
     ),
     field_def(
@@ -24,10 +29,10 @@ FIELDS: tuple[AdminConfigField, ...] = (
         "限流突发",
         "security",
         "int",
-        20,
-        0,
-        10000,
-        1,
+        _RATE_LIMIT_BURST_METADATA.default,
+        _RATE_LIMIT_BURST_METADATA.validation.admin_min_value,
+        _RATE_LIMIT_BURST_METADATA.validation.admin_max_value,
+        _RATE_LIMIT_BURST_METADATA.validation.admin_step,
         restart=True,
     ),
     field_def(

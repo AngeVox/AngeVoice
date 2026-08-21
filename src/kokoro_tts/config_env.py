@@ -15,8 +15,12 @@ from .config_env_domain import (
     UPDATE_CHECK_ENV_DECLARATIONS,
     parse_int_env,
 )
+from .rate_limit_config_metadata import RATE_LIMIT_CONFIG_BY_KEY
 
 logger = logging.getLogger(__name__)
+
+_RATE_LIMIT_QPS_METADATA = RATE_LIMIT_CONFIG_BY_KEY["rate_limit_qps"]
+_RATE_LIMIT_BURST_METADATA = RATE_LIMIT_CONFIG_BY_KEY["rate_limit_burst"]
 
 
 class IntEnvSpec(NamedTuple):
@@ -148,7 +152,11 @@ INT_ENV: dict[str, IntEnvSpec] = {
     "MOSS_LOW_VRAM_SEGMENT_LENGTH": IntEnvSpec("moss_low_vram_segment_length", 20),
     "MOSS_LOW_VRAM_MAX_NEW_FRAMES": IntEnvSpec("moss_low_vram_max_new_frames", 1),
     "MOSS_LOW_VRAM_TEXT_TOKENS": IntEnvSpec("moss_low_vram_text_tokens", 1),
-    "KOKORO_RATE_LIMIT_BURST": IntEnvSpec("rate_limit_burst", 0),
+    "KOKORO_RATE_LIMIT_BURST": IntEnvSpec(
+        _RATE_LIMIT_BURST_METADATA.key,
+        _RATE_LIMIT_BURST_METADATA.validation.env_min_value,
+        _RATE_LIMIT_BURST_METADATA.validation.env_max_value,
+    ),
     "KOKORO_MAX_QUEUE_LENGTH": IntEnvSpec("max_queue_length", 0),
     "KOKORO_WS_MAX_CONNECTIONS": IntEnvSpec("websocket_max_connections", 0),
     "KOKORO_WS_MAX_MESSAGE_BYTES": IntEnvSpec("websocket_max_message_bytes", 1024),
@@ -174,7 +182,11 @@ FLOAT_ENV: dict[str, FloatEnvSpec] = {
     "MOSS_MAX_CLIP_RATIO": FloatEnvSpec("moss_max_clip_ratio", 0.0, 1.0),
     "MOSS_OUTPUT_TARGET_PEAK": FloatEnvSpec("moss_output_target_peak", 0.1, 1.0),
     "MOSS_OUTPUT_GAIN": FloatEnvSpec("moss_output_gain", 0.1, 2.0),
-    "KOKORO_RATE_LIMIT_QPS": FloatEnvSpec("rate_limit_qps", 0.0),
+    "KOKORO_RATE_LIMIT_QPS": FloatEnvSpec(
+        _RATE_LIMIT_QPS_METADATA.key,
+        _RATE_LIMIT_QPS_METADATA.validation.env_min_value,
+        _RATE_LIMIT_QPS_METADATA.validation.env_max_value,
+    ),
     **{
         declaration.env_name: FloatEnvSpec(
             declaration.attr,
