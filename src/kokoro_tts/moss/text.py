@@ -144,7 +144,10 @@ def should_apply_full_angevoice_rules(text: str, mode) -> bool:
     return False
 
 
-def clean_text(text: str, *, apply_angevoice_rules=True, model: str = "moss", mixed_english_policy="translate") -> str:
+def clean_text(
+    text: str, *, apply_angevoice_rules=True, model: str = "moss", mixed_english_policy="translate",
+    text_prepared: bool = False,
+) -> str:
     """清理输入文本，并为 MOSS 自动选择温和或完整中文规则。
 
     ``MOSS_APPLY_ANGEVOICE_RULES=auto`` 是推荐默认值：中文为主的小说/旁白
@@ -152,10 +155,15 @@ def clean_text(text: str, *, apply_angevoice_rules=True, model: str = "moss", mi
     等技术文本只做温和标点/多音字规则。额外的
     ``MOSS_MIXED_ENGLISH_POLICY=translate`` 会把常见英文词组转成自然中文含义，
     避免 MOSS 在长中英混排句子里出现停顿、怪声或尾部漂移。
+
+    ``text_prepared`` 表示 service 已完成通用 TN；此时只保留 MOSS 自己的
+    中英混排策略和分段清理，不重复日期、数字或 family-aware 规则。
     """
 
     cleaned = normalize_text_for_segmentation(text)
-    if should_apply_full_angevoice_rules(cleaned, apply_angevoice_rules):
+    if text_prepared:
+        cleaned = normalize_mixed_english_for_moss(cleaned, policy=mixed_english_policy)
+    elif should_apply_full_angevoice_rules(cleaned, apply_angevoice_rules):
         cleaned = normalize_text_for_tts(cleaned, model=model)
     else:
         cleaned = normalize_mixed_english_for_moss(cleaned, policy=mixed_english_policy)

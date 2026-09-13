@@ -81,44 +81,46 @@ class EngineParameterSchema:
             return False
         raise HTTPException(status_code=400, detail=f"{key} 必须为布尔值")
 
+    @staticmethod
+    def _parse_integer(value: Any, spec: EngineParameter) -> int:
+        try:
+            parsed = int(value)
+        except (TypeError, ValueError, OverflowError) as exc:
+            raise HTTPException(status_code=400, detail=f"{spec.key} 必须为整数") from exc
+        below = spec.minimum is not None and parsed < spec.minimum
+        above = spec.maximum is not None and parsed > spec.maximum
+        if below or above:
+            if spec.minimum is not None and spec.maximum is not None:
+                detail = f"{spec.key} 必须在 {spec.minimum:g} 到 {spec.maximum:g} 之间"
+            elif spec.minimum is not None:
+                detail = f"{spec.key} 必须大于或等于 {spec.minimum:g}"
+            else:
+                detail = f"{spec.key} 必须小于或等于 {spec.maximum:g}"
+            raise HTTPException(status_code=400, detail=detail)
+        return parsed
+
+    def _collect_values(self, available, source, supplied) -> dict[str, Any]:
+        """非空通用参数覆盖旧字段；未知字段不参与类型校验。"""
+        raw: dict[str, Any] = {}
+        for values in (source, supplied):
+            if values is None:
+                continue
+            for key in available:
+                value = self._lookup(values, key)
+                if value is not None and value != "":
+                    raw[key] = value
+        return raw
+
     def parse(self, model_id: str, source: Mapping[str, Any] | Any | None = None, *, supplied: Mapping[str, Any] | None = None) -> dict[str, Any]:
         available = {item.key: item for item in self._schemas.get(str(model_id or ""), ())}
-        if not available:
-            return {}
-        raw: dict[str, Any] = {}
-        # 先解析旧版顶层字段，然后在迁移期间两者都提供时
-        # 让通用 engine_params 负载生效。
-        if source is not None:
-            for key in available:
-                value = self._lookup(source, key)
-                if value not in {None, ""}:
-                    raw[key] = value
-        if supplied:
-            raw.update({key: value for key, value in dict(supplied).items() if value not in {None, ""}})
+        raw = self._collect_values(available, source, supplied)
         parsed: dict[str, Any] = {}
         for key, value in raw.items():
-            spec = available.get(key)
-            if spec is None:
-                continue
+            spec = available[key]
             if spec.value_type == "boolean":
                 parsed_value = self._parse_bool(value, key)
                 if parsed_value is not None:
                     parsed[key] = parsed_value
-                continue
-            if spec.value_type == "integer":
-                try:
-                    parsed_value = int(value)
-                except (TypeError, ValueError) as exc:
-                    raise HTTPException(status_code=400, detail=f"{key} 必须为整数") from exc
-                below_minimum = spec.minimum is not None and parsed_value < spec.minimum
-                above_maximum = spec.maximum is not None and parsed_value > spec.maximum
-                if below_minimum or above_maximum:
-                    if spec.minimum is not None and spec.maximum is not None:
-                        detail = f"{key} 必须在 {spec.minimum:g} 到 {spec.maximum:g} 之间"
-                    elif spec.minimum is not None:
-                        detail = f"{key} 必须大于或等于 {spec.minimum:g}"
-                    else:
-                        detail = f"{key} 必须小于或等于 {spec.maximum:g}"
-                    raise HTTPException(status_code=400, detail=detail)
-                parsed[key] = parsed_value
+            elif spec.value_type == "integer":
+                parsed[key] = self._parse_integer(value, spec)
         return parsed

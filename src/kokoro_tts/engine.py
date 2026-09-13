@@ -309,13 +309,17 @@ class TTSEngine:
             except Exception:
                 return text
 
-    def synthesize(self, text: str, voice: str = "zm_010", speed: float = 1.0) -> bytes:
-        wav = self.synthesize_array(text=text, voice=voice, speed=speed)
+    def synthesize(
+        self, text: str, voice: str = "zm_010", speed: float = 1.0, *, text_prepared: bool = False,
+    ) -> bytes:
+        wav = self.synthesize_array(text=text, voice=voice, speed=speed, text_prepared=text_prepared)
         return write_wav_bytes(wav, self.sample_rate)
 
-    def synthesize_array(self, text: str, voice: str = "zm_010", speed: float = 1.0):
+    def synthesize_array(
+        self, text: str, voice: str = "zm_010", speed: float = 1.0, *, text_prepared: bool = False,
+    ):
         self._validate_request(text=text, voice=voice, speed=speed)
-        text = self._clean_text(text)
+        text = self._clean_text(text, text_prepared=text_prepared)
         if not text:
             raise ValueError("清理后文本为空")
         timeout = self.config.request_timeout_seconds
@@ -359,10 +363,12 @@ class TTSEngine:
         if not voice or not str(voice).strip():
             raise ValueError("voice 不能为空")
 
-    def _clean_text(self, text: str) -> str:
+    def _clean_text(self, text: str, *, text_prepared: bool = False) -> str:
         text = "".join(c if c.isprintable() or c.isspace() else " " for c in text)
         text = re.sub(r"[ \t\r\f\v]+", " ", text).strip()
-        text = normalize_text_for_tts(text)
+        # Prepared service text still needs safety cleanup, but not a second generic TN pass.
+        if not text_prepared:
+            text = normalize_text_for_tts(text)
         return re.sub(r"\s+", " ", text).strip()
 
     def _detect_language(self, text: str) -> str:
@@ -456,7 +462,9 @@ class TTSEngine:
     def _normalize_audio(self, audio_array):
         return normalize_audio_array(audio_array).reshape(-1)
 
-    def synthesize_stream(self, text, voice="zm_010", speed=1.0, fmt="pcm_s16le", *, cancel_check=None):
+    def synthesize_stream(
+        self, text, voice="zm_010", speed=1.0, fmt="pcm_s16le", *, cancel_check=None, text_prepared: bool = False,
+    ):
         if fmt not in self.SUPPORTED_STREAM_FORMATS:
             yield {"type": "error", "message": f"不支持的流式格式：{fmt}"}
             return
@@ -466,7 +474,7 @@ class TTSEngine:
             yield {"type": "error", "message": str(e)}
             return
 
-        text = self._clean_text(text)
+        text = self._clean_text(text, text_prepared=text_prepared)
         if not text:
             yield {"type": "error", "message": "清理后文本为空"}
             return

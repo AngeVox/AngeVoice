@@ -329,8 +329,8 @@ def create_app(config: Optional[TTSConfig] = None, engine: Optional[TTSEngine] =
     app.include_router(create_zipvoice_router(state, verify_api_key))
     app.include_router(create_ws_router(state))
 
-    from .service_extras import register_extra_routes
-    register_extra_routes(app=app, cfg=cfg, eng=state.eng, verify_api_key=verify_api_key, **state.as_service_extras_kwargs())
+    from .service_extras import register_service_routes
+    register_service_routes(app=app, state=state, verify_api_key=verify_api_key)
     return app
 
 

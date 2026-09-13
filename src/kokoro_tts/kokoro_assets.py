@@ -328,17 +328,13 @@ def is_valid_kokoro_weight_file(path: Path, *, min_bytes: int, label: str, log: 
         return False
     key = str(path.resolve()) if path.exists() else str(path)
     if is_git_lfs_pointer(path) or looks_like_text_placeholder(path):
-        _warn_once(log, key, "跳过 %s：%s 看起来是 Git LFS 指针、文本占位符或下载错误页。", label, path)
+        _warn_once(log, key, "跳过 Kokoro 权重：Git LFS 指针、文本占位符或下载错误页。")
         return False
     if file_size < int(min_bytes) and not _has_torch_signature(path):
         _warn_once(
             log,
             key,
-            "跳过 %s：%s 大小 %d 字节 < %d 字节，且不是 PyTorch 权重文件头。",
-            label,
-            path,
-            file_size,
-            int(min_bytes),
+            "跳过 Kokoro 权重：低于最小大小且缺少 PyTorch 权重文件头。",
         )
         return False
     return True
@@ -368,7 +364,7 @@ def is_valid_kokoro_config_file(path: Path, *, log: logging.Logger | None = None
     if not path.exists() or not path.is_file():
         return False
     if is_git_lfs_pointer(path):
-        _warn_once(log, str(path.resolve()), "跳过 Kokoro 配置文件：%s 是 Git LFS 指针。", path)
+        _warn_once(log, str(path.resolve()), "跳过 Kokoro 配置文件：Git LFS 指针。")
         return False
     if looks_like_text_placeholder(path):
         # 短 JSON 配置可能被纯文本启发式误判，额外尝试 JSON 解析验证。
@@ -377,7 +373,7 @@ def is_valid_kokoro_config_file(path: Path, *, log: logging.Logger | None = None
             with path.open("r", encoding="utf-8") as fh:
                 _json.load(fh)
         except (ValueError, UnicodeDecodeError):
-            _warn_once(log, str(path.resolve()), "跳过 Kokoro 配置文件：%s 看起来不是有效 JSON 配置。", path)
+            _warn_once(log, str(path.resolve()), "跳过 Kokoro 配置文件：不是有效 JSON 配置。")
             return False
     return True
 

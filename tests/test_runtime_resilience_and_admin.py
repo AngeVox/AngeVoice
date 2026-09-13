@@ -9,6 +9,7 @@ from pathlib import Path
 from unittest.mock import MagicMock
 
 import numpy as np
+import pytest
 
 from kokoro_tts.admin_config_schema import schema_payload
 from kokoro_tts.config import TTSConfig
@@ -18,6 +19,71 @@ from kokoro_tts.moss_engine import MossNanoEngine
 
 
 ROOT = Path(__file__).resolve().parent.parent
+
+
+@pytest.mark.parametrize("active", [0, 1])
+@pytest.mark.parametrize("load", [False, True])
+def test_manager_provider_replacement_preserves_busy_and_load_false(active, load):
+    from fastapi import HTTPException
+    manager = EngineManager(TTSConfig(model_idle_timeout_seconds=0, enabled_models=["kokoro", "moss"]))
+    old = MagicMock(is_loaded=True, is_healthy=True, requested_provider="cpu")
+    fresh = MagicMock(is_loaded=False, is_healthy=True, requested_provider="cuda")
+    manager._engines["moss"] = old
+    manager._active_counts["moss"] = active
+    manager._create_engine = MagicMock(return_value=fresh)
+    try:
+        if active:
+            with pytest.raises(HTTPException) as caught:
+                manager.get_engine("moss", load=load, provider_hint="cuda")
+            assert caught.value.status_code == 409
+            assert manager._engines["moss"] is old
+            old.unload.assert_not_called()
+            manager._create_engine.assert_not_called()
+        else:
+            assert manager.get_engine("moss", load=load, provider_hint="cuda") is fresh
+            old.unload.assert_called_once_with(force=False)
+            manager._create_engine.assert_called_once_with("moss", provider_hint="cuda")
+            assert fresh.load.call_count == int(load)
+    finally:
+        manager.stop_idle_timer()
+
+
+@pytest.mark.parametrize("cleanup", ["force", "legacy", "fails", "legacy-fails"])
+def test_manager_failed_load_preserves_error_clears_state_and_retries(cleanup):
+    manager = EngineManager(TTSConfig(model_idle_timeout_seconds=0, enabled_models=["kokoro"]))
+    original = RuntimeError("synthetic load failure")
+    failed = MagicMock(is_loaded=False, is_healthy=True)
+    failed.load.side_effect = original
+    calls = []
+
+    def legacy_unload():
+        calls.append("legacy")
+        if cleanup == "legacy-fails":
+            raise OSError("synthetic cleanup failure")
+
+    def force_unload(*, force):
+        calls.append(force)
+        if cleanup == "fails":
+            raise OSError("synthetic cleanup failure")
+
+    failed.unload = legacy_unload if cleanup.startswith("legacy") else force_unload
+    fresh = MagicMock(is_loaded=False, is_healthy=True)
+    fresh.load.side_effect = lambda: setattr(fresh, "is_loaded", True)
+    manager._create_engine = MagicMock(side_effect=[failed, fresh])
+    try:
+        with pytest.raises(RuntimeError) as caught:
+            manager.get_engine("kokoro")
+        assert caught.value is original
+        assert "kokoro" not in manager._engines
+        assert manager._active_count("kokoro") == 0
+        assert "kokoro" not in manager._last_used
+        assert calls == (["legacy"] if cleanup.startswith("legacy") else [True])
+        assert manager.get_engine("kokoro") is fresh
+        assert manager._engines["kokoro"] is fresh
+        assert "kokoro" in manager._last_used
+        fresh.load.assert_called_once()
+    finally:
+        manager.stop_idle_timer()
 
 
 def test_production_env_keeps_credentials_and_runtime_config_out_of_outputs():

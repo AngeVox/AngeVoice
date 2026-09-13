@@ -89,12 +89,13 @@ class SynthesisService:
 
     def _inference_kwargs(self, engine, request: SynthesisRequest, method_name: str) -> dict[str, Any]:
         candidates: dict[str, Any] = dict(request.engine_params or {})
+        # build_request() has already applied the request-selected generic TN.
+        candidates["text_prepared"] = True
         if request.condition.prompt_audio_path:
             candidates["prompt_audio_path"] = request.condition.prompt_audio_path
         if request.condition.prompt_text:
             candidates["prompt_text"] = request.condition.prompt_text
         if request.model_id == "zipvoice":
-            candidates["text_prepared"] = True
             if request.condition.prompt_text:
                 candidates["prompt_text_prepared"] = True
         return self._supported_kwargs(getattr(engine, method_name), candidates)

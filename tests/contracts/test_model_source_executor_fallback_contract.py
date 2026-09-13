@@ -62,7 +62,7 @@ def _assert_safe_fallback_warning(log: Mock, *, repo: str) -> None:
     warning = log.warning.call_args
     rendered = warning.args[0] % warning.args[1:]
     assert "modelscope" in rendered
-    assert repo in rendered
+    assert repo not in rendered
     assert "RuntimeError" in rendered
     assert "continuing fallback" in rendered
     assert SYNTHETIC_MARKER not in rendered
@@ -161,7 +161,8 @@ class TestHuggingFaceSnapshotExecutor:
         ]
         warning_args, warning_kwargs = logger.warning.call_args
         assert marker not in " ".join(str(value) for value in warning_args)
-        assert warning_kwargs == {"exc_info": True}
+        assert warning_kwargs.get("exc_info") in (None, False)
+        assert "RuntimeError" in " ".join(str(value) for value in warning_args)
 
 
 class TestModelScopeSnapshotExecutor:

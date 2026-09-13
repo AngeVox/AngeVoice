@@ -102,7 +102,7 @@ def register_extra_routes(
     cache_clear: Callable[[], int] | None = None,
     cache_size: Callable[[], int] | None = None,
 ):
-    """注册 AngeVoice 可选服务路由。"""
+    """Compatibility entry; new application assembly uses register_service_routes."""
     def inc_stat(name: str, delta=1) -> None:
         if increment_stat is not None:
             increment_stat(name, delta)
@@ -110,8 +110,45 @@ def register_extra_routes(
         with _fallback_stats_lock:
             stats[name] = stats.get(name, 0) + delta
 
-    verify_admin = make_verify_admin(cfg)
+    def clear_legacy_cache() -> int:
+        if cache_clear is not None:
+            return cache_clear()
+        size = len(tts_cache)
+        tts_cache.clear()
+        return size
 
+    def normalize_legacy_model(model):
+        resolved = getattr(getattr(app, "state", object()), "angevoice", None)
+        return resolved.model_manager.normalize_model_id(model) if resolved is not None else model
+
+    _register_batch_routes(
+        app=app, cfg=cfg, verify_api_key=verify_api_key,
+        synthesize_threaded=synthesize_threaded, new_request_id=new_request_id,
+        mark_request=mark_request, finish_request=finish_request,
+        inc_stat=inc_stat, normalize_model_id=normalize_legacy_model,
+    )
+    _register_admin_resource_routes(app=app, cfg=cfg, cache_clear=clear_legacy_cache)
+    _register_format_routes(app=app, cfg=cfg)
+
+
+def register_service_routes(*, app, state, verify_api_key):
+    """Compose route domains once; handlers receive only their dependencies."""
+    _register_batch_routes(
+        app=app, cfg=state.cfg, verify_api_key=verify_api_key,
+        synthesize_threaded=state.synthesize_response_threaded,
+        new_request_id=state.new_request_id, mark_request=state.mark_request,
+        finish_request=state.finish_request, inc_stat=state.inc_stat,
+        normalize_model_id=state.model_manager.normalize_model_id,
+    )
+    _register_admin_resource_routes(app=app, cfg=state.cfg, cache_clear=state.cache_clear)
+    _register_format_routes(app=app, cfg=state.cfg)
+
+
+def _register_batch_routes(
+    *, app, cfg, verify_api_key, synthesize_threaded, new_request_id,
+    mark_request, finish_request, inc_stat, normalize_model_id,
+):
+    """Register batch synthesis without cache, engine or request-table access."""
     def normalize_extra_format(fmt: str) -> str:
         return normalize_public_audio_format(fmt, cfg)
 
@@ -119,9 +156,7 @@ def register_extra_routes(
         fmt = normalize_extra_format(fmt)
         text = validate_tts_text(text, cfg)
         model = model or None
-        resolved_model = getattr(getattr(app, "state", object()), "angevoice", None)
-        if resolved_model is not None:
-            model = resolved_model.model_manager.normalize_model_id(model)
+        model = normalize_model_id(model)
         speed = validate_model_speed(model, speed)
         return await synthesize_threaded(text, voice, speed, fmt, request_id, model)
 
@@ -188,14 +223,15 @@ def register_extra_routes(
             },
         )
 
+
+def _register_admin_resource_routes(*, app, cfg, cache_clear):
+    """Register admin resources with an authenticated cache operation."""
+    verify_admin = make_verify_admin(cfg)
+
     @app.delete("/admin/cache")
     async def clear_cache(request: Request):
         await verify_admin(request)
-        if cache_clear is not None:
-            size = cache_clear()
-        else:
-            size = len(tts_cache)
-            tts_cache.clear()
+        size = cache_clear()
         return {"ok": True, "cleared": size}
 
     @app.get("/admin/voices")
@@ -249,6 +285,9 @@ def register_extra_routes(
                     logger.debug("Unable to clean voice upload temp file", exc_info=True)
         return {"ok": True, "voice": target.stem, "bytes": len(content)}
 
+
+def _register_format_routes(*, app, cfg):
+    """Register format discovery without synthesis or mutable service state."""
     @app.get("/v1/audio/formats")
     async def audio_formats():
         formats = supported_response_formats(cfg)

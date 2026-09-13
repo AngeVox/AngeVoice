@@ -951,6 +951,44 @@ def test_api_key_explicit_and_auto_paths_do_not_touch_disk(monkeypatch, tmp_path
     assert not list(tmp_path.rglob(".angevoice-api-key"))
 
 
+@pytest.mark.parametrize("generation_fails", [False, True])
+def test_credentials_observe_typed_paths_before_model_overrides(monkeypatch, tmp_path, generation_fails) -> None:
+    """Domain extraction must preserve ordering, including partial failure state."""
+    cfg = _cfg(tmp_path)
+    original_model = cfg.moss_model_dir
+    monkeypatch.setenv("ANGEVOICE_CREDENTIALS_DIR", "~/env-credentials")
+    monkeypatch.setenv("ANGEVOICE_API_KEY_FILE", "~/env-key")
+    monkeypatch.setenv("KOKORO_MAX_CONCURRENT_REQUESTS", "3")
+    monkeypatch.setenv("KOKORO_STREAM_BINARY_ENABLED", "false")
+    monkeypatch.setenv("KOKORO_API_KEY", "auto")
+    monkeypatch.setenv("MOSS_MODEL_DIR", "env-model")
+    calls = []
+
+    def generate(current):
+        calls.append(current)
+        assert current.credentials_dir == Path("~/env-credentials").expanduser()
+        assert current.api_key_file == Path("~/env-key").expanduser()
+        assert current.max_concurrent_requests == 3
+        assert current.stream_binary_enabled is False
+        assert current.moss_model_dir == original_model
+        if generation_fails:
+            raise OSError("synthetic key store failure")
+        return "synthetic-generated-key"
+
+    monkeypatch.setattr(config_env, "load_or_generate_api_key", generate)
+    if generation_fails:
+        with pytest.raises(OSError, match="synthetic key store failure"):
+            config_env.apply_env(cfg)
+        assert cfg.moss_model_dir == original_model
+        assert cfg.api_key_auto_generated is False
+    else:
+        config_env.apply_env(cfg)
+        assert cfg.moss_model_dir == Path("env-model")
+        assert cfg.api_key == "synthetic-generated-key"
+        assert cfg.api_key_auto_generated is True
+    assert calls == [cfg]
+
+
 def test_auto_api_key_boolean_true_generates_once_without_writing_disk(
     monkeypatch, tmp_path
 ) -> None:

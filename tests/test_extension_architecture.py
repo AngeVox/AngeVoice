@@ -7,11 +7,14 @@ import ast
 from pathlib import Path
 from unittest.mock import MagicMock
 
+import pytest
+from fastapi import HTTPException
 from fastapi.testclient import TestClient
 
 from kokoro_tts.config import TTSConfig
 from kokoro_tts.contracts import VoiceConditionKind
 from kokoro_tts.engine_manager import EngineManager
+from kokoro_tts.engines.parameters import EngineParameter, EngineParameterSchema
 from kokoro_tts.server import create_app
 from kokoro_tts.service_state import ServiceState
 
@@ -65,6 +68,100 @@ def test_dynamic_parameter_schema_accepts_generic_and_legacy_controls(tmp_path):
         assert zipvoice["provider_policy"]["cpu_release_default"] is True
     finally:
         manager.stop_idle_timer()
+
+
+@pytest.mark.parametrize("channel", ["source", "supplied"])
+@pytest.mark.parametrize("key,detail", [
+    ("zipvoice_num_steps", "必须为整数"),
+    ("zipvoice_remove_long_sil", "必须为布尔值"),
+])
+@pytest.mark.parametrize("value", [[], {"credential": "synthetic-marker"}, float("inf"), float("-inf")])
+def test_parameter_invalid_values_are_client_errors(channel, key, detail, value):
+    with pytest.raises(HTTPException) as error:
+        EngineParameterSchema().parse("zipvoice", **{channel: {key: value}})
+    assert error.value.status_code == 400
+    assert error.value.detail == f"{key} {detail}"
+    assert "synthetic-marker" not in error.value.detail
+
+
+@pytest.mark.parametrize("value", [[], {}, None, "", "ignored"])
+def test_parameter_unknown_fields_are_ignored(value):
+    schema = EngineParameterSchema()
+    assert schema.parse("zipvoice", supplied={"unknown": value}) == {}
+    assert schema.parse("unknown-engine", supplied={"unknown": value}) == {}
+
+
+@pytest.mark.parametrize("value,expected", [(None, 8), ("", 8), (12, 12), ("12", 12), (12.9, 12), (True, 1)])
+def test_parameter_precedence_and_integer_compatibility(value, expected):
+    schema = EngineParameterSchema()
+    assert schema.parse("zipvoice", {"zipvoice_num_steps": "8"}, supplied={"zipvoice_num_steps": value}) == {"zipvoice_num_steps": expected}
+    assert schema.parse("zipvoice") == {}  # Request values do not become schema defaults or state.
+
+
+@pytest.mark.parametrize("value,expected", [(False, False), (" YES ", True), ("off", False), (0, False), (1, True)])
+def test_parameter_boolean_compatibility(value, expected):
+    assert EngineParameterSchema().parse("zipvoice", supplied={"zipvoice_remove_long_sil": value}) == {"zipvoice_remove_long_sil": expected}
+
+
+@pytest.mark.parametrize("minimum,maximum,value,detail", [
+    (1, 32, 0, "必须在 1 到 32 之间"),
+    (1, 32, 33, "必须在 1 到 32 之间"),
+    (1, None, 0, "必须大于或等于 1"),
+    (None, 32, 33, "必须小于或等于 32"),
+])
+def test_parameter_range_errors_preserve_bounds(minimum, maximum, value, detail):
+    schema = EngineParameterSchema()
+    schema._schemas["future"] = (EngineParameter("steps", "integer", "", "", minimum=minimum, maximum=maximum),)
+    with pytest.raises(HTTPException) as error:
+        schema.parse("future", supplied={"steps": value})
+    assert error.value.status_code == 400
+    assert error.value.detail == f"steps {detail}"
+
+
+@pytest.mark.parametrize("streaming", [False, True])
+def test_services_reject_invalid_parameters_before_engine_load(tmp_path, monkeypatch, streaming):
+    manager = EngineManager(_cfg(tmp_path))
+    state = ServiceState(_cfg(tmp_path), model_manager=manager)
+    state.voice_profiles.save("zipvoice", voice_id="voice_param", prompt_text="参考", audio_bytes=b"RIFF-test")
+    load = MagicMock(side_effect=AssertionError("invalid request must not load model"))
+    monkeypatch.setattr(manager, "get_engine", load)
+    try:
+        service = state.streaming if streaming else state.synthesis
+        format_args = {"audio_format": "pcm_s16le", "binary": False} if streaming else {"response_format": "wav"}
+        with pytest.raises(HTTPException) as error:
+            service.build_request(text="正文", model_id="zipvoice", voice="voice_param", speed=1.0,
+                                  engine_params={"zipvoice_num_steps": []}, **format_args)
+        assert error.value.status_code == 400
+        assert error.value.detail == "zipvoice_num_steps 必须为整数"
+        load.assert_not_called()
+    finally:
+        manager.stop_idle_timer()
+
+
+@pytest.mark.parametrize("transport", ["http", "ws"])
+def test_parameter_validation_reaches_public_error_response(tmp_path, transport):
+    initial = MagicMock(is_loaded=True, is_healthy=True)
+    initial.get_voices.return_value = ["zm_010"]
+    initial.default_voice = "zm_010"
+    initial.metadata.return_value = {"id": "kokoro", "loaded": True}
+    app = create_app(config=_cfg(tmp_path), engine=initial)
+    state = app.state.angevoice
+    state.voice_profiles.save("zipvoice", voice_id="voice_param", prompt_text="参考", audio_bytes=b"RIFF-test")
+    payload = {"text": "正文", "model": "zipvoice", "voice": "voice_param", "engine_params": {"zipvoice_num_steps": []}}
+    try:
+        with TestClient(app) as client:
+            if transport == "http":
+                response = client.post("/api/tts", json=payload)
+                assert response.status_code == 400
+                assert response.json()["detail"] == "zipvoice_num_steps 必须为整数"
+            else:
+                with client.websocket_connect("/ws/v1/tts") as websocket:
+                    websocket.send_json(payload)
+                    frame = websocket.receive_json()
+                assert frame["type"] == "error"
+                assert frame["message"] == "zipvoice_num_steps 必须为整数"
+    finally:
+        state.model_manager.stop_idle_timer()
 
 
 def test_request_scoped_text_normalization_override_does_not_mutate_config(tmp_path):

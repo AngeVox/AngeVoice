@@ -550,10 +550,72 @@ class TestCredentialAndTransportDelegation:
 
 
 class TestSyntheticCredentialLoggingBoundary:
-    def test_hf_traceback_can_retain_synthetic_marker_characterization(
+    @pytest.mark.parametrize("provider", ["huggingface", "modelscope"])
+    def test_sdk_input_and_exception_chain_never_enter_first_party_logs(
+        self, provider, monkeypatch, tmp_path
+    ):
+        error = RuntimeError(SYNTHETIC_MARKER)
+        error.__cause__ = ValueError("cause " + SYNTHETIC_MARKER)
+
+        def download(*_args, **_kwargs):
+            raise error
+
+        log, records = _recording_logger("source-secret-inputs")
+        repo = "https://user:" + SYNTHETIC_MARKER + "@example.invalid/model?token=" + SYNTHETIC_MARKER
+        target = tmp_path / SYNTHETIC_MARKER
+        if provider == "huggingface":
+            _install_fake_huggingface_module(monkeypatch, snapshot_download=download)
+            assert model_sources._huggingface_snapshot_download(repo, target, logger=log) is None
+        else:
+            _install_fake_modelscope_module(monkeypatch, download)
+            with pytest.raises(RuntimeError) as raised:
+                model_sources._modelscope_snapshot_download(repo, target, logger=log)
+            assert raised.value is error
+            model_sources._log_provider_failure_for_fallback(provider, repo, error, logger=log)
+        rendered = "\n".join(logging.Formatter("%(message)s").format(item) for item in records)
+        assert provider in rendered
+        assert "RuntimeError" in rendered
+        assert SYNTHETIC_MARKER not in rendered
+        assert "Traceback" not in rendered
+        assert all(item.exc_info is None for item in records)
+
+    def test_source_asset_and_offline_logs_do_not_disclose_configured_paths(self, monkeypatch, tmp_path):
+        log, records = _recording_logger("source-asset-paths")
+        root = tmp_path / SYNTHETIC_MARKER
+        root.mkdir()
+        (root / "README.md").write_bytes(b"incomplete")
+        cfg = SimpleNamespace(model_source="offline", moss_model_dir=root, moss_audio_tokenizer_model_dir=root)
+        assert model_sources.ensure_moss_model_dir(cfg, logger=log) == root
+        assert model_sources.ensure_moss_audio_tokenizer_dir(cfg, logger=log) == root
+        monkeypatch.setattr(model_sources, "logger", log)
+        assert model_sources._offline_kokoro_result(cfg, root, current_managed=False, current_has_assets=False) is None
+        rendered = "\n".join(logging.Formatter("%(message)s").format(item) for item in records)
+        assert "offline" in rendered
+        assert SYNTHETIC_MARKER not in rendered
+
+    @pytest.mark.parametrize("kind", ["weight_lfs", "weight_small", "config_lfs", "config_invalid"])
+    def test_delegated_kokoro_asset_warnings_keep_reason_without_path_or_label(self, kind, tmp_path):
+        log, records = _recording_logger("delegated-asset-validation")
+        path = tmp_path / (kind + SYNTHETIC_MARKER)
+        if kind.endswith("lfs"):
+            path.write_bytes(b"version https://git-lfs.github.com/spec/v1\n")
+        elif kind == "weight_small":
+            path.write_bytes(bytes(range(256)))
+        else:
+            path.write_bytes(b"not a JSON config")
+        if kind.startswith("weight"):
+            valid = kokoro_assets.is_valid_kokoro_weight_file(path, min_bytes=4096, label=SYNTHETIC_MARKER, log=log)
+        else:
+            valid = kokoro_assets.is_valid_kokoro_config_file(path, log=log)
+        assert valid is False
+        assert len(records) == 1
+        assert "Kokoro" in records[0].getMessage()
+        assert SYNTHETIC_MARKER not in logging.Formatter("%(message)s").format(records[0])
+
+    def test_hf_formatted_failure_log_excludes_synthetic_credentials(
         self, monkeypatch, tmp_path
     ):
-        """CURRENT-BEHAVIOR CHARACTERIZATION and P2F security candidate input."""
+        """Target log-safety contract; the previous leakage is in historical evidence."""
 
         def snapshot_download(**_kwargs):
             raise RuntimeError(SYNTHETIC_MARKER)
@@ -569,12 +631,14 @@ class TestSyntheticCredentialLoggingBoundary:
         warning = records[-1]
         formatted = logging.Formatter("%(message)s").format(warning)
 
-        assert warning.exc_info is not None
+        assert warning.exc_info is None
         assert SYNTHETIC_MARKER not in str(warning.msg)
         assert SYNTHETIC_MARKER not in " ".join(
             str(value) for value in warning.args
         )
-        assert SYNTHETIC_MARKER in formatted
+        assert SYNTHETIC_MARKER not in formatted
+        assert "huggingface" in formatted
+        assert "RuntimeError" in formatted
 
     def test_modelscope_propagates_same_synthetic_exception_without_redaction(
         self, monkeypatch, tmp_path

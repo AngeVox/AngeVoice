@@ -17,6 +17,8 @@ Studio capability 驱动的录音、上传、Profile 试听/保存/删除 UI
 
 ## 最小 adapter 模板
 
+以下只展示合成与能力投影，不是完整可实例化类。完整 Adapter 还须实现 `engines/base.py::EngineAdapter` 的 load/unload、is_loaded、is_healthy、sample_rate、channels、default_voice、get_voices 和 synthesize_array；运行状态必须来自实际 runtime，不能以常量伪造健康状态。
+
 ```python
 from ..base import EngineCapabilities, ProviderStatus
 from ..registry import EngineRegistry
@@ -97,7 +99,7 @@ engines/adapters/*           稳定产品 adapter 与 capabilities/provider/stat
 新增可隔离模型的最小步骤：
 
 1. 在具体引擎 owner 中声明一个顶层、可 pickle 的 runtime factory；不得把 concrete engine import 放回 `workers/**`。
-2. 新增 adapter，在隔离路径构造 `EngineWorkerSpec(engine_id=<canonical_id>, factory=<trusted top-level factory>, requested_provider=...)`，并通过 `EngineProcessClient(config, spec=...)` 转发加载、生成、流式和释放；线程内运行可作为明确可选的调试/兼容路径。
+2. 新增 adapter，在隔离路径构造 `EngineWorkerSpec(engine_id=<canonical_id>, factory=<trusted top-level factory>, requested_provider=...)`，并通过 `EngineProcessClient(config=cfg, spec=spec)` 转发加载、生成、流式和释放；线程内运行可作为明确可选的调试/兼容路径。factory 签名为 `(config, requested_provider)`，不接收完整 spec。
 3. 产品注册层只在 `create_engine()` 真正实例化该模型时延迟导入 native runtime；不得在 `engines/__init__.py`、`engines/adapters/__init__.py` 或 registry 模块顶层提前导入会反向依赖 `engines.base` 的模型实现，以免形成循环导入。
 4. 在 `EngineRegistry`、`ProviderPolicy` 和动态参数 schema 分别注册静态产品能力、provider 与参数；adapter 不得再维护第二套静态 capability literal。
 5. 有参考音频/Profile 能力时接入 `VoiceProfileService`，不复制路由或 Studio 表单。
@@ -116,3 +118,10 @@ worker 基础设施只消费 spec protocol，不允许 import 或判断具体 en
 ```
 
 因此，后续模型扩展不需要在公共 HTTP/WebSocket 路由里新增按模型分支，也不需要修改 Kokoro、MOSS 或 ZipVoice 的稳定推理实现。
+
+## 文本、错误与验收边界
+
+- service 的 `build_request()` 已执行请求选择的通用 TN；adapter/runtime 接受内部 `text_prepared` keyword 并沿隔离 payload 传递，不能把它注册为用户可覆盖的生成参数。默认 false 保留直接 raw 调用；prepared 路径只保留明确的模型专属处理，不再执行通用 TN。
+- 复用 `contracts/errors.py` 的错误码与 `WorkerFailureEnvelope`，保留超时类型兼容。stream 必须给出语义终止事件；拥有迭代器的层负责 close，取消不能泄漏下一请求状态。
+- 使用 `test_engine_adapter_conformance_contract.py`、`test_engine_worker_spec_contract.py`、`test_engine_error_worker_failure_envelope_contract.py` 及文本边界合同作为现有验收入口，不再按阶段创建同义合同。真实 spawn 可以用轻量 factory 验证序列化/调度；模型效果仍须独立 smoke。
+- 兼容入口的删除门槛见 [兼容层台账](COMPATIBILITY_LEDGER.md)，未完成事项见 [架构债务台账](ARCHITECTURE_DEBT.md)。

@@ -64,6 +64,7 @@ class MossStreamingMixin:
         fmt="pcm_s16le",
         prompt_audio_path: str | None = None,
         cancel_check: Callable[[], bool] | None = None,
+        text_prepared: bool = False,
     ):
         """流式合成。
 
@@ -80,7 +81,7 @@ class MossStreamingMixin:
             yield {"type": "error", "message": str(exc)}
             return
 
-        prepared_text = self._clean_text(text)
+        prepared_text = self._clean_text(text, text_prepared=text_prepared)
         segments = self._segment_text(prepared_text)
         prompt_audio = prompt_audio_path or (
             str(self.config.moss_prompt_audio_path) if self.config.moss_prompt_audio_path else None
@@ -94,6 +95,7 @@ class MossStreamingMixin:
                 fmt=fmt,
                 prompt_audio_path=prompt_audio,
                 cancel_check=cancel_check,
+                text_prepared=text_prepared,
             )
             return
 
@@ -140,6 +142,7 @@ class MossStreamingMixin:
                         segments=segments,
                         voice=voice,
                         prompt_audio_path=prompt_audio,
+                        text_prepared=text_prepared,
                         put_item=put_item,
                         is_cancelled=is_cancelled,
                     )
@@ -201,6 +204,7 @@ class MossStreamingMixin:
         fmt: str,
         prompt_audio_path: str | None,
         cancel_check: Callable[[], bool] | None,
+        text_prepared: bool = False,
     ):
         """通过隔离子进程执行 MOSS 流式推理。
 
@@ -243,6 +247,7 @@ class MossStreamingMixin:
                         "speed": speed,
                         "fmt": fmt,
                         "prompt_audio_path": prompt_audio_path,
+                        "text_prepared": bool(text_prepared),
                         # 跨进程不能传递 cancel_check callable，
                         # 父进程通过 EngineProcessClient.stream(cancel_check=...) 在帧间隙控制取消。
                         "cancel_check": None,
@@ -290,6 +295,7 @@ class MossStreamingMixin:
         segments: list[str],
         voice: str = "",
         prompt_audio_path: str | None = None,
+        text_prepared: bool = False,
         put_item: Callable[[tuple[str, object]], bool],
         is_cancelled: Callable[[], bool],
     ) -> None:
@@ -313,6 +319,7 @@ class MossStreamingMixin:
                 seg,
                 voice=voice,
                 prompt_audio_codes=prompt_audio_codes,
+                text_prepared=text_prepared,
                 put_item=put_item,
                 is_cancelled=is_cancelled,
                 stream_state=stream_state,
@@ -341,13 +348,16 @@ class MossStreamingMixin:
         *,
         voice: str = "",
         prompt_audio_codes: list[list[int]],
+        text_prepared: bool = False,
         put_item: Callable[[tuple[str, object]], bool],
         is_cancelled: Callable[[], bool],
         stream_state: dict,
     ) -> int:
         if not bool(self.config.moss_realtime_streaming_decode) or not self._runtime_supports_frame_streaming():
             emitted = 0
-            for waveform in self._iter_runtime_chunks(text, voice=voice, prompt_audio_codes=prompt_audio_codes):
+            for waveform in self._iter_runtime_chunks(
+                text, voice=voice, prompt_audio_codes=prompt_audio_codes, text_prepared=text_prepared,
+            ):
                 emitted += self._emit_stream_waveform(
                     waveform,
                     put_item=put_item,
@@ -356,7 +366,7 @@ class MossStreamingMixin:
                 )
             return emitted
 
-        text_chunks = self._prepare_runtime_text_chunks(text, voice=voice)
+        text_chunks = self._prepare_runtime_text_chunks(text, voice=voice, text_prepared=text_prepared)
         if not text_chunks:
             return 0
 

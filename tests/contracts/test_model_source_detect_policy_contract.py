@@ -308,8 +308,8 @@ def test_country_detection_uses_normalized_config_cache_without_env_or_url(
     cfg = SimpleNamespace(model_source_country="  cn  ")
     monkeypatch.setattr(model_sources.os, "environ", ExplodingEnvironment())
     monkeypatch.setattr(
-        model_sources.urllib.request,
-        "urlopen",
+        model_sources,
+        "open_probe",
         lambda *_args, **_kwargs: pytest.fail("config country cache must bypass URL"),
     )
 
@@ -321,8 +321,8 @@ def test_country_detection_prefers_canonical_alias_over_legacy(monkeypatch):
     monkeypatch.setenv("ANGEVOICE_MODEL_SOURCE_COUNTRY", "cn")
     monkeypatch.setenv("MODEL_SOURCE_COUNTRY", "us")
     monkeypatch.setattr(
-        model_sources.urllib.request,
-        "urlopen",
+        model_sources,
+        "open_probe",
         lambda *_args, **_kwargs: pytest.fail("environment alias must bypass URL"),
     )
 
@@ -348,8 +348,8 @@ def test_country_canonical_alias_whitespace_blocks_legacy_characterization(
     monkeypatch.setenv("ANGEVOICE_MODEL_SOURCE_COUNTRY", " ")
     monkeypatch.setenv("MODEL_SOURCE_COUNTRY", "CN")
     monkeypatch.setattr(
-        model_sources.urllib.request,
-        "urlopen",
+        model_sources,
+        "open_probe",
         lambda *_args, **_kwargs: pytest.fail("truthy canonical alias bypasses URL"),
     )
 
@@ -372,7 +372,7 @@ def test_country_detection_url_contract_reads_at_most_sixteen_bytes(monkeypatch)
         calls.append((url, timeout))
         return response
 
-    monkeypatch.setattr(model_sources.urllib.request, "urlopen", fake_urlopen)
+    monkeypatch.setattr(model_sources, "open_probe", fake_urlopen)
 
     assert model_sources._detect_country(cfg) == "CN\nIGNORED TRAIL"
     assert calls == [("https://country.invalid/value", 2.75)]
@@ -390,8 +390,8 @@ def test_country_detection_url_normalizes_short_response(monkeypatch):
     monkeypatch.delenv("MODEL_SOURCE_COUNTRY", raising=False)
     response = _FakeResponse(payload=b"cn\n")
     monkeypatch.setattr(
-        model_sources.urllib.request,
-        "urlopen",
+        model_sources,
+        "open_probe",
         lambda _url, *, timeout: response,
     )
 
@@ -405,8 +405,8 @@ def test_country_detection_empty_url_does_not_open_network(monkeypatch):
     monkeypatch.delenv("ANGEVOICE_MODEL_SOURCE_COUNTRY", raising=False)
     monkeypatch.delenv("MODEL_SOURCE_COUNTRY", raising=False)
     monkeypatch.setattr(
-        model_sources.urllib.request,
-        "urlopen",
+        model_sources,
+        "open_probe",
         lambda *_args, **_kwargs: pytest.fail("empty detect URL must not be opened"),
     )
 
@@ -436,7 +436,7 @@ def test_country_detection_failures_cache_empty_result(error, monkeypatch):
     def fail(*_args, **_kwargs):
         raise error
 
-    monkeypatch.setattr(model_sources.urllib.request, "urlopen", fail)
+    monkeypatch.setattr(model_sources, "open_probe", fail)
 
     assert model_sources._detect_country(cfg) == ""
     assert cfg.model_source_country == ""
@@ -454,24 +454,20 @@ def test_country_detection_failures_cache_empty_result(error, monkeypatch):
         (503, False),
     ],
 )
-def test_probe_url_uses_head_request_and_stable_user_agent(
+def test_probe_url_requests_head_transport_with_original_timeout(
     status, expected, monkeypatch
 ):
     calls: list[tuple[object, float]] = []
 
-    def fake_urlopen(request, *, timeout):
-        calls.append((request, timeout))
+    def fake_urlopen(url, *, timeout, method):
+        calls.append((url, timeout, method))
         return _FakeResponse(status=status)
 
-    monkeypatch.setattr(model_sources.urllib.request, "urlopen", fake_urlopen)
+    monkeypatch.setattr(model_sources, "open_probe", fake_urlopen)
 
     assert model_sources._probe_url("https://provider.invalid", 3.5) is expected
-    request, timeout = calls[0]
-    assert isinstance(request, model_sources.urllib.request.Request)
-    assert request.full_url == "https://provider.invalid"
-    assert request.get_method() == "HEAD"
-    assert request.get_header("User-agent") == "AngeVoice/model-source-probe"
-    assert timeout == 3.5
+    assert calls == [("https://provider.invalid", 3.5, "HEAD")]
+    # Request/header construction is covered by test_model_source_probe.py.
 
 
 @pytest.mark.parametrize(
@@ -481,12 +477,12 @@ def test_probe_url_uses_head_request_and_stable_user_agent(
 def test_probe_url_classifies_http_errors_by_reachability(
     status, expected, monkeypatch
 ):
-    def fail(request, *, timeout):
+    def fail(url, *, timeout, method):
         raise urllib.error.HTTPError(
-            request.full_url, status, "fake", hdrs=None, fp=None
+            url, status, "fake", hdrs=None, fp=None
         )
 
-    monkeypatch.setattr(model_sources.urllib.request, "urlopen", fail)
+    monkeypatch.setattr(model_sources, "open_probe", fail)
     assert model_sources._probe_url("https://provider.invalid", 1.0) is expected
 
 
@@ -503,14 +499,14 @@ def test_probe_url_treats_non_http_failures_as_unreachable(error, monkeypatch):
     def fail(*_args, **_kwargs):
         raise error
 
-    monkeypatch.setattr(model_sources.urllib.request, "urlopen", fail)
+    monkeypatch.setattr(model_sources, "open_probe", fail)
     assert model_sources._probe_url("https://provider.invalid", 1.0) is False
 
 
 def test_probe_url_empty_input_does_not_construct_or_open_request(monkeypatch):
     monkeypatch.setattr(
-        model_sources.urllib.request,
-        "urlopen",
+        model_sources,
+        "open_probe",
         lambda *_args, **_kwargs: pytest.fail("empty URL must not be opened"),
     )
     assert model_sources._probe_url("", 1.0) is False

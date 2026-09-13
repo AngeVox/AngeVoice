@@ -10,6 +10,81 @@ sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
 EXPECTED_VERSION = "2.6.616"
 
 
+@pytest.mark.parametrize("entry", ["service", "legacy", "legacy-fallback"])
+def test_optional_route_composition_preserves_http_contracts(tmp_path, monkeypatch, entry):
+    import json
+    import zipfile
+    from io import BytesIO
+    from types import SimpleNamespace
+    from unittest.mock import AsyncMock
+    from fastapi import FastAPI, HTTPException
+    from fastapi.testclient import TestClient
+    from kokoro_tts.config import TTSConfig
+    from kokoro_tts.security import make_verify_api_key
+    from kokoro_tts.service_extras import register_extra_routes, register_service_routes
+
+    monkeypatch.setenv("ANGEVOICE_ADMIN_USERNAME", "route-admin")
+    monkeypatch.setenv("ANGEVOICE_ADMIN_PASSWORD", "route-password")
+    cfg = TTSConfig(api_key="synthetic-route-key", batch_enabled=True, admin_enabled=True,
+                    credentials_dir=tmp_path, admin_credentials_file=tmp_path / "admin.json")
+    app = FastAPI()
+    cache = {"old": b"audio"}
+    stats = {}
+    model_manager = SimpleNamespace(normalize_model_id=lambda model: "kokoro" if model == "alias" else model)
+
+    async def synthesize(text, voice, speed, fmt, request_id, model):
+        assert model == "kokoro"
+        if text == "失败":
+            raise HTTPException(400, "synthetic item error")
+        return b"synthetic-wav", "audio/wav"
+
+    def clear():
+        size = len(cache)
+        cache.clear()
+        return size
+
+    def inc(name, delta=1):
+        stats[name] = stats.get(name, 0) + delta
+
+    state = SimpleNamespace(cfg=cfg, model_manager=model_manager,
+                            synthesize_response_threaded=AsyncMock(side_effect=synthesize),
+                            new_request_id=lambda: "batch-route", mark_request=MagicMock(),
+                            finish_request=MagicMock(), inc_stat=inc, cache_clear=clear)
+    if entry == "service":
+        # Canonical handlers must use their injected dependency, not app.state.
+        app.state.angevoice = object()
+        register_service_routes(app=app, state=state, verify_api_key=make_verify_api_key(cfg))
+    else:
+        app.state.angevoice = state
+        register_extra_routes(app=app, cfg=cfg, eng=object(), verify_api_key=make_verify_api_key(cfg),
+                              tts_cache=cache, active_requests={}, stats=stats,
+                              synthesize_threaded=state.synthesize_response_threaded,
+                              new_request_id=state.new_request_id, normalize_response_format=lambda value: value,
+                              mark_request=state.mark_request, finish_request=state.finish_request,
+                              increment_stat=inc if entry == "legacy" else None,
+                              cache_clear=clear if entry == "legacy" else None)
+    with TestClient(app) as client:
+        payload = {"model": "alias", "items": [{"text": "成功", "filename": "first"}, {"text": "失败"}]}
+        assert client.post("/v1/audio/batch", json=payload).status_code == 401
+        assert client.delete("/admin/cache").status_code == 401
+        assert cache == {"old": b"audio"}
+        response = client.post("/v1/audio/batch", json=payload, headers={"Authorization": "Bearer synthetic-route-key"})
+        assert response.status_code == 200
+        assert response.headers["x-request-id"] == "batch-route"
+        with zipfile.ZipFile(BytesIO(response.content)) as archive:
+            assert archive.read("first.wav") == b"synthetic-wav"
+            manifest = json.loads(archive.read("manifest.json"))
+            assert [item["status"] for item in manifest] == ["ok", "error"]
+            assert manifest[1]["error"] == "synthetic item error"
+        assert stats == {"batch_requests_total": 1, "batch_items_total": 2}
+        state.finish_request.assert_called_once_with("batch-route", "done", items=2)
+        assert client.get("/v1/audio/formats").status_code == 200
+        cleared = client.delete("/admin/cache", auth=("route-admin", "route-password"))
+        assert cleared.status_code == 200
+        assert cleared.json() == {"ok": True, "cleared": 1}
+        assert cache == {}
+
+
 def _has_module(name: str) -> bool:
     try:
         __import__(name)
@@ -607,8 +682,11 @@ class TestKokoroLocalPathRegression:
         with caplog.at_level(logging.WARNING):
             assert is_valid_kokoro_voice_file(voice) is False
             assert is_valid_kokoro_voice_file(voice) is False
-        messages = [record.message for record in caplog.records if "zf_087.pt" in record.message]
+        messages = [record.message for record in caplog.records
+                    if record.name == "kokoro_tts.kokoro_assets" and "Git LFS" in record.message]
         assert len(messages) == 1
+        assert voice.name not in messages[0]
+        assert str(voice) not in messages[0]
 
     def test_lfs_pointer_model_and_voice_are_not_used_locally(self, tmp_path):
         from kokoro_tts.config import TTSConfig

@@ -7,12 +7,12 @@ import json
 import logging
 import os
 import sys
-import tempfile
 import time
 from pathlib import Path
 
 from ..audio import normalize_wav_to_pcm16_bytes
 from .assets import ZipVoiceAssetManager
+from .runtime_common import generation_metrics, generation_settings, prepare_reference, temporary_output
 
 logger = logging.getLogger(__name__)
 
@@ -76,21 +76,16 @@ class ZipVoiceOnnxCpuRuntime:
 
     def synthesize(self, *, text: str, prompt_audio_path: str, prompt_text: str, speed: float = 1.0, num_steps: int | None = None, remove_long_sil: bool | None = None) -> bytes:
         self.load()
-        if not prompt_audio_path or not Path(prompt_audio_path).is_file():
-            raise ValueError("ZipVoice 需要可读取的参考音频")
-        if not str(prompt_text or "").strip():
-            raise ValueError("ZipVoice 需要参考音频对应文本 prompt_text")
-        steps = int(num_steps or getattr(self.cfg, "zipvoice_num_steps", 8))
-        steps = min(32, max(1, steps))
-        remove_sil = bool(getattr(self.cfg, "zipvoice_remove_long_sil", False) if remove_long_sil is None else remove_long_sil)
-        with tempfile.NamedTemporaryFile(prefix="angevoice_zipvoice_", suffix=".wav", delete=False) as temp:
-            output_path = Path(temp.name)
-        start = time.perf_counter()
-        try:
+        prompt_text, steps, remove_sil = prepare_reference(
+            self.cfg, prompt_audio_path=prompt_audio_path, prompt_text=prompt_text,
+            num_steps=num_steps, remove_long_sil=remove_long_sil,
+        )
+        with temporary_output(prefix="angevoice_zipvoice_") as output_path:
+            start = time.perf_counter()
             with self.torch.inference_mode():
                 metrics = self.generate_sentence(
                     save_path=str(output_path),
-                    prompt_text=str(prompt_text).strip(),
+                    prompt_text=prompt_text,
                     prompt_wav=str(prompt_audio_path),
                     text=text,
                     model=self.model,
@@ -98,27 +93,13 @@ class ZipVoiceOnnxCpuRuntime:
                     tokenizer=self.tokenizer,
                     feature_extractor=self.feature_extractor,
                     num_step=steps,
-                    guidance_scale=float(getattr(self.cfg, "zipvoice_guidance_scale", 3.0)),
-                    speed=float(speed),
-                    t_shift=float(getattr(self.cfg, "zipvoice_t_shift", 0.5)),
-                    target_rms=float(getattr(self.cfg, "zipvoice_target_rms", 0.1)),
-                    feat_scale=float(getattr(self.cfg, "zipvoice_feat_scale", 0.1)),
+                    **generation_settings(self.cfg, speed=speed),
                     sampling_rate=self.sample_rate,
                     remove_long_sil=remove_sil,
                 )
             elapsed = time.perf_counter() - start
-            self.last_metrics = {
-                "last_generation_seconds": round(float(elapsed), 4),
-                "last_audio_seconds": round(float(metrics.get("wav_seconds", 0.0)), 4),
-                "last_rtf": round(float(metrics.get("rtf", elapsed / max(float(metrics.get("wav_seconds", 1.0)), 0.001))), 4),
-                "zipvoice_num_steps": steps,
-            }
+            self.last_metrics = generation_metrics(metrics, elapsed=elapsed, steps=steps)
             return normalize_wav_to_pcm16_bytes(output_path.read_bytes(), expected_sample_rate=self.sample_rate)
-        finally:
-            try:
-                output_path.unlink()
-            except OSError:
-                pass
 
     def unload(self) -> None:
         # ONNX Runtime has no supported end_session() lifecycle API. Releasing

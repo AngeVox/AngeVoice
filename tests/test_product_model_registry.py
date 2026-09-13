@@ -1,11 +1,59 @@
 """Phase 1 product-model registry and legacy alias compatibility checks."""
 
 from unittest.mock import MagicMock
+from types import SimpleNamespace
+
+import pytest
 
 from kokoro_tts.config import TTSConfig
 from kokoro_tts.engine_manager import EngineManager
 from kokoro_tts.engines.registry import EngineRegistry
 from kokoro_tts.service_state import ServiceState
+
+
+@pytest.mark.parametrize("configured,enabled,aliases,hint,expected", [
+    ("cpu", True, ["moss-gpu"], None, "cuda"),
+    ("cpu", True, ["moss-nano-cpu", "moss-gpu"], None, "cpu"),
+    ("cuda", True, ["moss-nano-cpu"], None, "cuda"),
+    (" CUDA ", True, ["moss"], None, "cuda"),
+    ("cuda", False, ["moss-gpu"], None, "cpu"),
+    ("cpu", True, ["moss"], None, "cpu"),
+    (None, True, ["kokoro", "unknown"], None, "cpu"),
+    ("cuda", True, ["moss-gpu"], "cpu", "cpu"),
+    ("cpu", False, [], "CUDA", "cuda"),
+    ("cuda", True, [], "unknown", "cpu"),
+])
+def test_moss_provider_precedence(configured, enabled, aliases, hint, expected):
+    policy = EngineRegistry().provider_policy
+    cfg = SimpleNamespace(moss_execution_provider=configured, moss_cuda_enabled=enabled)
+    assert policy.requested_provider("moss", cfg, iter(aliases), provider_hint=hint) == expected
+
+
+@pytest.mark.parametrize("model,configured,enabled,device,expected", [
+    ("zipvoice", " CUDA ", True, "mps", "cuda"),
+    ("zipvoice", "cuda", False, "mps", "cpu"),
+    ("zipvoice", "other", True, "cuda", "cpu"),
+    ("zipvoice", None, True, "cuda", "cpu"),
+    ("kokoro", "cuda", True, "mps", "mps"),
+    ("future", "cuda", True, None, "cpu"),
+])
+def test_other_provider_policies_do_not_resolve_moss_aliases(model, configured, enabled, device, expected):
+    policy = EngineRegistry().provider_policy
+    policy._resolver = MagicMock(side_effect=AssertionError("MOSS aliases not needed"))
+    cfg = SimpleNamespace(zipvoice_execution_provider=configured, zipvoice_cuda_enabled=enabled, device=device)
+    assert policy.requested_provider(model, cfg, ["moss-gpu"], provider_hint="cuda") == expected
+    policy._resolver.assert_not_called()
+
+
+def test_explicit_moss_hint_defers_disabled_cuda_rejection_to_registry():
+    registry = EngineRegistry()
+    cfg = SimpleNamespace(moss_cuda_enabled=False)
+    assert registry.provider_policy.requested_provider("moss", cfg, [], provider_hint="cuda") == "cuda"
+    from fastapi import HTTPException
+    with pytest.raises(HTTPException) as error:
+        registry.create_engine("moss", cfg, provider_hint="cuda")
+    assert error.value.status_code == 404
+    assert error.value.detail == "MOSS CUDA provider is disabled"
 
 
 def test_public_catalog_collapses_legacy_moss_variants_to_one_product_model():

@@ -91,37 +91,44 @@ class KokoroAdapter:
         if callable(soft_cancel):
             soft_cancel()
 
-    def synthesize(self, text: str, voice: str = "zm_010", speed: float = 1.0) -> bytes:
+    def synthesize(
+        self, text: str, voice: str = "zm_010", speed: float = 1.0, *, text_prepared: bool = False,
+    ) -> bytes:
         if self._worker is None:
-            return self._engine.synthesize(text, voice, speed)
+            return self._engine.synthesize(text, voice, speed, text_prepared=text_prepared)
         if not self.is_loaded:
             self.load()
         return self._worker.request(
-            "synthesize", {"text": text, "voice": voice, "speed": speed},
+            "synthesize", {"text": text, "voice": voice, "speed": speed, "text_prepared": bool(text_prepared)},
             timeout=float(getattr(self._cfg, "request_timeout_seconds", 300.0)),
         )
 
-    def synthesize_array(self, text: str, voice: str = "zm_010", speed: float = 1.0):
+    def synthesize_array(
+        self, text: str, voice: str = "zm_010", speed: float = 1.0, *, text_prepared: bool = False,
+    ):
         if self._worker is None:
-            return self._engine.synthesize_array(text, voice, speed)
+            return self._engine.synthesize_array(text, voice, speed, text_prepared=text_prepared)
         if not self.is_loaded:
             self.load()
         return self._worker.request(
-            "synthesize_array", {"text": text, "voice": voice, "speed": speed},
+            "synthesize_array", {"text": text, "voice": voice, "speed": speed, "text_prepared": bool(text_prepared)},
             timeout=float(getattr(self._cfg, "request_timeout_seconds", 300.0)),
         )
 
     def synthesize_stream(
         self, text: str, voice: str = "zm_010", speed: float = 1.0,
         fmt: str = "pcm_s16le", *, cancel_check: Callable[[], bool] | None = None,
+        text_prepared: bool = False,
     ):
         if self._worker is None:
-            yield from self._engine.synthesize_stream(text, voice, speed, fmt, cancel_check=cancel_check)
+            yield from self._engine.synthesize_stream(
+                text, voice, speed, fmt, cancel_check=cancel_check, text_prepared=text_prepared,
+            )
             return
         if not self.is_loaded:
             self.load()
         yield from self._worker.stream(
-            {"text": text, "voice": voice, "speed": speed, "fmt": fmt},
+            {"text": text, "voice": voice, "speed": speed, "fmt": fmt, "text_prepared": bool(text_prepared)},
             timeout=float(getattr(self._cfg, "request_timeout_seconds", 300.0)),
             cancel_check=cancel_check,
         )

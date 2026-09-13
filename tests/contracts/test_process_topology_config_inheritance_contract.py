@@ -444,7 +444,7 @@ class TestPerWebWorkerOwnership:
         monkeypatch.setattr(server, "Path", lambda *_args: FakePath())
         monkeypatch.setattr(server, "make_verify_api_key", lambda _cfg: object())
         monkeypatch.setattr(fastapi, "FastAPI", FakeApp)
-        monkeypatch.setattr(service_extras, "register_extra_routes", lambda **_kwargs: None)
+        monkeypatch.setattr(service_extras, "register_service_routes", lambda **_kwargs: None)
         for name in (
             "create_auth_router",
             "create_status_router",

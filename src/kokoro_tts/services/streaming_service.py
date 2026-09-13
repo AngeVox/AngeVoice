@@ -100,6 +100,8 @@ class StreamingService:
         cancellation = CancellationContext(request.request_id, cancel_check)
         with self.state.model_manager.borrow(request.model_id) as engine:
             candidates: dict[str, Any] = request.generation.as_dict()
+            # build_request() has already applied the request-selected generic TN.
+            candidates["text_prepared"] = True
             if request.condition.prompt_audio_path:
                 candidates["prompt_audio_path"] = request.condition.prompt_audio_path
             if request.condition.prompt_text:
@@ -107,7 +109,6 @@ class StreamingService:
             if cancel_check is not None:
                 candidates["cancel_check"] = cancellation.cancelled
             if request.model_id == "zipvoice":
-                candidates["text_prepared"] = True
                 if request.condition.prompt_text:
                     candidates["prompt_text_prepared"] = True
             kwargs = self._supported_kwargs(engine.synthesize_stream, candidates)

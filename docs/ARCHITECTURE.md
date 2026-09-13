@@ -2,7 +2,7 @@
 
 本文档说明 AngeVoice v2.6 的模块化结构。v2.6 的目标不是改变模型能力，而是提升服务端可维护性、可测试性和后续扩展空间。
 
-接口字段、鉴权方式和调用示例集中维护在 [API 参考](API_REFERENCE.md)。
+接口字段、鉴权方式和调用示例集中维护在 [API 参考](API_REFERENCE.md)。当前未偿还问题、关闭条件和历史阶段映射统一维护在 [架构债务台账](ARCHITECTURE_DEBT.md)；阶段关闭仅代表其验收边界完成。
 
 > 统一 Voice Profile、流式协议、资源状态、Provider Policy 与动态参数 schema 的设计见本文及 [新增模型 Adapter 指南](NEW_MODEL_ADAPTER_GUIDE.md)。Kokoro、MOSS-TTS-Nano 与 ZipVoice 的推理实现通过 adapter 接入。
 
@@ -32,12 +32,17 @@ src/kokoro_tts/
 ├── service_extras.py     # batch/admin/mp3 扩展接口
 ├── zh_rules.py           # 中文断句、多音字、轻量分词规则
 ├── audio.py              # 音频编码工具
-├── engine_manager.py     # 模型注册、加载、切换、卸载
+├── engines/              # Registry、Adapter 协议、Provider policy、参数 schema
+├── services/             # HTTP/WS 合成编排、Voice Profile 与状态辅助域
+├── contracts/            # 请求、流事件、取消与错误载荷
+├── engine_manager.py     # 通过 Registry/Adapter 管理借用、加载、切换、卸载
 ├── engine.py             # Kokoro 引擎、分段、文本规范化、音频编码
 ├── moss_engine.py        # MOSS-TTS-Nano 引擎调度与兼容入口
-├── moss/                 # MOSS runtime、现有隔离 worker、prompt、流式和音频后处理辅助模块
-├── workers/              # Kokoro / ZipVoice 通用可销毁 Worker 客户端与子进程入口
-├── config.py             # 配置和环境变量
+├── moss/                 # MOSS 辅助逻辑与兼容 re-export/shim
+├── moss_runtime/         # MOSS runtime 接入及 prompt/audio/stream 辅助实现
+├── workers/              # 三模型共用的 WorkerSpec、进程客户端与子进程入口
+├── config.py             # TTSConfig 兼容 facade、校验和配置加载
+├── config_env.py         # ENV 应用编排，消费领域声明/metadata
 ├── cli.py                # angevoice / kokoro-tts CLI
 ├── static_assets.py      # 统一静态资源内容哈希与原生 ESM import map
 ├── templates/index.html  # Studio Web UI HTML shell
@@ -51,20 +56,30 @@ src/kokoro_tts/
 1. `routes/audio.py` 接收 `/v1/audio/speech` 或 `/api/tts` 请求。
 2. `api_models.py` 校验 OpenAI 风格请求体。
 3. `service_state.py` 记录 request id、排队状态、统计和缓存。
-4. `service_state.py` 根据请求中的 `model` 借用当前引擎；切换模型时缓存 key 会按模型隔离。
+4. `SynthesisService.build_request()` 解析模型、参考条件和生成参数，执行请求选择的文本预处理；`response_result()` 负责缓存和借用 Adapter。
 5. `routes/audio.py` 在 MOSS 克隆请求中接收 `prompt_audio` multipart 文件，做后缀、大小校验并生成缓存指纹。
-6. `engine.py` / `moss_engine.py` 都走共享的中文文本规范化入口，调用 `zh_rules.py` 做中文标点、时间读法、轻量语义匹配和多音字规则；Kokoro 再分段调用 pipeline，MOSS 则调用官方 ONNX runtime。
+6. service 将内部 `text_prepared=True` 交给支持该参数的 Adapter；Kokoro/MOSS 跳过重复的通用规范化，保留模型必要清理后推理。该标志不属于公共 HTTP 请求字段。
 7. `service_state.py` 可按 `ANGEVOICE_SAVE_OUTPUTS` 把 HTTP 合成结果写入持久化输出目录。
 8. `routes/audio.py` 返回 `StreamingResponse`，响应头包含 `X-Request-ID`。
 
 ### WebSocket 流式
 
-1. `routes/ws.py` 接收首个 JSON 消息，读取 `text/voice/speed/format/binary/token`，并在 MOSS 克隆请求中接收可选 `prompt_audio` base64。
+1. `routes/ws.py` 创建 `TtsWebSocketSession`；session 解析首包 `text/voice/speed/format/binary/token` 和可选参考音频，委托 `StreamingService.build_request()` 构造内部请求。
 2. `security.py` 校验 WebSocket token 或 Authorization header。
 3. `service_state.py` 用同一个并发信号量保护推理。
-4. `engine_manager.py` 借用目标模型，当前模型不匹配且启用卸载策略时会先切换并卸载旧模型。
+4. `StreamingService.iter_frames()` 借用目标 Adapter，并传递内部 prepared 参数；manager 通过 Registry 构造引擎，不直接依赖具体 runtime 类型。
 5. 引擎生成 `started/audio/segment_error/done` 消息。Kokoro 保持上游 pipeline 的段落级推理，但在 WebSocket 发送前按固定时长切成小包；MOSS 默认使用官方逐帧回调和 codec streaming decoder（`MOSS_REALTIME_STREAMING_DECODE=true`），保持低延迟流式体验；若特定设备出现边界噪声或显存压力，可在后台关闭逐帧流式。
 6. 客户端发送 `cancel` 或 `stop` 后，服务停止后续段落推送。
+
+### 文本准备与资源归属
+
+HTTP/WS 请求选择的通用 TN 在 service 构造请求时执行一次。Kokoro prepared 路径保留控制字符/空白清理和校验；MOSS 保留分段、中英混排策略和配置控制的 robust 格式整理，禁用下游额外 WeText。`off` 表示不执行通用语义规范化，不承诺文本字节原样进入 tokenizer。直接调用核心引擎默认 `text_prepared=False`，保留原有 raw 行为；调用方构造内部 Request 前必须完成约定的准备，不应绕开 `build_request()`。
+
+prepared 参数通过现有 kwargs/dict 跨 worker 传输，不写入实例、全局或 thread-local 状态。ZipVoice 继续分别处理 text/prompt_text 的 prepared 标志。当前实现合同和真实 spawn 替身测试已覆盖这些边界；真实模型、原生 WeText 与音质验收另行记录。
+
+Registry 是静态产品能力和引擎构造的权威入口，Adapter 暴露统一能力与运行状态。`EngineWorkerSpec` 携带产品 owner 提供的顶层 factory；worker 只消费协议，不解析请求提供的模块路径。子进程加载失败时清理候选实例，加载成功后才保存实例供后续请求复用。错误通过 `WorkerFailureEnvelope` 传输并映射为兼容 `RuntimeError` 的 `EngineError`；超时保持 `TimeoutError` 兼容。
+
+应用 lifespan 在 finally 中触发 manager shutdown：停止新借用，取消/等待活跃请求，再按超时与失败处理策略释放；释放失败仍保留可重试的 ownership。进程隔离提供可终止边界，进程内 native 推理中断和内存归还仍是 best-effort。stream 缺少语义结束事件会失败，拥有迭代器的层负责关闭它。
 
 ## 状态对象
 
@@ -88,8 +103,9 @@ src/kokoro_tts/
 
 - `kokoro`：默认 Kokoro v1.1 中文引擎。
 - `moss`：MOSS-TTS-Nano 产品入口；OpenMOSS 官方 runtime 的 CPU/CUDA 由 Provider Policy 决定，旧 `moss-nano-cpu` / `moss-nano-cuda` 仅作为兼容输入 alias。
+- `zipvoice`：ZipVoice 产品入口，CPU/CUDA 差异由 Provider policy 与 runtime wrapper 承担。
 
-正式 Docker/fnOS 模板中，Kokoro、MOSS-TTS-Nano 与 ZipVoice 均通过可销毁 Worker 加载推理运行时；API 主进程仅持有路由、配置、Voice Profile 元数据与状态。模型切换时只保留一个活跃热 Worker，空闲释放或取消/超时时退出 Worker，使操作系统回收其 RAM 与 VRAM。库级调用仍允许关闭隔离以保持兼容。MOSS CUDA 加载会先检查 ONNX Runtime provider，并在启用质量闸门时生成短音频，拒绝静音、NaN/Inf 或明显 clipping 的输出。MOSS 流式取消使用软取消和 request_id 过滤，避免停止后旧帧污染下一次合成；长文本首帧或分段间隙通过独立流式空闲窗口保活，避免被普通请求超时误断开。
+正式 Docker/fnOS 模板中，Kokoro、MOSS-TTS-Nano 与 ZipVoice 均通过可销毁 Worker 加载推理运行时；API 主进程仅持有路由、配置、Voice Profile 元数据与状态。模型切换时只保留一个活跃热 Worker，空闲释放或强制取消/超时时退出 Worker，使操作系统回收其 RAM 与 VRAM。库级调用仍允许关闭隔离以保持兼容。MOSS CUDA 加载会先检查 ONNX Runtime provider，并在启用质量闸门时生成短音频，拒绝静音、NaN/Inf 或明显 clipping 的输出。MOSS 流式取消使用软取消和 request_id 过滤，避免停止后旧帧污染下一次合成；长文本首帧或分段间隙通过独立流式空闲窗口保活，避免被普通请求超时误断开。
 
 `MOSS_CUDA_ENABLED=false` 会禁止 `moss` 请求 CUDA provider，用于 CPU 镜像和 legacy-gpu 默认配置。标准 GPU 画像公开模型仍为 `kokoro,moss,zipvoice`，但允许 MOSS 使用 CUDA；`ANGEVOICE_DEFAULT_MODEL=kokoro`，因此 MOSS 只会在用户切换时加载。
 
@@ -97,19 +113,19 @@ MOSS capability metadata 会声明 `modes=["preset_voice","voice_clone"]` 和 `v
 
 MOSS 适配层不会直接改写上游仓库代码。AngeVoice 在适配层中做四件事：复用单个 MOSS executor 并用 runtime lock 保护官方 runtime；对 clone 参考音频做时长裁剪和 prompt code LRU 缓存；对输出做温和峰值保护，降低 8GB 显存环境下 clone OOM、爆音和削波的概率；保留可选进程级隔离能力，便于排查 CUDA/ONNX Runtime 底层卡死问题。
 
-进程级隔离在 Docker/fnOS 正式部署模板中对三种模型默认开启：MOSS 将 CPU 与 CUDA provider 放入现有隔离 Worker；Kokoro 与 ZipVoice 通过通用 `workers/process_worker.py` 子进程运行。非流式与流式请求在超时、取消或底层卡死后均可终止对应 Worker，并在下次请求按需重建。库级配置仍保留关闭隔离的能力，供嵌入式调用者自行权衡，但关闭后主机内存不保证在释放时完整归还。可选的 `ANGEVOICE_RESTART_AFTER_IDLE_UNLOAD=true` 只在模型因空闲卸载成功、且没有活跃请求/WebSocket/已加载模型时退出 API 进程，交给容器或服务管理器拉起，用于清理 CUDA/ONNX Runtime 底层残留。
+进程级隔离在 Docker/fnOS 正式部署模板中对三种模型默认开启，均使用 `workers/process_worker.py` 和产品 owner 创建的 WorkerSpec。普通流式取消优先使用共享取消代次和结果排空；强制取消、超时或底层卡死可终止对应 Worker，并在下次请求按需重建。库级配置仍保留关闭隔离的能力，但关闭后主机内存不保证在释放时完整归还。可选的 `ANGEVOICE_RESTART_AFTER_IDLE_UNLOAD=true` 只在模型因空闲卸载成功、且没有活跃请求/WebSocket/已加载模型时退出 API 进程，交给容器或服务管理器拉起。
 
 MOSS CUDA 依赖目标环境的 ONNX Runtime/CUDA/cuDNN 组合。通用 GPU Docker 画像使用 `onnxruntime-gpu==1.20.2` + `nvidia-cudnn-cu12==9.1.0.70`；缺 cuDNN 9 时官方 runtime 会创建 CPU session，AngeVoice 会拒绝该 CUDA 加载并按配置回退 CPU。legacy-gpu 镜像通过 ONNX Runtime CUDA 11 feed 预装了 CUDA 11.8 兼容的 MOSS GPU 依赖，但默认只开放 MOSS CPU；它是通用 GPU 画像无法启动或不稳定时的兼容模式。
 
 
 ### MOSS 子模块
 
-`kokoro_tts.moss` 子包承载从 `moss_engine.py` 拆出的纯逻辑和隔离逻辑：
+`kokoro_tts.moss` 保留模型专属逻辑及兼容入口；部分 helper 的实际实现位于 `moss_runtime`，这些分层在 v2.6.616 已存在，不重复记为新增偿债成果：
 
 | 文件 | 职责 |
 |---|---|
 | `runtime.py` | 官方 runtime 导入、provider 创建、CUDA 显存限制注入、自检音频分析 |
-| `process_worker.py` | 可选 MOSS 进程级隔离；父进程调度，worker 子进程加载 runtime 并执行推理 |
+| `process_worker.py` | deprecated `MossProcessClient` 兼容 shim；实际 worker 位于 `workers/` |
 | `prompt.py` | 参考音频裁剪、采样率/通道对齐、prompt code LRU 缓存 |
 | `streaming.py` | 流式帧预算、codec streaming 输出整理 |
 | `postprocess.py` | 波形归一化、温和峰值保护、静音和流式分片 |
@@ -123,7 +139,7 @@ MOSS CUDA 依赖目标环境的 ONNX Runtime/CUDA/cuDNN 组合。通用 GPU Dock
 
 `static_assets.py` 在应用装配时为所有打包资源计算 LF 标准化的内容哈希；模板通过同一个 manifest 生成 CSS 和入口模块 URL，并注入覆盖全部原生 ESM 模块的 import map。JavaScript 源码只保留普通相对 import，不再人工维护递归查询参数，同时仍可由 Node 直接执行 ESM smoke。
 
-共享 i18n runtime 从 `static/locale/common`、`static/locale/studio` 和 `static/locale/admin` 合并互不重叠的分域词典；重复 key 会在模块初始化时失败，而不是按加载顺序静默覆盖。需要保留 `<code>`、链接或动态强调节点的文案使用 `data-i18n-template` 与命名 DOM slot：catalog 只保存纯文本和 `{slot}`，runtime 只拼接 TextNode 与受控节点，不解析翻译 HTML。
+共享 i18n runtime 按页面组合 `static/locale/common`、`studio`、`admin` 或 `docs` 分域词典；重复 key 会在模块初始化时失败。Admin 和 API Docs 已有完整本地化实现，包括 Admin 动态 metadata。需要保留 `<code>`、链接或动态强调节点的文案使用 `data-i18n-template` 与命名 DOM slot：catalog 只保存纯文本和 `{slot}`，runtime 只拼接 TextNode 与受控节点，不解析翻译 HTML。
 
 Studio 的模型/Provider/音色展示模块保持纯函数边界：技术 ID 和用户命名原样返回，本地化状态通过调用方提供的 translator 或稳定 presentation key 解析。Toast 与进度条保存 `{key, params}` 描述符，因此切换语言可重绘瞬时文案；编辑区默认示例只在用户尚未输入时随语言切换，不能覆盖未保存内容。`tests/quality/studio_copy_debt.json` 是精确、分类且只允许缩减的迁移 ratchet；scanner 独立遍历模板和所有 `static/studio/**/*.js`，新硬编码用户文案、动态翻译 key 或过期债务条目都会失败。Phase 1 退出前该债务表必须清零，schema/error 边界只能通过稳定 key/code 合同消除，不能扩大路径 allowlist。
 
@@ -154,3 +170,15 @@ MOSS 使用独立分段长度 `MOSS_SEGMENT_LENGTH`（默认 120），不再强�
 ## ZipVoice GPU Provider 与自动回退
 
 CPU 路线使用 `zipvoice-distill-onnx-int8` CPU runtime。标准 `gpu` 画像提供 `zipvoice-distill-pytorch-cuda` 请求路径，并以 `ZIPVOICE_AUTO_FALLBACK_CPU=true` 保留 CPU runtime。模型状态必须同时暴露 `requested_provider`、`actual_provider`、`fallback` 与 `fallback_reason`；运行状态通过 `requested_provider`、`actual_provider` 与 `fallback_reason` 明确展示；部署者可通过诊断接口观察长文本、流式取消与资源表现。`legacy-gpu` 不启用 ZipVoice CUDA，只作为标准 `gpu` 无法运行时的兼容模式。
+
+模型来源的地区与可达性探测共用 `model_source_probe` 传输边界：初始地址和重定向均校验 HTTP/HTTPS，保持 HEAD 方法、默认代理/TLS 与读取上限。来源选择和下载 fallback 仍归 `model_sources`；第一方日志不输出原始 URL、路径、异常正文或 traceback。第三方 SDK 自行输出不属于该日志保证。
+
+WS session 保持请求状态与参考音频临时文件的唯一生命周期所有者。首包认证和错误映射调用参考音频准备、service 请求投影两个独立步骤；发送循环负责排队等待与断连，终止状态观察和单帧 JSON/二进制发送分别处理。单帧发送按元数据→音频字节顺序执行；取消和 finally 清理仍由现有生命周期逻辑管理。
+
+配置 ENV 的 `apply_env` 只编排标量声明执行、凭据/CORS、模型选择与路径三个步骤。共同的数值赋值由整数/浮点两类声明复用；解析器不承担 clamp，metadata 声明不承担执行。运行目录与凭据路径先展开，再生成密钥；ZipVoice 根目录先派生子路径，显式子路径最后覆盖。`load_config` 保持默认值→ENV→runtime 文件→显式参数的顺序及最终校验。
+
+ZipVoice CPU/CUDA runtime 共用 `zipvoice/runtime_common.py` 的参考输入校验、数值参数投影、指标计算与临时 WAV 生命周期。各 runtime 保持 load/unload、具体模型调用、设备参数与 last_metrics 状态所有权；CUDA 专属 device/max_duration 与 provider 指标不传入 CPU。临时文件在读取或音频转换失败时同样清理。
+
+EngineManager 的 get_engine 保持原 RLock 覆盖范围和唯一引擎状态表。provider 替换判断不修改状态；加载执行在锁内完成，失败清理重置计数、尝试兼容卸载并移除失败实例，随后重新抛出原加载异常。清理异常不会覆盖加载异常；成功后才更新使用时间。
+
+可选路由由 register_service_routes 在应用组装时拆成批量合成、管理缓存/音色、格式查询三组。批量只接收合成/请求生命周期/统计和模型 ID 解析回调；管理资源只接收配置与 cache_clear；格式查询只接收配置。主 handler 不读取 app.state 获取服务，旧入口的动态解析仅保留在兼容桥接中。

@@ -21,16 +21,19 @@ class ProviderPolicy:
             return "cpu"
         if model_id != "moss":
             return str(getattr(cfg, "device", "cpu") or "cpu")
+        return self._requested_moss_provider(cfg, enabled_models, provider_hint=provider_hint)
+
+    def _requested_moss_provider(self, cfg, enabled_models: Iterable[str], *, provider_hint: str | None) -> str:
+        # 显式请求提示保留给 Registry 校验禁用策略，不静默降级为 CPU。
         if provider_hint:
             return "cuda" if str(provider_hint).lower() == "cuda" else "cpu"
-        entries = [self._resolver(item, default_id="kokoro") for item in enabled_models]
-        has_cpu_alias = any(item.canonical_id == "moss" and item.provider_hint == "cpu" for item in entries)
-        has_cuda_alias = any(item.canonical_id == "moss" and item.provider_hint == "cuda" for item in entries)
+        entries = (self._resolver(item, default_id="kokoro") for item in enabled_models)
+        alias_hints = {item.provider_hint for item in entries if item.canonical_id == "moss"}
         configured = str(getattr(cfg, "moss_execution_provider", "cpu") or "cpu").strip().lower()
         cuda_enabled = bool(getattr(cfg, "moss_cuda_enabled", True))
         if configured == "cuda" and cuda_enabled:
             return "cuda"
-        if has_cuda_alias and not has_cpu_alias and cuda_enabled:
+        if "cuda" in alias_hints and "cpu" not in alias_hints and cuda_enabled:
             return "cuda"
         return "cpu"
 

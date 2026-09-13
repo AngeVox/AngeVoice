@@ -9,7 +9,7 @@ import time
 from contextlib import suppress
 from typing import Any
 
-from fastapi import WebSocket
+from fastapi import HTTPException, WebSocket
 from starlette.websockets import WebSocketDisconnect
 
 from ..contracts import StreamingRequest
@@ -139,44 +139,9 @@ class TtsWebSocketSession(MessageParsingMixin, StreamingLoopMixin, CancelLifecyc
         try:
             model = self.state.model_manager.normalize_model_id(msg.get("model"))
             target_engine = self.state.model_manager.get_engine(model, load=False)
-            voice = msg.get("voice") or getattr(target_engine, "default_voice", self.cfg.default_voice)
-            fmt = msg.get("format", self.cfg.stream_format)
-            binary = bool(msg.get("binary", False)) and self.cfg.stream_binary_enabled
-
-            prompt_payload = msg.get("prompt_audio") if isinstance(msg.get("prompt_audio"), dict) else {}
-            prompt_audio_data = (
-                (prompt_payload or {}).get("data")
-                or msg.get("prompt_audio_data")
-                or msg.get("reference_audio_data")
-            )
-            if prompt_audio_data:
-                if not self.state.engine_supports_voice_clone(target_engine):
-                    await self.websocket.send_json({"type": "error", "message": "当前模型不支持参考音频克隆", "request_id": self.request_id})
-                    return None
-                max_prompt_bytes = self.state.voice_profiles.upload_limit_bytes(model)
-                self.prompt_audio_path, self.prompt_audio_id = save_prompt_audio_bytes(
-                    content=decode_prompt_audio_base64(str(prompt_audio_data), max_bytes=max_prompt_bytes),
-                    filename=str((prompt_payload or {}).get("filename") or msg.get("prompt_audio_filename") or "prompt.wav"),
-                    request_id=self.request_id,
-                    max_bytes=max_prompt_bytes,
-                )
-                if self.prompt_audio_path and model == "zipvoice":
-                    validate_reference_audio_duration(
-                        self.prompt_audio_path, max_seconds=self.state.voice_profiles.reference_max_seconds(model)
-                    )
-
-            supplied = msg.get("engine_params") if isinstance(msg.get("engine_params"), dict) else {}
-            text_normalization = msg.get("text_normalization")
-            if text_normalization in {None, ""}:
-                text_normalization = msg.get("tn_engine")
-            return self.state.streaming.build_request(
-                text=msg.get("text", ""), model_id=model, voice=voice,
-                speed=msg.get("speed", self.cfg.default_speed), audio_format=fmt, binary=binary,
-                prompt_audio_path=self.prompt_audio_path, prompt_audio_id=self.prompt_audio_id,
-                prompt_text=str(msg.get("prompt_text") or "").strip(),
-                engine_params=supplied, parameter_source=msg, text_normalization=text_normalization,
-                request_id=self.request_id,
-            )
+            if not await self._prepare_reference_audio(msg, model=model, target_engine=target_engine):
+                return None
+            return self._build_streaming_request(msg, model=model, target_engine=target_engine)
         except HTTPException as exc:
             await self.websocket.send_json(websocket_error_frame_from_http(exc, request_id=self.request_id))
             return None
@@ -184,6 +149,54 @@ class TtsWebSocketSession(MessageParsingMixin, StreamingLoopMixin, CancelLifecyc
             logger.exception("WebSocket 参考音频或请求资源处理失败", extra={"request_id": self.request_id})
             await self.websocket.send_json({"type": "error", "message": "参考音频处理失败", "request_id": self.request_id})
             return None
+
+    async def _prepare_reference_audio(self, msg: dict, *, model: str, target_engine) -> bool:
+        """Prepare the session-owned temporary file before request validation.
+
+        Assign the path before duration validation so run() cleans it on failure.
+        """
+        prompt_payload = msg.get("prompt_audio") if isinstance(msg.get("prompt_audio"), dict) else {}
+        prompt_audio_data = (
+            (prompt_payload or {}).get("data")
+            or msg.get("prompt_audio_data")
+            or msg.get("reference_audio_data")
+        )
+        if prompt_audio_data:
+            if not self.state.engine_supports_voice_clone(target_engine):
+                await self.websocket.send_json({"type": "error", "message": "当前模型不支持参考音频克隆", "request_id": self.request_id})
+                return False
+            max_prompt_bytes = self.state.voice_profiles.upload_limit_bytes(model)
+            self.prompt_audio_path, self.prompt_audio_id = save_prompt_audio_bytes(
+                content=decode_prompt_audio_base64(str(prompt_audio_data), max_bytes=max_prompt_bytes),
+                filename=str((prompt_payload or {}).get("filename") or msg.get("prompt_audio_filename") or "prompt.wav"),
+                request_id=self.request_id,
+                max_bytes=max_prompt_bytes,
+            )
+            if self.prompt_audio_path and model == "zipvoice":
+                validate_reference_audio_duration(
+                    self.prompt_audio_path, max_seconds=self.state.voice_profiles.reference_max_seconds(model)
+                )
+
+        return True
+
+    def _build_streaming_request(self, msg: dict, *, model: str, target_engine) -> StreamingRequest:
+        """Project WS aliases into the existing service request boundary."""
+        voice = msg.get("voice") or getattr(target_engine, "default_voice", self.cfg.default_voice)
+        fmt = msg.get("format", self.cfg.stream_format)
+        binary = bool(msg.get("binary", False)) and self.cfg.stream_binary_enabled
+
+        supplied = msg.get("engine_params") if isinstance(msg.get("engine_params"), dict) else {}
+        text_normalization = msg.get("text_normalization")
+        if text_normalization in {None, ""}:
+            text_normalization = msg.get("tn_engine")
+        return self.state.streaming.build_request(
+            text=msg.get("text", ""), model_id=model, voice=voice,
+            speed=msg.get("speed", self.cfg.default_speed), audio_format=fmt, binary=binary,
+            prompt_audio_path=self.prompt_audio_path, prompt_audio_id=self.prompt_audio_id,
+            prompt_text=str(msg.get("prompt_text") or "").strip(),
+            engine_params=supplied, parameter_source=msg, text_normalization=text_normalization,
+            request_id=self.request_id,
+        )
 
     async def _stream(self, request: StreamingRequest) -> None:
         self.loop = asyncio.get_running_loop()

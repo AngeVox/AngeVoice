@@ -90,9 +90,11 @@ class StreamingLoopMixin:
         produced_terminal = False
         produced_count = 0
         last_chunk_type = ""
+        frames = None
         try:
             cancel_check = lambda: self.cancel_event.is_set() or self.state.is_cancelled(self.request_id)
-            for chunk in self.state.streaming.iter_frames(request, cancel_check=cancel_check):
+            frames = self.state.streaming.iter_frames(request, cancel_check=cancel_check)
+            for chunk in frames:
                 if isinstance(chunk, dict):
                     last_chunk_type = str(chunk.get("type") or "")
                     if last_chunk_type in {"done", "cancelled", "error", "segment_error"}:
@@ -123,24 +125,39 @@ class StreamingLoopMixin:
                 with suppress(Exception):
                     self._thread_put({"type": "error", "message": "流式合成失败", "request_id": self.request_id})
         finally:
-            if not produced_terminal and not self.cancel_event.is_set() and not self.state.is_cancelled(self.request_id):
-                logger.warning(
-                    "WebSocket 生产任务结束但未收到终止帧（frames=%d, last=%s）",
-                    produced_count,
-                    last_chunk_type,
-                    extra={"request_id": self.request_id},
-                )
-            if self.loop is not None:
-                if self.cancel_event.is_set() or self.state.is_cancelled(self.request_id):
-                    # 仅在回调被实际接受后才在循环回调内创建协程。
-                    # 这避免了在生产者关闭和 call_soon_threadsafe() 之间
-                    # 事件循环关闭时泄漏未等待的协程。
-                    if not self.loop.is_closed():
-                        with suppress(RuntimeError):
-                            self.loop.call_soon_threadsafe(self._schedule_cancelled_notice)
-                else:
-                    with suppress(Exception):
-                        self._thread_put(self.done_marker)
+            self._close_producer_frames(frames)
+            self._finish_producer(produced_terminal, produced_count, last_chunk_type)
+
+    def _close_producer_frames(self, frames) -> None:
+        """Release the owned service iterator even when queue delivery stops early."""
+        close = getattr(frames, "close", None)
+        if not callable(close):
+            return
+        try:
+            close()
+        except Exception:
+            logger.warning("关闭 WebSocket 生产迭代器失败", exc_info=True, extra={"request_id": self.request_id})
+
+    def _finish_producer(self, produced_terminal: bool, produced_count: int, last_chunk_type: str) -> None:
+        """Notify the consumer only after the producer has released its iterator."""
+        if not produced_terminal and not self.cancel_event.is_set() and not self.state.is_cancelled(self.request_id):
+            logger.warning(
+                "WebSocket 生产任务结束但未收到终止帧（frames=%d, last=%s）",
+                produced_count,
+                last_chunk_type,
+                extra={"request_id": self.request_id},
+            )
+        if self.loop is not None:
+            if self.cancel_event.is_set() or self.state.is_cancelled(self.request_id):
+                # 仅在回调被实际接受后才在循环回调内创建协程。
+                # 这避免了在生产者关闭和 call_soon_threadsafe() 之间
+                # 事件循环关闭时泄漏未等待的协程。
+                if not self.loop.is_closed():
+                    with suppress(RuntimeError):
+                        self.loop.call_soon_threadsafe(self._schedule_cancelled_notice)
+            else:
+                with suppress(Exception):
+                    self._thread_put(self.done_marker)
 
     def _record_stream_error(self, message: str) -> None:
         """记录每个请求的一个终止流错误，即使多个帧格式错误。"""
@@ -212,42 +229,10 @@ class StreamingLoopMixin:
                     with suppress(Exception):
                         await self.websocket.send_json({"type": "error", "message": message, "request_id": self.request_id})
                 break
-            if isinstance(chunk, dict):
-                chunk.setdefault("request_id", self.request_id)
-                chunk_type = str(chunk.get("type") or "")
-                if chunk_type == "done":
-                    self.saw_stream_terminal = True
-                elif chunk_type == "cancelled":
-                    self.saw_stream_terminal = True
-                elif chunk_type in {"error", "segment_error"}:
-                    self._record_stream_error("流式引擎返回错误帧")
+            self._observe_stream_frame(chunk)
             try:
-                if binary and isinstance(chunk, dict) and chunk.get("type") == "audio":
-                    payload = chunk.get("data")
-                    if not isinstance(payload, str) or not payload:
-                        logger.error("WebSocket 音频帧缺少 data 字段", extra={"request_id": self.request_id})
-                        self._record_stream_error("音频帧缺少 data")
-                        await self.websocket.send_json({
-                            "type": "error",
-                            "message": "流式音频帧无效",
-                            "request_id": self.request_id,
-                        })
-                        break
-                    try:
-                        audio_payload = base64.b64decode(payload, validate=True)
-                    except (binascii.Error, ValueError):
-                        logger.error("WebSocket 音频帧 base64 无效", extra={"request_id": self.request_id})
-                        self._record_stream_error("音频帧编码无效")
-                        await self.websocket.send_json({
-                            "type": "error",
-                            "message": "流式音频帧无效",
-                            "request_id": self.request_id,
-                        })
-                        break
-                    await self.websocket.send_json({k: v for k, v in chunk.items() if k != "data"})
-                    await self.websocket.send_bytes(audio_payload)
-                else:
-                    await self.websocket.send_json(chunk)
+                if not await self._send_stream_frame(chunk, binary=binary):
+                    break
             except Exception:
                 self._transition(WsSessionState.CANCELLING, reason="send-failed")
                 self.state.request_cancel(self.request_id)
@@ -257,3 +242,45 @@ class StreamingLoopMixin:
                 break
             if isinstance(chunk, dict) and chunk.get("type") == "cancelled":
                 break
+
+    def _observe_stream_frame(self, chunk) -> None:
+        """Keep terminal/error accounting independent of wire encoding."""
+        if isinstance(chunk, dict):
+            chunk.setdefault("request_id", self.request_id)
+            chunk_type = str(chunk.get("type") or "")
+            if chunk_type == "done":
+                self.saw_stream_terminal = True
+            elif chunk_type == "cancelled":
+                self.saw_stream_terminal = True
+            elif chunk_type in {"error", "segment_error"}:
+                self._record_stream_error("流式引擎返回错误帧")
+
+    async def _send_stream_frame(self, chunk, *, binary: bool) -> bool:
+        """Send one frame in wire order; let the loop own disconnect handling."""
+        if binary and isinstance(chunk, dict) and chunk.get("type") == "audio":
+            payload = chunk.get("data")
+            if not isinstance(payload, str) or not payload:
+                logger.error("WebSocket 音频帧缺少 data 字段", extra={"request_id": self.request_id})
+                self._record_stream_error("音频帧缺少 data")
+                await self.websocket.send_json({
+                    "type": "error",
+                    "message": "流式音频帧无效",
+                    "request_id": self.request_id,
+                })
+                return False
+            try:
+                audio_payload = base64.b64decode(payload, validate=True)
+            except (binascii.Error, ValueError):
+                logger.error("WebSocket 音频帧 base64 无效", extra={"request_id": self.request_id})
+                self._record_stream_error("音频帧编码无效")
+                await self.websocket.send_json({
+                    "type": "error",
+                    "message": "流式音频帧无效",
+                    "request_id": self.request_id,
+                })
+                return False
+            await self.websocket.send_json({k: v for k, v in chunk.items() if k != "data"})
+            await self.websocket.send_bytes(audio_payload)
+        else:
+            await self.websocket.send_json(chunk)
+        return True

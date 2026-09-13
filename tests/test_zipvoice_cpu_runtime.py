@@ -201,15 +201,18 @@ def test_zipvoice_public_wav_normalizer_converts_float_to_pcm16():
     assert _wav_format_tag(product_wav) == (1, 1, 24000, 16)
 
 
-def test_zipvoice_runtime_synthesize_returns_pcm16_even_when_upstream_writes_float(tmp_path):
+@pytest.mark.parametrize("provider", ["cpu", "cuda"])
+@pytest.mark.parametrize("num_steps,expected_steps", [(100, 32), (0, 8), (-2, 1)])
+def test_zipvoice_runtime_synthesize_returns_pcm16_even_when_upstream_writes_float(tmp_path, provider, num_steps, expected_steps):
     import contextlib
 
     import numpy as np
     import soundfile as sf
 
     from kokoro_tts.zipvoice.runtime_cpu_onnx import ZipVoiceOnnxCpuRuntime
+    from kokoro_tts.zipvoice.runtime_cuda_torch import ZipVoiceTorchCudaRuntime
 
-    runtime = ZipVoiceOnnxCpuRuntime(_cfg(tmp_path))
+    runtime = (ZipVoiceOnnxCpuRuntime if provider == "cpu" else ZipVoiceTorchCudaRuntime)(_cfg(tmp_path))
     runtime.loaded = True
     runtime.load = lambda: runtime
     runtime.torch = types.SimpleNamespace(inference_mode=lambda: contextlib.nullcontext())
@@ -218,15 +221,90 @@ def test_zipvoice_runtime_synthesize_returns_pcm16_even_when_upstream_writes_flo
     runtime.tokenizer = object()
     runtime.feature_extractor = object()
 
+    outputs = []
     def fake_generate_sentence(**kwargs):
+        outputs.append(Path(kwargs["save_path"]))
+        assert kwargs["prompt_text"] == "参考"
+        assert kwargs["num_step"] == expected_steps
+        assert kwargs["remove_long_sil"] is False
+        assert kwargs["speed"] == 1.25
+        assert ("device" in kwargs) == (provider == "cuda")
+        assert ("max_duration" in kwargs) == (provider == "cuda")
         sf.write(kwargs["save_path"], np.array([0.0, 0.2, -0.2], dtype=np.float32), 24000, format="WAV", subtype="FLOAT")
         return {"wav_seconds": 3 / 24000, "rtf": 0.5}
 
     runtime.generate_sentence = fake_generate_sentence
     reference = tmp_path / "reference.wav"
     reference.write_bytes(b"only-needs-to-exist-for-wrapper-test")
-    output = runtime.synthesize(text="测试", prompt_audio_path=str(reference), prompt_text="参考")
+    output = runtime.synthesize(text="测试", prompt_audio_path=str(reference), prompt_text=" 参考 ", num_steps=num_steps, speed=1.25, remove_long_sil=False)
     assert _wav_format_tag(output) == (1, 1, 24000, 16)
+    assert all(not path.exists() for path in outputs)
+    assert runtime.last_metrics["zipvoice_num_steps"] == expected_steps
+    assert runtime.last_metrics["last_rtf"] == 0.5
+    assert ("runtime_provider" in runtime.last_metrics) == (provider == "cuda")
+
+
+@pytest.mark.parametrize("provider", ["cpu", "cuda"])
+@pytest.mark.parametrize("invalid", ["missing-reference", "blank-prompt"])
+def test_zipvoice_invalid_reference_never_invokes_generation(tmp_path, provider, invalid):
+    from kokoro_tts.zipvoice.runtime_cpu_onnx import ZipVoiceOnnxCpuRuntime
+    from kokoro_tts.zipvoice.runtime_cuda_torch import ZipVoiceTorchCudaRuntime
+
+    cls = ZipVoiceOnnxCpuRuntime if provider == "cpu" else ZipVoiceTorchCudaRuntime
+    runtime = cls(_cfg(tmp_path))
+    runtime.load = lambda: runtime
+    runtime.generate_sentence = MagicMock()
+    reference = tmp_path / "reference.wav"
+    if invalid == "blank-prompt":
+        reference.write_bytes(b"reference")
+    message = "ZipVoice 需要可读取的参考音频" if invalid == "missing-reference" else "ZipVoice 需要参考音频对应文本 prompt_text"
+    with pytest.raises(ValueError, match=message):
+        runtime.synthesize(text="测试", prompt_audio_path=str(reference), prompt_text=" ")
+    runtime.generate_sentence.assert_not_called()
+
+
+@pytest.mark.parametrize("provider", ["cpu", "cuda"])
+@pytest.mark.parametrize("failure", ["generate", "read", "normalize"])
+def test_zipvoice_runtime_output_is_removed_on_failure(tmp_path, monkeypatch, provider, failure):
+    import contextlib
+    import kokoro_tts.zipvoice.runtime_cpu_onnx as cpu
+    import kokoro_tts.zipvoice.runtime_cuda_torch as cuda
+
+    module = cpu if provider == "cpu" else cuda
+    cls = cpu.ZipVoiceOnnxCpuRuntime if provider == "cpu" else cuda.ZipVoiceTorchCudaRuntime
+    runtime = cls(_cfg(tmp_path))
+    runtime.load = lambda: runtime
+    runtime.torch = types.SimpleNamespace(inference_mode=lambda: contextlib.nullcontext())
+    reference = tmp_path / "reference.wav"
+    reference.write_bytes(b"reference")
+    outputs = []
+    marker = RuntimeError("synthetic inference or normalization failure")
+
+    def generate(**kwargs):
+        output = Path(kwargs["save_path"])
+        outputs.append(output)
+        assert output.exists()
+        if failure == "generate":
+            raise marker
+        if failure == "read":
+            output.unlink()
+        return {"wav_seconds": 0, "rtf": 0.25}
+
+    def normalize(*args, **kwargs):
+        raise marker
+
+    runtime.generate_sentence = generate
+    monkeypatch.setattr(module, "normalize_wav_to_pcm16_bytes", normalize)
+    expected = FileNotFoundError if failure == "read" else RuntimeError
+    with pytest.raises(expected) as caught:
+        runtime.synthesize(text="测试", prompt_audio_path=str(reference), prompt_text="参考")
+    if failure != "read":
+        assert caught.value is marker
+    assert outputs and all(not path.exists() for path in outputs)
+    if failure == "generate":
+        assert runtime.last_metrics == {}
+    else:
+        assert runtime.last_metrics["last_rtf"] == 0.25
 
 
 def test_resource_snapshot_exposes_cache_counters_for_nas_isolation_evidence(tmp_path):

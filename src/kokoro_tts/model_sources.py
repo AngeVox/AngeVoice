@@ -5,8 +5,9 @@ from __future__ import annotations
 import logging
 import os
 import urllib.error
-import urllib.request
 from pathlib import Path
+
+from .model_source_probe import open_probe
 
 from .kokoro_assets import (
     KOKORO_MODEL_FILENAME,
@@ -141,12 +142,10 @@ def resolve_valid_moss_model_dir(path: Path, *, log: logging.Logger | None = Non
     if log and any(root.rglob("*")):
         lfs_files = [item for item in root.rglob("*") if item.is_file() and _is_probably_lfs_pointer(item)]
         if lfs_files:
-            log.warning("MOSS 模型目录 %s 似乎只有 Git LFS 指针或不完整文件，将继续尝试下载/补全。", root)
+            log.warning("MOSS 模型资产为 Git LFS 指针或不完整文件，将继续尝试下载/补全。")
         else:
             log.warning(
-                "MOSS 模型目录 %s 缺少 %s 或真实 ONNX 权重，将继续尝试下载/补全。",
-                root,
-                _MOSS_BROWSER_MANIFEST,
+                "MOSS 模型缺少 browser_poc_manifest.json 或真实 ONNX 权重，将继续尝试下载/补全。"
             )
     return None
 
@@ -163,12 +162,10 @@ def resolve_valid_moss_audio_tokenizer_dir(path: Path, *, log: logging.Logger | 
     if log and any(root.rglob("*")):
         lfs_files = [item for item in root.rglob("*") if item.is_file() and _is_probably_lfs_pointer(item)]
         if lfs_files:
-            log.warning("MOSS Audio Tokenizer 目录 %s 似乎只有 Git LFS 指针或不完整文件，将继续尝试下载/补全。", root)
+            log.warning("MOSS Audio Tokenizer 资产为 Git LFS 指针或不完整文件，将继续尝试下载/补全。")
         else:
             log.warning(
-                "MOSS Audio Tokenizer 目录 %s 缺少 %s 或真实 ONNX 权重，将继续尝试下载/补全。",
-                root,
-                _MOSS_TOKENIZER_META,
+                "MOSS Audio Tokenizer 缺少 codec_browser_onnx_meta.json 或真实 ONNX 权重，将继续尝试下载/补全。"
             )
     return None
 
@@ -199,10 +196,10 @@ def _detect_country(config) -> str:
         return ""
     timeout = float(getattr(config, "model_source_detect_timeout_seconds", 1.5) or 1.5)
     try:
-        with urllib.request.urlopen(url, timeout=timeout) as resp:  # noqa: S310
+        with open_probe(url, timeout=timeout) as resp:
             country = resp.read(16).decode("utf-8", errors="ignore").strip().upper()
-    except Exception:
-        logger.debug("Model source country detection failed", exc_info=True)
+    except Exception as exc:
+        logger.debug("Model source country detection failed: error_type=%s", type(exc).__name__)
         country = ""
     config.model_source_country = country
     return country
@@ -212,15 +209,14 @@ def _probe_url(url: str, timeout: float) -> bool:
     """判断模型源主机是否能在短超时时间内连通。"""
     if not url:
         return False
-    request = urllib.request.Request(url, method="HEAD", headers={"User-Agent": "AngeVoice/model-source-probe"})
     try:
-        with urllib.request.urlopen(request, timeout=timeout) as resp:  # noqa: S310
+        with open_probe(url, method="HEAD", timeout=timeout) as resp:
             return 200 <= int(getattr(resp, "status", 200)) < 500
     except urllib.error.HTTPError as exc:
         # 401/403/404 仍说明主机可达；5xx 视为不可靠。
         return 400 <= int(exc.code) < 500
-    except Exception:
-        logger.debug("Model source probe failed: %s", url, exc_info=True)
+    except Exception as exc:
+        logger.debug("Model source probe failed: error_type=%s", type(exc).__name__)
         return False
 
 
@@ -273,12 +269,8 @@ def resolve_model_source(config) -> str:
             source = "huggingface"
     config.model_source_effective = source
     logger.info(
-        "Model source resolved: mode=%s effective=%s hf_ok=%s modelscope_ok=%s country=%s",
-        mode,
+        "Model source resolved: provider=%s",
         source,
-        getattr(config, "model_source_hf_reachable", None),
-        getattr(config, "model_source_modelscope_reachable", None),
-        getattr(config, "model_source_country", ""),
     )
     return source
 
@@ -290,13 +282,12 @@ def _modelscope_snapshot_download(
         from modelscope.hub.snapshot_download import snapshot_download
     except Exception:
         logger.warning(
-            "ModelScope package is not installed, so ModelScope downloads cannot be used for %s. "
+            "ModelScope package is not installed, so ModelScope downloads cannot be used. "
             "Run `pip install modelscope>=1.27.0` or use the official Docker image; falling back to Hugging Face.",
-            repo_id,
         )
         return None
     target_dir.mkdir(parents=True, exist_ok=True)
-    logger.info("Downloading model from ModelScope: %s -> %s", repo_id, target_dir)
+    logger.info("Model source download started: provider=modelscope")
     kwargs = {"local_dir": str(target_dir)}
     if revision:
         kwargs["revision"] = revision
@@ -316,12 +307,11 @@ def _huggingface_snapshot_download(
         from huggingface_hub import snapshot_download
     except Exception:
         logger.warning(
-            "huggingface_hub 不可用，无法从 Hugging Face 下载模型：%s",
-            repo_id,
+            "huggingface_hub 不可用，无法从 Hugging Face 下载模型。"
         )
         return None
     target_dir.mkdir(parents=True, exist_ok=True)
-    logger.info("从 Hugging Face 下载模型：%s -> %s", repo_id, target_dir)
+    logger.info("Model source download started: provider=huggingface")
     try:
         kwargs = {
             "repo_id": repo_id,
@@ -332,8 +322,8 @@ def _huggingface_snapshot_download(
         if revision:
             kwargs["revision"] = revision
         path = snapshot_download(**kwargs)
-    except Exception:
-        logger.warning("Hugging Face 模型下载失败：%s", repo_id, exc_info=True)
+    except Exception as exc:
+        logger.warning("Model source download failed: provider=huggingface error_type=%s", type(exc).__name__)
         return None
     return Path(path)
 
@@ -348,9 +338,8 @@ def _log_provider_failure_for_fallback(
     """Log a safe summary before continuing a generic provider plan."""
 
     logger.warning(
-        "Provider download failed; continuing fallback: provider=%s repo=%s error_type=%s",
+        "Provider download failed; continuing fallback: provider=%s error_type=%s",
         provider,
-        repo_id,
         type(exc).__name__,
     )
 
@@ -445,8 +434,7 @@ def _verify_incomplete_managed_current(path: Path, *, managed: bool, complete: b
 
 def _offline_kokoro_result(config, current_dir: Path, *, current_managed: bool, current_has_assets: bool) -> Path | None:
     logger.warning(
-        "ANGEVOICE_MODEL_SOURCE=offline，已禁用 Kokoro 自动下载；请预先把 config.json、权重和 voices/*.pt 放入：%s",
-        current_dir,
+        "ANGEVOICE_MODEL_SOURCE=offline，已禁用 Kokoro 自动下载；请在配置的模型目录预置 config.json、权重和 voices/*.pt。"
     )
     config.model_dir = current_dir
     if current_managed:
@@ -512,7 +500,7 @@ def _download_kokoro_assets(config, target: Path, *, logger: logging.Logger, man
         for candidate in candidates:
             if has_valid_kokoro_local_assets(candidate, log=logger):
                 return candidate
-        logger.warning("从 %s 下载后仍未发现有效 Kokoro 模型资产：%s", source, repo)
+        logger.warning("Kokoro 模型资产下载后校验未通过：provider=%s", source)
     return None
 
 
@@ -587,7 +575,7 @@ def _download_moss_model_assets(config, target: Path, *, logger: logging.Logger)
         for candidate in candidates:
             if has_valid_moss_model_assets(candidate, log=logger):
                 return candidate
-        logger.warning("从 %s 下载后仍未发现有效 MOSS 模型资产：%s", source, repo)
+        logger.warning("MOSS 模型资产下载后校验未通过：provider=%s", source)
     return None
 
 
@@ -609,7 +597,7 @@ def _download_moss_audio_tokenizer_assets(config, target: Path, *, logger: loggi
         for candidate in candidates:
             if has_valid_moss_audio_tokenizer_assets(candidate, log=logger):
                 return candidate
-        logger.warning("从 %s 下载后仍未发现有效 MOSS Audio Tokenizer 资产：%s", source, repo)
+        logger.warning("MOSS Audio Tokenizer 资产下载后校验未通过：provider=%s", source)
     return None
 
 
@@ -630,8 +618,7 @@ def ensure_moss_model_dir(config, *, logger: logging.Logger) -> Path | None:
     if str(getattr(config, "model_source", "auto") or "auto").strip().lower() == "offline":
         config.moss_model_dir = target
         logger.warning(
-            "ANGEVOICE_MODEL_SOURCE=offline，已禁用 MOSS 自动下载；请预先把 browser_poc_manifest.json 及 ONNX 资产放入：%s",
-            target,
+            "ANGEVOICE_MODEL_SOURCE=offline，已禁用 MOSS 自动下载；请在配置的模型目录预置 browser_poc_manifest.json 及 ONNX 资产。"
         )
         return target
 
@@ -645,8 +632,7 @@ def ensure_moss_model_dir(config, *, logger: logging.Logger) -> Path | None:
     config.moss_model_dir = target
     logger.warning(
         "未找到有效的 MOSS ONNX 模型资产，已尝试自动下载但仍不可用。"
-        "请检查网络，或手动把 browser_poc_manifest.json 及 ONNX 资产放入：%s",
-        target,
+        "请检查网络，或在配置的模型目录预置 browser_poc_manifest.json 及 ONNX 资产。"
     )
     return target
 
@@ -673,8 +659,7 @@ def ensure_moss_audio_tokenizer_dir(config, *, logger: logging.Logger) -> Path |
     if str(getattr(config, "model_source", "auto") or "auto").strip().lower() == "offline":
         config.moss_audio_tokenizer_model_dir = target
         logger.warning(
-            "ANGEVOICE_MODEL_SOURCE=offline，已禁用 MOSS Audio Tokenizer 自动下载；请预先把 codec_browser_onnx_meta.json 及 ONNX 资产放入：%s",
-            target,
+            "ANGEVOICE_MODEL_SOURCE=offline，已禁用 MOSS Audio Tokenizer 自动下载；请在配置的模型目录预置 codec_browser_onnx_meta.json 及 ONNX 资产。"
         )
         return target
 
@@ -688,7 +673,6 @@ def ensure_moss_audio_tokenizer_dir(config, *, logger: logging.Logger) -> Path |
     config.moss_audio_tokenizer_model_dir = target
     logger.warning(
         "未找到有效的 MOSS Audio Tokenizer ONNX 资产，已尝试自动下载但仍不可用。"
-        "请检查网络，或手动把 codec_browser_onnx_meta.json 及 ONNX 资产放入：%s",
-        target,
+        "请检查网络，或在配置的模型目录预置 codec_browser_onnx_meta.json 及 ONNX 资产。"
     )
     return target

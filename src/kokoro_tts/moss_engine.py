@@ -345,18 +345,26 @@ class MossNanoEngine(MossStreamingMixin):
         if self._process_client is not None:
             self._process_client.soft_cancel()
 
-    def synthesize(self, text: str, voice: str = "", speed: float = 1.0, prompt_audio_path: str | None = None) -> bytes:
-        waveform = self.synthesize_array(text=text, voice=voice, speed=speed, prompt_audio_path=prompt_audio_path)
+    def synthesize(
+        self, text: str, voice: str = "", speed: float = 1.0, prompt_audio_path: str | None = None, *,
+        text_prepared: bool = False,
+    ) -> bytes:
+        waveform = self.synthesize_array(
+            text=text, voice=voice, speed=speed, prompt_audio_path=prompt_audio_path, text_prepared=text_prepared,
+        )
         return write_wav_bytes(waveform, self.sample_rate)
 
-    def synthesize_array(self, text: str, voice: str = "", speed: float = 1.0, prompt_audio_path: str | None = None):
+    def synthesize_array(
+        self, text: str, voice: str = "", speed: float = 1.0, prompt_audio_path: str | None = None, *,
+        text_prepared: bool = False,
+    ):
         """非流式合成。
 
         进程隔离模式下超时可终止子进程；非隔离模式下 cancel 仅在推理
         帧间隙生效，无法中断正在进行的 ONNX/CUDA 单帧推理。
         """
         self._validate_request(text=text, voice=voice, speed=speed)
-        prepared_text = self._clean_text(text)
+        prepared_text = self._clean_text(text, text_prepared=text_prepared)
         segments = self._segment_text(prepared_text)
         prompt_audio = prompt_audio_path or (
             str(self.config.moss_prompt_audio_path) if self.config.moss_prompt_audio_path else None
@@ -370,6 +378,7 @@ class MossNanoEngine(MossStreamingMixin):
                 speed=speed,
                 prompt_audio_path=prompt_audio,
                 timeout=timeout,
+                text_prepared=text_prepared,
             )
 
         logger.info("MOSS synthesize: segments=%d, voice=%s", len(segments), voice or self.default_voice)
@@ -377,7 +386,10 @@ class MossNanoEngine(MossStreamingMixin):
         def _run():
             with self._runtime_lock:
                 return self._concat_waveforms(
-                    list(self._iter_waveforms(segments=segments, voice=voice, prompt_audio_path=prompt_audio))
+                    list(self._iter_waveforms(
+                        segments=segments, voice=voice, prompt_audio_path=prompt_audio,
+                        text_prepared=text_prepared,
+                    ))
                 )
 
         future = self._executor.submit(_run)
@@ -400,7 +412,10 @@ class MossNanoEngine(MossStreamingMixin):
             )
 
 
-    def _synthesize_array_process_isolated(self, *, text: str, voice: str, speed: float, prompt_audio_path: str | None, timeout: float):
+    def _synthesize_array_process_isolated(
+        self, *, text: str, voice: str, speed: float, prompt_audio_path: str | None, timeout: float,
+        text_prepared: bool = False,
+    ):
         """通过隔离子进程执行一次非流式 MOSS 推理。"""
 
         # 修复说明：同时检查 is_loaded，处理进程崩溃后 client 存在但未加载的场景。
@@ -409,7 +424,10 @@ class MossNanoEngine(MossStreamingMixin):
         try:
             return self._process_client.request(
                 "synthesize_array",
-                {"text": text, "voice": voice, "speed": speed, "prompt_audio_path": prompt_audio_path},
+                {
+                    "text": text, "voice": voice, "speed": speed, "prompt_audio_path": prompt_audio_path,
+                    "text_prepared": bool(text_prepared),
+                },
                 timeout=float(timeout),
             )
         except EngineProcessTimeoutError as exc:
@@ -446,7 +464,10 @@ class MossNanoEngine(MossStreamingMixin):
             self._consecutive_timeouts,
         )
 
-    def _iter_waveforms(self, *, segments: list[str], voice: str = "", prompt_audio_path: str | None = None):
+    def _iter_waveforms(
+        self, *, segments: list[str], voice: str = "", prompt_audio_path: str | None = None,
+        text_prepared: bool = False,
+    ):
         prompt_audio_codes = self._resolve_prompt_audio_codes_cached(voice=voice, prompt_audio_path=prompt_audio_path)
         self._configure_runtime_generation()
         total_segments = len([item for item in segments if item.strip()])
@@ -456,7 +477,9 @@ class MossNanoEngine(MossStreamingMixin):
                 continue
             emitted += 1
             t0 = time.monotonic()
-            for waveform in self._iter_runtime_chunks(seg, voice=voice, prompt_audio_codes=prompt_audio_codes):
+            for waveform in self._iter_runtime_chunks(
+                seg, voice=voice, prompt_audio_codes=prompt_audio_codes, text_prepared=text_prepared,
+            ):
                 processed = self._postprocess_waveform(waveform, trim_silence=bool(getattr(self.config, "moss_audio_polish_enabled", True)))
                 logger.info(
                     "MOSS segment %d/%d chunk done (%.1fs, %d samples)",
@@ -471,10 +494,13 @@ class MossNanoEngine(MossStreamingMixin):
                 if silence.size:
                     yield silence
 
-    def _iter_runtime_chunks(self, text: str, *, voice: str = "", prompt_audio_codes: list[list[int]]):
+    def _iter_runtime_chunks(
+        self, text: str, *, voice: str = "", prompt_audio_codes: list[list[int]],
+        text_prepared: bool = False,
+    ):
         import numpy as np
 
-        text_chunks = self._prepare_runtime_text_chunks(text, voice=voice)
+        text_chunks = self._prepare_runtime_text_chunks(text, voice=voice, text_prepared=text_prepared)
         if not text_chunks:
             return
         for chunk_index, chunk_text in enumerate(text_chunks):
@@ -500,11 +526,13 @@ class MossNanoEngine(MossStreamingMixin):
                 if silence.size:
                     yield silence
 
-    def _prepare_runtime_text_chunks(self, text: str, *, voice: str = "") -> list[str]:
+    def _prepare_runtime_text_chunks(
+        self, text: str, *, voice: str = "", text_prepared: bool = False,
+    ) -> list[str]:
         prepared_texts = self._runtime.prepare_synthesis_text(
             text=text,
             voice=voice or self.default_voice,
-            enable_wetext=bool(self.config.moss_enable_wetext_processing),
+            enable_wetext=bool(self.config.moss_enable_wetext_processing) and not text_prepared,
             enable_normalize_tts_text=bool(self.config.moss_enable_normalize_tts_text),
         )
         prepared_text = str(prepared_texts["text"])
@@ -749,12 +777,13 @@ class MossNanoEngine(MossStreamingMixin):
         if abs(value - 1.0) > 1e-6:
             raise ValueError("MOSS-TTS-Nano 暂不支持语速调节，请使用 speed=1.0")
 
-    def _clean_text(self, text: str) -> str:
+    def _clean_text(self, text: str, *, text_prepared: bool = False) -> str:
         return moss_clean_text(
             text,
             apply_angevoice_rules=self.config.moss_apply_angevoice_rules,
             mixed_english_policy=getattr(self.config, "moss_mixed_english_policy", "translate"),
             model=self.engine_id,
+            text_prepared=text_prepared,
         )
 
     def _segment_text(self, text: str) -> list[str]:

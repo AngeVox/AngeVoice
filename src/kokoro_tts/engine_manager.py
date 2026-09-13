@@ -433,14 +433,12 @@ class EngineManager:
             if needs_load:
                 self._unload_other_loaded_models(target_id)
                 unloaded_for_target = True
-            if engine is not None and target_id == "moss" and effective_provider_hint:
-                current_provider = str(getattr(engine, "requested_provider", "") or "").strip().lower()
-                if current_provider and current_provider != effective_provider_hint:
-                    if self._active_count(target_id) > 0:
-                        raise HTTPException(status_code=409, detail="MOSS provider switch is busy")
-                    self.drop_model(target_id, force=False, raise_if_busy=True)
-                    engine = None
-                    needs_load = bool(load)
+            if self._needs_provider_replacement(target_id, engine, effective_provider_hint):
+                if self._active_count(target_id) > 0:
+                    raise HTTPException(status_code=409, detail="MOSS provider switch is busy")
+                self.drop_model(target_id, force=False, raise_if_busy=True)
+                engine = None
+                needs_load = bool(load)
             if needs_load and engine is None and not unloaded_for_target:
                 self._unload_other_loaded_models(target_id)
 
@@ -452,26 +450,41 @@ class EngineManager:
                 engine = self._create_engine(target_id, provider_hint=effective_provider_hint)
                 self._engines[target_id] = engine
             if load and not bool(getattr(engine, "is_loaded", False)):
-                try:
-                    engine.load()
-                except Exception:
-                    # 加载失败不能留下半初始化引擎，也不能留下过期忙碌计数。
-                    self._active_counts[target_id] = 0
-                    unload = getattr(engine, "unload", None)
-                    if callable(unload):
-                        try:
-                            unload(force=True)
-                        except TypeError:
-                            try:
-                                unload()
-                            except Exception:
-                                logger.debug("加载失败后的模型清理失败：%s", target_id, exc_info=True)
-                        except Exception:
-                            logger.debug("加载失败后的模型清理失败：%s", target_id, exc_info=True)
-                    self._engines.pop(target_id, None)
-                    raise
-                self._touch_model(target_id)
+                self._load_engine(target_id, engine)
             return engine
+
+    @staticmethod
+    def _needs_provider_replacement(target_id, engine, provider_hint) -> bool:
+        """Resolve only provider identity; the locked caller owns replacement."""
+        if engine is None or target_id != "moss" or not provider_hint:
+            return False
+        current = str(getattr(engine, "requested_provider", "") or "").strip().lower()
+        return bool(current and current != provider_hint)
+
+    def _load_engine(self, target_id, engine) -> None:
+        """Load under get_engine's existing lock, retaining the original error."""
+        try:
+            engine.load()
+        except Exception:
+            self._discard_failed_load(target_id, engine)
+            raise
+        self._touch_model(target_id)
+
+    def _discard_failed_load(self, target_id, engine) -> None:
+        """Rollback a failed load under the same lock; do not mask its error."""
+        self._active_counts[target_id] = 0
+        unload = getattr(engine, "unload", None)
+        if callable(unload):
+            try:
+                unload(force=True)
+            except TypeError:
+                try:
+                    unload()
+                except Exception:
+                    logger.debug("加载失败后的模型清理失败：%s", target_id, exc_info=True)
+            except Exception:
+                logger.debug("加载失败后的模型清理失败：%s", target_id, exc_info=True)
+        self._engines.pop(target_id, None)
 
     def warm_model(self, model_id: str, *, provider_hint: str | None = None) -> dict[str, Any]:
         """将模型加载到内存中，不更改选定的运行时模型。"""

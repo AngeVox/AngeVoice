@@ -275,10 +275,31 @@ BOOL_ENV: dict[str, str] = {
 
 
 def apply_env(config) -> None:
-    """把环境变量覆盖应用到 TTSConfig 风格对象。"""
+    """Apply ENV overrides in compatibility order to the existing config facade.
+
+    Credentials consume expanded paths and typed settings. Model path overrides
+    follow credential generation, including when the key store raises an error.
+    """
+    _apply_scalar_env(config)
+    _apply_security_env(config)
+    _apply_model_env(config)
+
+
+def _apply_scalar_env(config) -> None:
+    """Execute the existing ordered declarations without changing their owners."""
     for env_name, attr in STR_ENV.items():
         if os.environ.get(env_name) is not None:
             setattr(config, attr, os.environ[env_name])
+    _coerce_runtime_paths(config)
+    _apply_numeric_env(config, INT_ENV, get_env_int)
+    _apply_numeric_env(config, FLOAT_ENV, get_env_float)
+    for env_name, attr in BOOL_ENV.items():
+        if os.environ.get(env_name) is not None:
+            setattr(config, attr, get_env_bool(env_name, getattr(config, attr)))
+
+
+def _coerce_runtime_paths(config) -> None:
+    """Expand runtime storage/credential paths before consumers use them."""
     if isinstance(config.output_dir, str):
         config.output_dir = Path(config.output_dir).expanduser()
     if isinstance(getattr(config, "credentials_dir", None), str):
@@ -290,20 +311,17 @@ def apply_env(config) -> None:
     if isinstance(getattr(config, "runtime_config_file", None), str):
         config.runtime_config_file = Path(config.runtime_config_file).expanduser()
 
-    for env_name, spec in INT_ENV.items():
+
+def _apply_numeric_env(config, declarations, reader) -> None:
+    """Share numeric assignment; parsing and declaration bounds stay separate."""
+    for env_name, spec in declarations.items():
         if os.environ.get(env_name) is not None:
-            value = get_env_int(env_name, getattr(config, spec.attr))
+            value = reader(env_name, getattr(config, spec.attr))
             setattr(config, spec.attr, clamp(value, spec.min_value, spec.max_value))
 
-    for env_name, spec in FLOAT_ENV.items():
-        if os.environ.get(env_name) is not None:
-            value = get_env_float(env_name, getattr(config, spec.attr))
-            setattr(config, spec.attr, clamp(value, spec.min_value, spec.max_value))
 
-    for env_name, attr in BOOL_ENV.items():
-        if os.environ.get(env_name) is not None:
-            setattr(config, attr, get_env_bool(env_name, getattr(config, attr)))
-
+def _apply_security_env(config) -> None:
+    """Resolve credential and CORS overrides after common scalar settings."""
     if os.environ.get("KOKORO_API_KEY") is not None:
         raw_api_key = os.environ.get("KOKORO_API_KEY", "").strip()
         if raw_api_key.lower() in AUTO_API_KEY_SENTINELS:
@@ -316,6 +334,10 @@ def apply_env(config) -> None:
         config.api_key_auto_generated = True
     if os.environ.get("KOKORO_CORS_ORIGINS"):
         config.cors_origins = [o.strip() for o in os.environ["KOKORO_CORS_ORIGINS"].split(",") if o.strip()]
+
+
+def _apply_model_env(config) -> None:
+    """Apply model selection and paths, then explicit ZipVoice child overrides."""
     if os.environ.get("ANGEVOICE_ENABLED_MODELS"):
         config.enabled_models = [item.strip().lower() for item in os.environ["ANGEVOICE_ENABLED_MODELS"].split(",") if item.strip()]
     if os.environ.get("MOSS_MODEL_DIR"):
