@@ -1,3 +1,4 @@
-# Match the PyTorch version used by all Docker deployment profiles.
+# CPU security baseline; GPU compatibility profiles are versioned separately.
 --index-url https://download.pytorch.org/whl/cpu
-torch==2.5.1
+
+torch==2.13.0

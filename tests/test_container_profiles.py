@@ -64,7 +64,8 @@ def test_container_workflow_builds_arm64_cpu_and_publishes_latest_only_for_relea
     assert "platforms: linux/arm64" in smoke
     cpu_dockerfile = (_root() / "docker/cpu/Dockerfile").read_text(encoding="utf-8")
     assert '"torch==${PYTORCH_VERSION}"' in cpu_dockerfile
-    assert '"torchaudio==${PYTORCH_VERSION}"' in cpu_dockerfile
+    assert '"torchaudio==${TORCHAUDIO_VERSION}"' in cpu_dockerfile
+    assert '"torchcodec==${TORCHCODEC_VERSION}"' in cpu_dockerfile
     assert '"torch==${PYTORCH_VERSION}+cpu"' not in cpu_dockerfile
     assert '"torchaudio==${PYTORCH_VERSION}+cpu"' not in cpu_dockerfile
 

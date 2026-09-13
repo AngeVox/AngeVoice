@@ -1,4 +1,4 @@
-FROM nvidia/cuda:12.1.1-cudnn8-runtime-ubuntu22.04
+FROM nvidia/cuda:12.4.1-cudnn-runtime-runtime-ubuntu22.04
 
 ENV DEBIAN_FRONTEND=noninteractive
 
@@ -26,7 +26,7 @@ RUN for i in 1 2 3; do \
 RUN update-alternatives --install /usr/bin/python3 python3 /usr/bin/python3.10 1 && \
     python3.10 -m pip install --upgrade pip
 
-ARG PYTORCH_VERSION=2.5.1
+ARG PYTORCH_VERSION=2.6.0
 
 # 依赖约束先复制到镜像中，后续 pip install 全部使用同一份约束，避免 transformers 等间接依赖漂移。
 COPY docker/constraints-gpu.lock /app/docker/constraints-gpu.lock
@@ -34,9 +34,9 @@ COPY docker/constraints-gpu.lock /app/docker/constraints-gpu.lock
 # GPU 版 PyTorch。AngeVoice/MOSS 推理不需要 torchvision，保持镜像更轻。
 # 注意：不使用 -c constraints-gpu.lock，因为 CUDA index 无法解析其中的非 torch 依赖。
 RUN python3 -m pip install --no-cache-dir \
-    "torch==${PYTORCH_VERSION}+cu121" \
-    "torchaudio==${PYTORCH_VERSION}+cu121" \
-    --index-url https://download.pytorch.org/whl/cu121
+    "torch==${PYTORCH_VERSION}+cu124" \
+    "torchaudio==${PYTORCH_VERSION}+cu124" \
+    --index-url https://download.pytorch.org/whl/cu124
 
 ARG INSTALL_MOSS=true
 ARG INSTALL_ZIPVOICE=true
@@ -92,6 +92,9 @@ RUN python3 -m pip install --no-cache-dir \
 
 # 构建阶段验证 Kokoro import 链，避免 transformers/torch 版本组合漂移到运行时才失败。
 RUN python3 -c "import torch, transformers; from kokoro import KModel, KPipeline; print('Kokoro import smoke check: OK'); print('torch:', torch.__version__); print('transformers:', transformers.__version__)"
+
+# Validate actual reference/output audio I/O, not only runtime imports.
+RUN python3 scripts/check_runtime_audio_io.py
 
 COPY docker/entrypoint.sh /entrypoint.sh
 RUN chmod +x /entrypoint.sh

@@ -9,7 +9,7 @@ services:
       context: ../..
       dockerfile: docker/legacy-gpu/Dockerfile
       args:
-        PYTORCH_VERSION: "2.5.1"
+        PYTORCH_VERSION: "2.6.0"
         INSTALL_MOSS: "true"
         INSTALL_ZIPVOICE: "true"
         MOSS_RUNTIME_PACKAGE: "onnxruntime-gpu==1.20.1"

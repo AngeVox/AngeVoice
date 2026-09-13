@@ -8,7 +8,7 @@ services:
       context: ../..
       dockerfile: docker/gpu/Dockerfile
       args:
-        PYTORCH_VERSION: "2.5.1"
+        PYTORCH_VERSION: "2.6.0"
         INSTALL_MOSS: "true"
         INSTALL_ZIPVOICE: "true"
         # MOSS 使用 CUDA provider；ZipVoice 请求 CUDA provider，并在失败时回退冻结 CPU ONNX INT8 runtime。

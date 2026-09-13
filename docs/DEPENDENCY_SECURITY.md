@@ -1,0 +1,38 @@
+# 依赖安全基线
+
+2026-09-13 按当前 GitHub Dependabot 告警评估。版本升级不代替真实模型和硬件验证，不自动关闭或忽略告警。
+
+| 画像 | Torch / TorchAudio | CUDA | Transformers | 说明 |
+| --- | --- | --- | --- | --- |
+| CPU、轻量 CI | 2.13.0 / 2.11.0（CI不安装音频包） | CPU | 5.10.4 | CPU音频读写配套 TorchCodec 0.13.0 与共享 FFmpeg 库 |
+| GPU | 2.6.0 / 2.6.0 | 12.4 | 5.10.4 | 原12.1 wheel无2.6；改用官方cu124，部署前确认驱动支持CUDA12.4 |
+| legacy-gpu | 2.6.0 / 2.6.0 | 11.8 | 5.10.4 | 保留旧GPU画像，不升级至不支持旧CUDA的2.13 |
+
+CPU完整消除本批已报告的版本范围命中。两个GPU画像消除Torch反序列化critical告警，但保留以下上游风险；这是兼容性限制，不能描述为GPU无漏洞。原依赖源码安装下限提高为Torch/TorchAudio 2.6，CPU安全部署应使用上述锁定组合，不依赖宽泛下限自动选择画像。
+
+| 告警 GHSA | 风险 | CPU 2.13 | GPU 2.6 |
+| --- | --- | --- | --- |
+| 53q9-r3pm-6pq6 | critical：weights_only反序列化 | 已越过受影响范围 | 已越过受影响范围 |
+| rrmf-rvhw-rf47 | low：jit.script内存破坏 | 已越过受影响范围 | 保留 |
+| qfhq-4f3w-5fph | low：lstm_cell内存破坏 | 已越过受影响范围 | 保留 |
+| vgrw-7cvw-pwgx | moderate：unpack_sequence内存破坏 | 已越过受影响范围 | 保留 |
+| x3gm-94wq-g975 | low：Quantized Sigmoid初始化 | 已越过公告受影响范围 | 保留；公告无修复版本 |
+| f4hp-rmr7-r7v8 | moderate：pad_packed_sequence内存消耗 | 已越过公告受影响范围 | 保留；公告无修复版本 |
+| c678-jfcj-6jmf | low：tuple handler内存破坏 | 已越过公告受影响范围 | 保留；公告无修复版本 |
+| 887c-mr87-cxwp | moderate：资源释放 | 已越过受影响范围 | 保留 |
+| 3749-ghw9-m3mg | low：本地拒绝服务 | 已越过受影响范围 | 保留 |
+| xrqw-3rrv-vx5w | high：Transformers保存模板路径穿越 | 三画像均升级5.10.4 | 三画像均升级5.10.4 |
+
+GitHub告警当前主要由测试输入文件检测到；其自动关闭不表示GPU残余消失。不要对GPU残余执行dismiss。对无明确修复版本的条目，仅声明不再命中公告列出的版本范围。
+
+模型加载仍必须使用可信来源及既有资产完整性校验；vendor中显式weights_only=False的调用并不会因Torch升级变为安全反序列化。本轮不修改vendor、公共模型ID或旧GPU功能。
+
+资料：[PyTorch官方版本矩阵](https://pytorch.org/get-started/previous-versions/)、[TorchAudio安装说明](https://docs.pytorch.org/audio/main/installation.html)、[GitHub依赖告警](https://github.com/AngeVox/AngeVoice/security/dependabot)。
+
+## 本轮额外发现
+
+镜像安装清单扫描另命中 setuptools 的 GHSA-h35f-9h28-mq5c（CVE-2026-59890，修复版83.0.0）。扫描器返回两条相同ID记录，按一个漏洞登记。该问题涉及macOS上生成sdist时Unicode文件名绕过排除规则；本次Linux容器运行HTTP服务并非该触发场景，但版本告警仍保留。
+
+现有jieba 0.42.1的 `_compat.py` 仍调用 `pkg_resources.resource_stream`，这是保留 `setuptools<81` 的实际兼容约束。不能直接解除上限并让参考文本处理在运行时失败；后续需验证上游替代包或兼容迁移，再提升setuptools。该条由 AV-D021 继续跟踪，不忽略或误报已修复。
+
+本地验收：Torch2.13独立环境完整1596 passed/4 skipped，CPU镜像导入、WAV读写/重采样及HTTP启动检查；GPU仅确认官方wheel及Torch/Audio/CUDNN依赖可解析，尚无真实GPU画像验证。镜像扫描记录与本批补丁存放于仓库外 `angevoice-dependency-security` 证据目录。

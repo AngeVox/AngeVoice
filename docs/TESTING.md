@@ -18,7 +18,7 @@ uv pip install -e . --no-deps --python .venv\Scripts\python.exe
 
 这里的 `uv pip check` 位于 `pip install -e . --no-deps` 之前，因此它只验证已经锁定的轻量 CI 测试环境彼此一致；它不验证 AngeVoice 完整项目依赖是否齐全，不能报告为“完整项目依赖一致性已验证”。
 
-`requirements/test.lock` 是 Python 3.10–3.12 通用的轻量测试锁；`requirements/test-torch-cpu.lock` 将 Torch 固定为与 Docker CPU/GPU/legacy-gpu 画像一致的 `2.5.1`。更新输入文件后必须重新生成并提交锁文件：
+`requirements/test.lock` 是 Python 3.10–3.12 通用的轻量测试锁；`requirements/test-torch-cpu.lock` 将 Torch 固定为 Docker CPU 画像的安全基线 `2.13.0`。GPU/legacy-gpu 为保留旧硬件兼容暂用 `2.6.0`，不再声称三画像版本相同；风险与安装组合见 [依赖安全基线](DEPENDENCY_SECURITY.md)。更新输入文件后必须重新生成并提交锁文件：
 
 ```powershell
 uv pip compile requirements/test.in --universal --python-version 3.10 --generate-hashes --output-file requirements/test.lock

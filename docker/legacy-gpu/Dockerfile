@@ -21,7 +21,7 @@ RUN apt-get update && \
 RUN update-alternatives --install /usr/bin/python3 python3 /usr/bin/python3.10 1 && \
     python3.10 -m pip install --upgrade pip
 
-ARG PYTORCH_VERSION=2.5.1
+ARG PYTORCH_VERSION=2.6.0
 
 # 依赖约束先复制到镜像中，后续 pip install 全部使用同一份约束，避免 transformers 等间接依赖漂移。
 COPY docker/constraints-legacy-gpu.lock /app/docker/constraints-legacy-gpu.lock
@@ -87,6 +87,9 @@ RUN python3 -m pip install --no-cache-dir \
 
 # 构建阶段验证 Kokoro import 链，避免 transformers/torch 版本组合漂移到运行时才失败。
 RUN python3 -c "import torch, transformers; from kokoro import KModel, KPipeline; print('Kokoro import smoke check: OK'); print('torch:', torch.__version__); print('transformers:', transformers.__version__)"
+
+# Validate actual reference/output audio I/O, not only runtime imports.
+RUN python3 scripts/check_runtime_audio_io.py
 
 COPY docker/entrypoint.sh /entrypoint.sh
 RUN chmod +x /entrypoint.sh

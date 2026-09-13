@@ -9,7 +9,7 @@ services:
       dockerfile: docker/cpu/Dockerfile
       args:
         # 固定 PyTorch 版本，NAS/家用服务器复现更稳定。
-        PYTORCH_VERSION: "2.5.1"
+        PYTORCH_VERSION: "2.13.0"
         # CPU 镜像预装 MOSS CPU runtime，CUDA 模型默认隐藏。
         INSTALL_MOSS: "true"
         INSTALL_ZIPVOICE: "true"

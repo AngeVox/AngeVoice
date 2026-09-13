@@ -16,7 +16,9 @@ ARG INSTALL_MOSS=true
 ARG MOSS_REPO=https://github.com/OpenMOSS/MOSS-TTS-Nano.git
 ARG MOSS_REF=b09d1962a7df4d4007146ea53880c4b282d83e39
 ARG MOSS_RUNTIME_PACKAGE=onnxruntime>=1.20.0
-ARG PYTORCH_VERSION=2.5.1
+ARG PYTORCH_VERSION=2.13.0
+ARG TORCHAUDIO_VERSION=2.11.0
+ARG TORCHCODEC_VERSION=0.13.0
 ARG PIP_BOOTSTRAP_VERSION=26.2.1
 ARG INSTALL_ZIPVOICE=true
 ENV MOSS_TTS_NANO_PATH=/opt/MOSS-TTS-Nano
@@ -35,7 +37,8 @@ RUN python3 -m pip install --no-cache-dir \
 
 RUN python3 -m pip install --no-cache-dir \
     "torch==${PYTORCH_VERSION}" \
-    "torchaudio==${PYTORCH_VERSION}" \
+    "torchaudio==${TORCHAUDIO_VERSION}" \
+    "torchcodec==${TORCHCODEC_VERSION}" \
     --index-url https://download.pytorch.org/whl/cpu
 
 # MOSS-TTS-Nano CPU ONNX 推理运行时。MOSS-TTS-Nano 官方仓库是推理代码来源，
@@ -84,6 +87,9 @@ RUN python3 -m pip install --no-cache-dir \
 
 # 构建阶段验证 Kokoro import 链，避免 transformers/torch 版本组合漂移到运行时才失败。
 RUN python3 -c "import torch, transformers; from kokoro import KModel, KPipeline; print('Kokoro import smoke check: OK'); print('torch:', torch.__version__); print('transformers:', transformers.__version__)"
+
+# Validate actual reference/output audio I/O, not only runtime imports.
+RUN python3 scripts/check_runtime_audio_io.py
 
 COPY docker/entrypoint.sh /entrypoint.sh
 RUN chmod +x /entrypoint.sh

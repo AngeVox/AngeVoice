@@ -160,8 +160,8 @@ def test_ci_uses_locked_dependencies_quality_job_and_coverage_floor() -> None:
         line.strip() for line in torch_lock_lines if line.strip() and not line.lstrip().startswith("#")
     ]
     assert "--index-url https://download.pytorch.org/whl/cpu" in meaningful_torch_lock_lines
-    assert any(re.match(r"torch==2\.5\.1(?:\s|$)", line) for line in meaningful_torch_lock_lines)
-    assert any(re.match(r"torch==2\.5\.1\+cpu(?:\s|$)", line) for line in meaningful_torch_lock_lines)
+    assert any(re.match(r"torch==2\.13\.0(?:\s|$)", line) for line in meaningful_torch_lock_lines)
+    assert any(re.match(r"torch==2\.13\.0\+cpu(?:\s|$)", line) for line in meaningful_torch_lock_lines)
 
 
 def test_dependency_lock_inputs_and_generated_locks_are_committed_as_pairs() -> None:

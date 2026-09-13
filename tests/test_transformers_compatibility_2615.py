@@ -1,4 +1,4 @@
-"""Transformers 5.3 manifest and downloader compatibility contract."""
+"""Transformers security baseline manifest and downloader compatibility contract."""
 
 from __future__ import annotations
 
@@ -19,7 +19,7 @@ CONSTRAINT_FILES = [
     REPO_ROOT / "docker" / "constraints-legacy-gpu.lock",
 ]
 RUNTIME_CONSTRAINTS = {
-    "transformers==5.3.0",
+    "transformers==5.10.4",
     "tokenizers==0.22.2",
     "huggingface_hub==1.23.0",
 }
@@ -34,13 +34,13 @@ def _locked_packages() -> dict[str, set[str]]:
     return packages
 
 
-def test_pyproject_uses_transformers_53_stable_line_without_rc_or_latest():
+def test_pyproject_uses_patched_transformers_line_without_rc_or_latest():
     pyproject = tomllib.loads((REPO_ROOT / "pyproject.toml").read_text(encoding="utf-8"))
     dependencies = pyproject["project"]["dependencies"]
     gpu_dependencies = pyproject["project"]["optional-dependencies"]["gpu"]
 
-    assert "transformers>=5.3.0,<5.4" in dependencies
-    assert "transformers>=5.3.0,<5.4" in gpu_dependencies
+    assert "transformers>=5.10.4,<5.11" in dependencies
+    assert "transformers>=5.10.4,<5.11" in gpu_dependencies
     transformer_specs = [
         dependency.lower()
         for dependency in dependencies + gpu_dependencies
@@ -57,6 +57,40 @@ def test_transformers_runtime_constraints_are_synchronized():
             if line.startswith(("transformers", "tokenizers", "huggingface_hub"))
         }
         assert lines == RUNTIME_CONSTRAINTS
+
+
+def test_security_profiles_keep_explicit_torch_and_audio_pairs():
+    expected = {"cpu": ("2.13.0", "2.11.0"), "gpu": ("2.6.0", "2.6.0"), "legacy-gpu": ("2.6.0", "2.6.0")}
+    for profile, (torch_version, audio_version) in expected.items():
+        dockerfile = (REPO_ROOT / "docker" / profile / "Dockerfile").read_text(encoding="utf-8")
+        compose = (REPO_ROOT / "docker" / profile / "docker-compose.yml").read_text(encoding="utf-8")
+        assert "RUN python3 scripts/check_runtime_audio_io.py" in dockerfile
+        assert f"ARG PYTORCH_VERSION={torch_version}" in dockerfile
+        assert f'PYTORCH_VERSION: "{torch_version}"' in compose
+        if profile == "cpu":
+            assert f"ARG TORCHAUDIO_VERSION={audio_version}" in dockerfile
+            assert "ARG TORCHCODEC_VERSION=0.13.0" in dockerfile
+        else:
+            assert '"torchaudio==${PYTORCH_VERSION}' in dockerfile
+    assert "torch==2.13.0" in (REPO_ROOT / "requirements/test-torch-cpu.in").read_text()
+    assert "/whl/cu118" in (REPO_ROOT / "docker/legacy-gpu/Dockerfile").read_text()
+    assert "/whl/cu124" in (REPO_ROOT / "docker/gpu/Dockerfile").read_text()
+
+
+def test_patched_torch_preserves_tensor_checkpoint_and_rejects_untrusted_objects(tmp_path):
+    import pickle
+    from types import SimpleNamespace
+    import pytest
+    import torch
+
+    checkpoint = tmp_path / "weights.pt"
+    expected = torch.arange(8, dtype=torch.float32)
+    torch.save({"weights": expected}, checkpoint)
+    actual = torch.load(checkpoint, weights_only=True)
+    assert torch.equal(actual["weights"], expected)
+    torch.save(SimpleNamespace(value="untrusted"), checkpoint)
+    with pytest.raises(pickle.UnpicklingError):
+        torch.load(checkpoint, weights_only=True)
 
 
 def test_optional_model_download_extras_require_compatible_hub_line():
