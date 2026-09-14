@@ -117,9 +117,10 @@ def test_redirects_keep_head_and_standard_response_cleanup(code, target, offline
     "https://user:" + SECRET + "@mirror.invalid/", "http://host.invalid:65536/",
     "http:///", "https://host.invalid\\@other.invalid/",
 ])
-def test_unsafe_redirect_target_is_never_opened_and_is_not_logged(target, offline, caplog):
+@pytest.mark.parametrize("code", [302, 308])
+def test_unsafe_redirect_target_is_never_opened_and_is_not_logged(target, code, offline, caplog):
     start = "https://source.invalid/start?token=" + SECRET
-    handler = offline({start: (302, {"Location": target}, b"")})
+    handler = offline({start: (code, {"Location": target}, b"")})
     with caplog.at_level(logging.DEBUG, logger=model_sources.__name__):
         assert model_sources._probe_url(start, 1) is False
     assert len(handler.calls) == 1
@@ -129,12 +130,23 @@ def test_unsafe_redirect_target_is_never_opened_and_is_not_logged(target, offlin
     assert all(record.exc_info is None for record in caplog.records)
 
 
-def test_redirect_loop_remains_bounded(offline):
+@pytest.mark.parametrize("code", [302, 308])
+def test_redirect_loop_remains_bounded(code, offline):
     url = "https://mirror.invalid/loop"
-    handler = offline({url: (302, {"Location": url}, b"")})
+    handler = offline({url: (code, {"Location": url}, b"")})
     assert model_sources._probe_url(url, 1) is False
     assert 1 < len(handler.calls) <= 11
     assert all(response.closed for response in handler.responses)
+
+
+def test_308_without_location_preserves_error_status_and_closes_response(offline):
+    url = "https://mirror.invalid/missing-location"
+    handler = offline({url: (308, {}, b"")})
+    with pytest.raises(HTTPError) as caught:
+        transport.open_probe(url, timeout=1, method="HEAD")
+    assert caught.value.code == 308
+    assert len(handler.calls) == 1
+    assert handler.responses[0].closed
 
 
 @pytest.mark.parametrize(("status", "reachable"), [(200, True), (401, True), (403, True), (404, True), (500, False), (503, False)])
@@ -145,9 +157,10 @@ def test_real_http_error_processor_preserves_reachability_and_closes_response(st
     assert handler.responses[0].closed
 
 
-def test_country_get_survives_redirect_and_bounds_read(offline):
+@pytest.mark.parametrize("code", [301, 302, 303, 307, 308])
+def test_country_get_survives_redirect_and_bounds_read(code, offline):
     url = "https://country.invalid/start"
-    handler = offline({url: (302, {"Location": "/final"}, b""), "https://country.invalid/final": (200, {}, b"cn\n" + b"x" * 100)})
+    handler = offline({url: (code, {"Location": "/final"}, b""), "https://country.invalid/final": (200, {}, b"cn\n" + b"x" * 100)})
     cfg = SimpleNamespace(model_source_country="", model_source_detect_url=url, model_source_detect_timeout_seconds=1.25)
     assert model_sources._detect_country(cfg) == (b"cn\n" + b"x" * 13).decode().upper()
     assert [req.get_method() for req in handler.calls] == ["GET", "GET"]

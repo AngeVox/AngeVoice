@@ -28,13 +28,20 @@ def _validate_probe_url(url: str) -> None:
 
 
 class _HttpProbeRedirectHandler(HTTPRedirectHandler):
+    # Python 3.10 does not dispatch 308. Reuse urllib's redirect resolution,
+    # loop limits and response cleanup while retaining the original status.
+    http_error_308 = HTTPRedirectHandler.http_error_302
+
     def redirect_request(self, req, fp, code, msg, headers, newurl):
         try:
             _validate_probe_url(newurl)
         except ValueError:
             fp.close()
             raise
-        request = super().redirect_request(req, fp, code, msg, headers, newurl)
+        # For our GET/HEAD probes, 308 has the same request semantics as 307.
+        # Python 3.10's request constructor only recognizes the latter.
+        request_code = 307 if code == 308 else code
+        request = super().redirect_request(req, fp, request_code, msg, headers, newurl)
         # urllib's default redirect constructor changes HEAD to GET.
         if request is not None:
             request.method = req.get_method()

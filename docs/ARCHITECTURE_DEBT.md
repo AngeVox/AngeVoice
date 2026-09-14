@@ -17,7 +17,7 @@
 | AV-D001 / 2.1、旧 P1 | TTSConfig 跨域配置；config 与各 metadata owner | 部分完成：7 个领域默认值 owner 及 ENV/Admin 投影已收敛；metadata 合同 | facade 仍拥有大量字段/校验；按实际变更面拆职责，保持默认值、序列化、优先级兼容 |
 | AV-D002 / 2.2、旧 P1 | ENV 编排；config_env | 部分完成：声明、解析和执行职责已分离；2026-09-08 配置 ENV 合同 | apply_env 33→1，移除历史豁免；标量→凭据/CORS→模型路径保持原顺序；领域声明仍混合投影，未来随真实领域变更演进，不造第二套配置框架 |
 | AV-D003 / 2.3、旧 P1 | 模型来源探测与下载策略；model_sources | 部分完成：fallback、受管资产校验与 metadata 已改善；来源合同 | 探测传输和日志边界由 AV-D004/005 跟踪；下载/资产结构仍集中，未来按实际变化拆解 |
-| AV-D004 / 2.3 | 探测 URL 和重定向输入；model_source_probe | 本地已验收：首轮批次三离线传输测试及来源合同 | 初始及重定向仅 HTTP/HTTPS，非法地址零网络调用；保留 HEAD、镜像/内网、默认代理/TLS；不保证外部镜像实时可用性 |
+| AV-D004 / 2.3 | 探测 URL 和重定向输入；model_source_probe | 已补齐 Python 3.10 的 HTTP 308 支持：2026-09-14 本地 3.10 全量及 3.12 定向合同通过；此前 CI 34761088672 暴露两个 308 失败 | 初始及重定向仅 HTTP/HTTPS，非法地址零网络调用；保留 GET/HEAD、循环上限、响应关闭、镜像/内网、默认代理/TLS；308 兼容分支随 Python 3.10 支持结束再评估移除；不保证外部镜像实时可用性 |
 | AV-D005 / 2.3 | 第一方模型来源日志携带 URL/异常正文；model_sources 与资产校验 | 本地已验收：首轮批次三格式化日志合同 | 固定摘要替代敏感正文/traceback，合成凭据标记不可见且 fallback 语义不变；第三方 SDK 自行输出不在本条保证内 |
 | AV-D006 / 2.4、旧 P5 | Manager 生命周期与状态集中；engine_manager | 部分完成：具体引擎依赖已闭合、shutdown 正确性已增强；manager/shutdown 合同 | get_engine 25→15，加载执行与失败清理已分离并移除历史豁免；仍保持单一状态 owner 和原锁范围，路由聚合及其他生命周期职责需另定规格 |
 | AV-D007 / 2.5、旧 P4 | MOSS 核心跨职责；MOSS core/runtime helpers | 部分完成：协议/流关闭改善，文本问题见 AV-D009 | runtime、prompt、VRAM、流生命周期仍耦合；只抽有独立责任及验证能力的边界，保留 CPU/CUDA/clone |
