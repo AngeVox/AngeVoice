@@ -994,9 +994,13 @@ class TestZipVoiceIndependentDownloadControl:
                 "repo_id": item["repo"],
                 "filename": item["filename"],
                 "revision": item["revision"],
-                "local_dir": str(root),
+                "local_dir": calls[0]["local_dir"],
             }
         ]
+
+        staging = Path(calls[0]["local_dir"])
+        assert staging.parent == (root / item["destination"]).parent
+        assert not staging.exists()
 
     def test_download_disabled_avoids_sdk_import_and_generic_fallback(
         self, monkeypatch, tmp_path

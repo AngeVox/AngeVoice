@@ -750,10 +750,10 @@ class TestZipVoiceStrictDigest:
         assert destination.read_bytes() == wrong
         assert not manager.status_path.exists()
 
-    def test_post_download_strict_mismatch_is_preserved(
+    def test_post_download_strict_mismatch_is_never_published(
         self, tmp_path, monkeypatch
     ):
-        """CURRENT-BEHAVIOR CHARACTERIZATION: no corrupt-byte cleanup."""
+        """BEHAVIOR CONTRACT: reject corrupt staging without publishing it."""
 
         item = _zip_item(payload_digest=_digest(b"expected download"))
         manager, destination = _zip_manager(tmp_path, item)
@@ -772,7 +772,7 @@ class TestZipVoiceStrictDigest:
         ):
             manager.ensure()
 
-        assert destination.read_bytes() == wrong
+        assert not destination.exists()
         assert not manager.status_path.exists()
 
     def test_declared_digest_overrides_recorded_status(
@@ -868,6 +868,8 @@ class TestZipVoiceRecordFirstDigest:
         status = {
             "files": {
                 "metadata": {
+                    "repo": item["repo"],
+                    "revision": item["revision"],
                     "sha256": _digest(b"recorded expected bytes"),
                     "verification_status": "verified",
                 }
@@ -904,13 +906,15 @@ class TestZipVoiceStatusAtomicity:
         payload = {"engine": "zipvoice", "files": {"asset": {"ok": True}}}
         manager._write_status(payload)
 
-        assert operations == [
-            (manager.status_path.with_suffix(".tmp"), manager.status_path)
-        ]
+        assert len(operations) == 1
+        temporary, final = operations[0]
+        assert final == manager.status_path
+        assert temporary.parent == manager.status_path.parent
+        assert temporary != manager.status_path.with_suffix(".tmp")
         assert json.loads(
             manager.status_path.read_text(encoding="utf-8")
         ) == payload
-        assert not manager.status_path.with_suffix(".tmp").exists()
+        assert not temporary.exists()
 
     def test_failed_status_replace_does_not_create_authoritative_final(
         self, tmp_path, monkeypatch
@@ -930,8 +934,139 @@ class TestZipVoiceStatusAtomicity:
             manager._write_status(payload)
 
         assert not manager.status_path.exists()
-        temp = manager.status_path.with_suffix(".tmp")
-        assert json.loads(temp.read_text(encoding="utf-8")) == payload
+        assert list(manager.model_root.iterdir()) == []
+
+    def test_failed_replace_preserves_existing_status_and_unrelated_temporary_file(self, tmp_path, monkeypatch):
+        item = _zip_item(payload_digest=_digest(b"unused"))
+        manager, _ = _zip_manager(tmp_path, item)
+        manager.model_root.mkdir(parents=True)
+        original = b'{"files": {"old": {}}}\n'
+        manager.status_path.write_bytes(original)
+        unrelated = manager.status_path.with_suffix(".tmp")
+        unrelated.write_bytes(b"another writer owns this")
+        error = OSError("synthetic replacement failure")
+
+        def fail_replace(source, destination):
+            assert Path(source).parent == manager.model_root
+            assert json.loads(Path(source).read_text(encoding="utf-8")) == {"files": {"new": {}}}
+            assert manager.status_path.read_bytes() == original
+            raise error
+
+        monkeypatch.setattr(zipvoice_assets.os, "replace", fail_replace)
+        with pytest.raises(OSError) as caught:
+            manager._write_status({"files": {"new": {}}})
+        assert caught.value is error
+        assert manager.status_path.read_bytes() == original
+        assert unrelated.read_bytes() == b"another writer owns this"
+        assert set(manager.model_root.iterdir()) == {manager.status_path, unrelated}
+
+    def test_concurrent_status_writers_publish_complete_independent_snapshots(self, tmp_path, monkeypatch):
+        from concurrent.futures import ThreadPoolExecutor
+        from threading import Barrier
+
+        item = _zip_item(payload_digest=_digest(b"unused"))
+        manager, _ = _zip_manager(tmp_path, item)
+        other, _ = _zip_manager(tmp_path, item)
+        manager.model_root.mkdir(parents=True)
+        original = {"files": {"old": {}}}
+        _write_json(manager.status_path, original)
+        payloads = [{"files": {name: {"data": name * 20000}}} for name in ("a", "b")]
+        ready = Barrier(2)
+        replacements = []
+        original_replace = os.replace
+
+        def synchronized_replace(source, destination):
+            replacements.append(Path(source))
+            assert json.loads(manager.status_path.read_text(encoding="utf-8")) == original
+            ready.wait(timeout=10)
+            return original_replace(source, destination)
+
+        monkeypatch.setattr(zipvoice_assets.os, "replace", synchronized_replace)
+        published = []
+        with ThreadPoolExecutor(max_workers=2) as executor:
+            futures = [executor.submit(owner._write_status, payload) for owner, payload in zip((manager, other), payloads)]
+            for future, payload in zip(futures, payloads):
+                try:
+                    future.result(timeout=15)
+                    published.append(payload)
+                except PermissionError as exc:
+                    # Windows may reject simultaneous replacements. Keep that
+                    # native failure visible; uniqueness and cleanup still hold.
+                    assert sys.platform == "win32" and exc.winerror in (5, 32)
+        assert published
+        assert len(set(replacements)) == 2
+        assert json.loads(manager.status_path.read_text(encoding="utf-8")) in published
+        assert set(manager.model_root.iterdir()) == {manager.status_path}
+
+    def test_serialization_failure_leaves_existing_status_unchanged(self, tmp_path):
+        item = _zip_item(payload_digest=_digest(b"unused"))
+        manager, _ = _zip_manager(tmp_path, item)
+        manager.model_root.mkdir(parents=True)
+        original = b'{"files": {"old": {}}}\n'
+        manager.status_path.write_bytes(original)
+        with pytest.raises(TypeError):
+            manager._write_status({"files": {"bad": object()}})
+        assert manager.status_path.read_bytes() == original
+        assert set(manager.model_root.iterdir()) == {manager.status_path}
+
+    @pytest.mark.parametrize("failure", ["write", "close"])
+    def test_temporary_io_failure_cleans_only_its_file(self, tmp_path, monkeypatch, failure):
+        from contextlib import contextmanager
+
+        item = _zip_item(payload_digest=_digest(b"unused"))
+        manager, _ = _zip_manager(tmp_path, item)
+        manager.model_root.mkdir(parents=True)
+        original = b'{"files": {"old": {}}}\n'
+        manager.status_path.write_bytes(original)
+        original_temporary = zipvoice_assets.tempfile.NamedTemporaryFile
+        error = OSError("synthetic temporary IO failure")
+
+        @contextmanager
+        def broken_temporary(**kwargs):
+            with original_temporary(**kwargs) as handle:
+                def write(value):
+                    handle.write(value[:5])
+                    if failure == "write":
+                        raise error
+                    return handle.write(value[5:])
+                yield SimpleNamespace(name=handle.name, write=write)
+            if failure == "close":
+                raise error
+
+        monkeypatch.setattr(zipvoice_assets.tempfile, "NamedTemporaryFile", broken_temporary)
+        with pytest.raises(OSError) as caught:
+            manager._write_status({"files": {"new": {}}})
+        assert caught.value is error
+        assert manager.status_path.read_bytes() == original
+        assert set(manager.model_root.iterdir()) == {manager.status_path}
+
+    def test_cleanup_failure_does_not_mask_the_original_write_error(self, tmp_path, monkeypatch, caplog):
+        item = _zip_item(payload_digest=_digest(b"unused"))
+        manager, _ = _zip_manager(tmp_path, item)
+        error = OSError("synthetic original replace failure")
+        leftovers = []
+        original_unlink = Path.unlink
+
+        def fail_replace(source, destination):
+            raise error
+
+        def fail_unlink(path, *args, **kwargs):
+            if path.name.startswith(manager.status_path.name + "."):
+                leftovers.append(path)
+                raise PermissionError("SYNTHETIC_CLEANUP_SECRET")
+            return original_unlink(path, *args, **kwargs)
+
+        monkeypatch.setattr(zipvoice_assets.os, "replace", fail_replace)
+        monkeypatch.setattr(Path, "unlink", fail_unlink)
+        with caplog.at_level(logging.WARNING, logger=zipvoice_assets.__name__):
+            with pytest.raises(OSError) as caught:
+                manager._write_status({"files": {}})
+        assert caught.value is error
+        assert not manager.status_path.exists()
+        assert len(leftovers) == 1
+        assert "temporary cleanup failed (PermissionError)" in caplog.text
+        assert "SYNTHETIC_CLEANUP_SECRET" not in caplog.text
+        original_unlink(leftovers[0])
 
 
 class TestDestinationOwnership:
@@ -1075,10 +1210,10 @@ class TestAssetAtomicityAndWriterLockBoundary:
 
         assert result == target
 
-    def test_zipvoice_asset_copy_is_not_status_atomic_replace(
+    def test_zipvoice_cache_copy_is_verified_before_atomic_publication(
         self, tmp_path, monkeypatch
     ):
-        """CURRENT-BEHAVIOR CHARACTERIZATION: asset writes lack final replace."""
+        """BEHAVIOR CONTRACT: copy shared SDK cache, publish only verified bytes."""
 
         payload = b"synthetic copied asset"
         item = _zip_item(payload_digest=_digest(payload))
@@ -1101,7 +1236,13 @@ class TestAssetAtomicityAndWriterLockBoundary:
         monkeypatch.setattr(manager, "_write_status", lambda _payload: None)
 
         assert manager.ensure()["ready"] is True
-        assert copies == [(cache_file, destination)]
+        assert len(copies) == 1
+        source, candidate = copies[0]
+        assert source == cache_file
+        assert candidate != destination
+        assert candidate.parent.parent == destination.parent
+        assert not candidate.exists()
+        assert cache_file.read_bytes() == payload
         assert destination.read_bytes() == payload
 
     def test_project_has_no_general_asset_staging_or_writer_lock(self):
@@ -1110,16 +1251,17 @@ class TestAssetAtomicityAndWriterLockBoundary:
         model_source = inspect.getsource(model_sources)
         managed_source = inspect.getsource(kokoro_assets)
         zipvoice_source = inspect.getsource(zipvoice_assets)
-        combined = "\n".join((model_source, managed_source, zipvoice_source))
+        combined = "\n".join((model_source, managed_source))
 
         assert "FileLock" not in combined
         assert "threading.Lock" not in combined
         assert "fcntl" not in combined
         assert "msvcrt" not in combined
+        assert "FileLock" in zipvoice_source
         assert "TemporaryDirectory" not in model_source
         assert "os.replace" not in model_source
         assert "shutil.copy2" in inspect.getsource(
-            zipvoice_assets.ZipVoiceAssetManager.ensure
+            zipvoice_assets.ZipVoiceAssetManager
         )
         assert "os.replace" not in inspect.getsource(
             zipvoice_assets.ZipVoiceAssetManager.ensure
@@ -1143,7 +1285,7 @@ class TestPartialArtifactLifecycle:
         moss_tokenizer = inspect.getsource(
             model_sources._has_real_moss_audio_tokenizer_asset
         )
-        zipvoice = inspect.getsource(zipvoice_assets.ZipVoiceAssetManager.ensure)
+        zipvoice = inspect.getsource(zipvoice_assets.ZipVoiceAssetManager)
 
         assert "hmac.compare_digest" in managed
         assert "is_valid_kokoro_model_file" in ordinary
@@ -1151,7 +1293,9 @@ class TestPartialArtifactLifecycle:
         assert "_has_tokenizer_meta" in moss_tokenizer
         assert "declared or recorded" in zipvoice
         assert "unlink(" not in managed
-        assert "unlink(" not in zipvoice
+        asset_operations = inspect.getsource(zipvoice_assets.ZipVoiceAssetManager._ensure_asset)
+        asset_operations += inspect.getsource(zipvoice_assets.ZipVoiceAssetManager._install_asset)
+        assert "unlink(" not in asset_operations
 
     def test_absence_contracts_are_explicit_characterizations(self):
         """CURRENT-BEHAVIOR CHARACTERIZATION, NOT A SAFETY ENDORSEMENT."""

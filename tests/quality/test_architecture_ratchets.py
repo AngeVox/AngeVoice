@@ -34,8 +34,6 @@ COMPLEXITY_BASELINE = {
     "kokoro_tts.routes.status_parts.models.model_catalog_snapshot": 19,
     "kokoro_tts.validation._looks_like_non_natural_text": 20,
     "kokoro_tts.workers.process_worker.EngineProcessClient.stream": 23,
-    "kokoro_tts.zipvoice.assets.ZipVoiceAssetManager.ensure": 21,
-    "kokoro_tts.zipvoice.assets.ZipVoiceAssetManager.status": 17,
     "kokoro_tts.zipvoice.engine.ZipVoiceEngine.synthesize_stream": 20,
 }
 

@@ -118,6 +118,16 @@ WS 首包失败与参考文件清理、输入别名、二进制元数据/音频�
 
 ZipVoice 共用合成路径在 `tests/test_zipvoice_cpu_runtime.py` 中参数化覆盖 CPU/CUDA 包装器，包含参数夹取、参考校验、FLOAT→PCM16、失败清理与 CUDA 专属参数。该文件保留历史名称；替身测试不证明真实 CUDA 推理或音质。provider fallback 继续由 `tests/test_zipvoice_gpu_provider.py` 维护。
 
+ZipVoice 资产校验也在 `tests/test_zipvoice_gpu_provider.py` 和 `tests/contracts/test_model_asset_integrity_partial_destination_contract.py` 演进：已学习摘要只对相同 repo/revision 的 verified 记录有效。清单换源或换版本后，无预置 SHA 的文件必须重新下载验证；禁止下载时明确失败。现有生产记录包含这些字段并继续复用；缺少来源身份的手写/不完整记录不能作为离线信任依据。清单预置 SHA 不依赖历史来源记录，内容匹配即可离线验收。来源身份与下述安装/互斥边界分别验收。
+
+状态记录读取合同覆盖 JSON 根与 files 类型、非 SHA256 摘要、有效记录共存和大小写兼容：损坏结构视为无已学习记录，无效单项不影响其他有效单项；仍需通过预置 SHA 或指定来源下载建立信任，不能把本地现存内容自动记为可信。
+
+状态写入合同在 `TestZipVoiceStatusAtomicity` 维护：同目录唯一临时文件、关闭后原子替换、序列化/写入/关闭/替换失败时保留旧记录，仅清理本次临时文件。并发写入发布完整快照，最后一次成功替换生效，不合并记录。Windows 可能拒绝同时替换并上报原生访问错误，测试要求至少一次成功且最终记录来自成功写入者；不能吞掉此错误。若文件系统连清理也拒绝，保留原始异常并记录固定清理告警；不承诺断电持久性、强杀后清理或整批资产互斥。
+
+ZipVoice 安装先让 SDK 写入目标所在文件系统的独立暂存目录，校验成功才原子替换；返回外部缓存时复制并校验副本，保留缓存。下载、复制、校验或替换失败不能发布残缺文件。整批失败不提交新状态，但已发布的合格文件保留，重试可复用具有预置 SHA 的文件；不保证整批回滚。`tests/test_zipvoice_asset_process_integration.py` 用真实 spawn 和离线 SDK 替身验证同根目录竞争、独立根目录共享 Vocos、反序清单、锁等待超时和持锁进程退出。父进程必须持有同步对象直到子进程退出，不能依赖 Windows 的句柄生命周期掩盖 Linux 夹具问题。
+
+`ensure()` 按规范化后的资产目标和状态文件路径排序获取 filelock 锁，从读取旧状态持续到提交和最终校验；总锁等待预算复用 `request_timeout_seconds`。锁文件以 `.angevoice.lock` 结尾并保留，不能在释放时删除。边界是同机、支持原生文件锁的 Windows/Linux 文件系统中的合作写入者；不承诺任意网络文件系统、非合作写入或已加载 runtime 的文件版本固定。独立 `status()` 查询不获取整批锁，快速结果仍是 `last_ensure_record`，不是多文件一致性快照。上述替身测试不证明真实模型推理、断电持久性或强杀后的暂存清理。
+
 Manager 加载与失败重试行为继续在 `tests/test_runtime_resilience_and_admin.py` 演进：兼容旧 unload 签名、清理失败保持原加载异常、失败实例移除后重建、provider 忙碌拒绝以及 load=False 不触发加载；依赖方向与 shutdown 合同分别保持独立。
 
 可选路由组装回归在 `tests/test_basic.py` 对新入口、旧回调入口和旧字典回退参数化验证实际 HTTP 鉴权、批量 ZIP 清单、统计及缓存清理。应用 preload/topology 合同只替换组装入口的测试隔离接缝，不改变其生命周期断言。

@@ -65,9 +65,290 @@ def _install_fake_downloader(monkeypatch, callback):
     monkeypatch.setitem(sys.modules, "huggingface_hub", types.SimpleNamespace(hf_hub_download=callback))
 
 
+@pytest.mark.parametrize("failure", ["download", "digest", "replace", "copy"])
+def test_asset_install_failure_never_publishes_partial_download(tmp_path, monkeypatch, failure):
+    from kokoro_tts.zipvoice import assets
+
+    expected = hashlib.sha256(b"expected").hexdigest() if failure == "digest" else None
+    manager, destination = _asset_manager(tmp_path, _asset_item(sha256=expected))
+    destination.parent.mkdir(parents=True)
+    if failure != "digest":
+        destination.write_bytes(b"existing-unverified")
+    original_status = b'{"files": {}}\n'
+    manager.status_path.write_bytes(original_status)
+    staged_dirs = []
+    error = OSError("synthetic asset install failure")
+
+    def download(**kwargs):
+        stage = Path(kwargs["local_dir"])
+        staged_dirs.append(stage)
+        output = stage / kwargs["filename"]
+        output.parent.mkdir(parents=True, exist_ok=True)
+        output.write_bytes(b"downloaded")
+        if failure == "download":
+            raise error
+        if failure == "copy":
+            cache = tmp_path / "sdk-cache.bin"
+            cache.write_bytes(b"downloaded")
+            return str(cache)
+        return str(output)
+
+    original_replace = assets.os.replace
+    def replace(source, target):
+        if Path(target) == destination:
+            raise error
+        return original_replace(source, target)
+
+    _install_fake_downloader(monkeypatch, download)
+    if failure == "replace":
+        monkeypatch.setattr(assets.os, "replace", replace)
+    if failure == "copy":
+        def fail_copy(source, target):
+            Path(target).write_bytes(b"partial copy")
+            raise error
+        monkeypatch.setattr(assets.shutil, "copy2", fail_copy)
+    error_type = ZipVoiceAssetIntegrityError if failure == "digest" else OSError
+    with pytest.raises(error_type):
+        manager.ensure()
+    assert manager.status_path.read_bytes() == original_status
+    if failure == "digest":
+        assert not destination.exists()
+    else:
+        assert destination.read_bytes() == b"existing-unverified"
+    assert staged_dirs and all(not path.exists() for path in staged_dirs)
+    if failure == "copy":
+        assert (tmp_path / "sdk-cache.bin").read_bytes() == b"downloaded"
+
+
+def test_batch_failure_does_not_commit_status_and_can_retry_verified_files(tmp_path, monkeypatch):
+    content = b"expected"
+    first = _asset_item(asset_id="first", filename="first.bin", sha256=hashlib.sha256(content).hexdigest())
+    second = {**first, "id": "second", "filename": "second.bin", "destination": "second.bin"}
+    manager, destination = _asset_manager(tmp_path, first)
+    manager.manifest["assets"].append(second)
+    calls = []
+    broken = True
+
+    def download(**kwargs):
+        calls.append(kwargs["filename"])
+        output = Path(kwargs["local_dir"]) / kwargs["filename"]
+        output.write_bytes(b"bad" if broken and kwargs["filename"] == "second.bin" else content)
+        return str(output)
+
+    _install_fake_downloader(monkeypatch, download)
+    with pytest.raises(ZipVoiceAssetIntegrityError):
+        manager.ensure()
+    assert destination.read_bytes() == content
+    assert not (manager.model_root / "second.bin").exists()
+    assert not manager.status_path.exists()
+    broken = False
+    assert manager.ensure()["ready"] is True
+    assert calls == ["first.bin", "second.bin", "second.bin"]
+
+
+@pytest.mark.parametrize("symlink", [False, True])
+def test_asset_publication_uses_verified_same_filesystem_staging(tmp_path, monkeypatch, symlink):
+    from kokoro_tts.zipvoice import assets
+
+    content = b"verified-content"
+    item = _asset_item(sha256=hashlib.sha256(content).hexdigest())
+    manager, destination = _asset_manager(tmp_path, item)
+    stages = []
+    publications = []
+
+    def download(**kwargs):
+        stage = Path(kwargs["local_dir"])
+        stages.append(stage)
+        assert stage.parent == destination.parent
+        output = stage / kwargs["filename"]
+        output.parent.mkdir(parents=True)
+        output.write_bytes(content)
+        assert not destination.exists()
+        if symlink:
+            link = stage / "sdk-link"
+            try:
+                link.symlink_to(output)
+            except OSError:
+                pytest.skip("symlink creation unavailable on this host")
+            return str(link)
+        return str(output)
+
+    original_replace = assets.os.replace
+    def replace(source, target):
+        if Path(target) == destination:
+            publications.append(Path(source))
+            assert Path(source).read_bytes() == content
+            assert not destination.exists()
+        return original_replace(source, target)
+
+    _install_fake_downloader(monkeypatch, download)
+    monkeypatch.setattr(assets.os, "replace", replace)
+    assert manager.ensure()["ready"] is True
+    assert len(publications) == 1
+    assert destination.read_bytes() == content
+    assert not destination.is_symlink()
+    assert all(not path.exists() for path in stages)
+
+
 def _production_cuda_assets() -> dict[str, dict]:
     root = Path(__file__).resolve().parents[1] / "src/kokoro_tts/zipvoice"
     return {item["id"]: item for item in json.loads((root / "assets_manifest_cuda.json").read_text(encoding="utf-8"))["assets"]}
+
+
+@pytest.mark.parametrize("changed_field", ["repo", "revision"])
+@pytest.mark.parametrize("download_enabled", [False, True])
+def test_metadata_record_is_bound_to_manifest_source(tmp_path, monkeypatch, changed_field, download_enabled):
+    item = _asset_item(asset_id="tokens", sha256=None, filename="zipvoice_distill/tokens.txt")
+    manager, destination = _asset_manager(tmp_path, item)
+    calls = []
+
+    def download(**kwargs):
+        calls.append(kwargs)
+        output = Path(kwargs["local_dir"]) / kwargs["filename"]
+        output.parent.mkdir(parents=True, exist_ok=True)
+        output.write_bytes(b"old" if len(calls) == 1 else b"new")
+        return str(output)
+
+    _install_fake_downloader(monkeypatch, download)
+    assert manager.ensure()["ready"] is True
+    before = manager.status_path.read_bytes()
+    item[changed_field] += "-changed"
+    manager, destination = _asset_manager(tmp_path, item, download_enabled=download_enabled)
+    for full_verify in (False, True):
+        result = manager.status(full_verify=full_verify)
+        assert result["ready"] is False
+        assert result["files"][0]["verification_expected_sha256"] is None
+    if not download_enabled:
+        with pytest.raises(FileNotFoundError, match="unavailable or unverifiable"):
+            manager.ensure()
+        assert len(calls) == 1
+        assert destination.read_bytes() == b"old"
+        assert manager.status_path.read_bytes() == before
+        return
+    assert manager.ensure()["ready"] is True
+    assert len(calls) == 2
+    assert calls[-1]["repo_id"] == item["repo"]
+    assert calls[-1]["revision"] == item["revision"]
+    assert calls[-1]["force_download"] is True
+    assert destination.read_bytes() == b"new"
+    assert manager.ensure()["ready"] is True
+    assert len(calls) == 2
+
+
+@pytest.mark.parametrize("missing_field", ["repo", "revision", "verification_status"])
+def test_incomplete_metadata_record_is_not_an_offline_trust_anchor(tmp_path, missing_field):
+    item = _asset_item(asset_id="tokens", sha256=None)
+    manager, destination = _asset_manager(tmp_path, item, download_enabled=False)
+    destination.parent.mkdir(parents=True)
+    destination.write_bytes(b"local")
+    record = {"repo": item["repo"], "revision": item["revision"], "verification_status": "verified", "sha256": hashlib.sha256(b"local").hexdigest()}
+    del record[missing_field]
+    manager.status_path.write_text(json.dumps({"files": {"tokens": record}}), encoding="utf-8")
+    assert manager.status(full_verify=True)["ready"] is False
+    with pytest.raises(FileNotFoundError, match="unavailable or unverifiable"):
+        manager.ensure()
+
+
+def test_declared_digest_remains_authoritative_across_source_changes_offline(tmp_path):
+    payload = b"pinned-weight"
+    item = _asset_item(sha256=hashlib.sha256(payload).hexdigest())
+    manager, destination = _asset_manager(tmp_path, item, download_enabled=False)
+    destination.parent.mkdir(parents=True)
+    destination.write_bytes(payload)
+    assert manager.ensure()["ready"] is True
+    item["revision"] += "-changed"
+    manager, _ = _asset_manager(tmp_path, item, download_enabled=False)
+    assert manager.status()["ready"] is False
+    assert manager.status(full_verify=True)["ready"] is True
+    assert manager.ensure()["ready"] is True
+    assert manager.status()["ready"] is True
+    assert destination.read_bytes() == payload
+
+
+def test_source_refresh_failure_does_not_publish_a_new_verification_record(tmp_path, monkeypatch):
+    item = _asset_item(asset_id="tokens", sha256=None)
+    manager, destination = _asset_manager(tmp_path, item)
+
+    def initial_download(**kwargs):
+        destination.parent.mkdir(parents=True, exist_ok=True)
+        destination.write_bytes(b"old")
+        return str(destination)
+
+    _install_fake_downloader(monkeypatch, initial_download)
+    assert manager.ensure()["ready"] is True
+    before = manager.status_path.read_bytes()
+    item["revision"] += "-changed"
+    manager, _ = _asset_manager(tmp_path, item)
+    error = OSError("synthetic download failure")
+
+    def fail_download(**kwargs):
+        assert kwargs["revision"] == item["revision"]
+        assert kwargs["force_download"] is True
+        raise error
+
+    _install_fake_downloader(monkeypatch, fail_download)
+    with pytest.raises(OSError) as caught:
+        manager.ensure()
+    assert caught.value is error
+    assert manager.status_path.read_bytes() == before
+    assert manager.status(full_verify=True)["ready"] is False
+
+
+@pytest.mark.parametrize("payload", [None, [], "invalid", 1, {"files": None}, {"files": []}, {"files": "invalid"}])
+@pytest.mark.parametrize("declared", [False, True])
+def test_malformed_status_document_never_becomes_an_offline_trust_anchor(tmp_path, payload, declared):
+    content = b"local-weight"
+    item = _asset_item(sha256=hashlib.sha256(content).hexdigest() if declared else None)
+    manager, destination = _asset_manager(tmp_path, item, download_enabled=False)
+    destination.parent.mkdir(parents=True)
+    destination.write_bytes(content)
+    manager.status_path.write_text(json.dumps(payload), encoding="utf-8")
+    before = manager.status_path.read_bytes()
+    assert manager.status()["ready"] is False
+    assert manager.status(full_verify=True)["ready"] is declared
+    if declared:
+        assert manager.ensure()["ready"] is True
+    else:
+        with pytest.raises(FileNotFoundError, match="unavailable or unverifiable"):
+            manager.ensure()
+        assert manager.status_path.read_bytes() == before
+    assert destination.read_bytes() == content
+
+
+@pytest.mark.parametrize("digest", [None, [], {}, 12, "", "x" * 64, "a" * 63])
+def test_invalid_record_digest_is_ignored_without_discarding_valid_records(tmp_path, digest):
+    item = _asset_item(sha256=None)
+    manager, destination = _asset_manager(tmp_path, item, download_enabled=False)
+    destination.parent.mkdir(parents=True)
+    destination.write_bytes(b"local")
+    other = {**item, "id": "other", "filename": "other.txt", "destination": "other.txt"}
+    manager.manifest["assets"].append(other)
+    (manager.model_root / "other.txt").write_bytes(b"valid")
+    record = {"repo": item["repo"], "revision": item["revision"], "verification_status": "verified", "sha256": digest}
+    valid_record = {**record, "sha256": hashlib.sha256(b"valid").hexdigest()}
+    manager.status_path.write_text(json.dumps({"files": {"model": record, "other": valid_record}}), encoding="utf-8")
+    for full_verify in (False, True):
+        result = manager.status(full_verify=full_verify)
+        assert result["ready"] is False
+        assert result["files"][0]["verification_expected_sha256"] is None
+        assert result["files"][1]["verified"] is True
+    with pytest.raises(FileNotFoundError, match="unavailable or unverifiable"):
+        manager.ensure()
+
+
+def test_valid_uppercase_digest_is_normalized_for_offline_reuse(tmp_path):
+    item = _asset_item(sha256=None)
+    manager, destination = _asset_manager(tmp_path, item, download_enabled=False)
+    destination.parent.mkdir(parents=True)
+    destination.write_bytes(b"local")
+    digest = hashlib.sha256(b"local").hexdigest()
+    record = {"repo": item["repo"], "revision": item["revision"], "verification_status": "verified", "sha256": digest.upper()}
+    manager.status_path.write_text(json.dumps({"files": {item["id"]: record}}), encoding="utf-8")
+    assert manager.status()["ready"] is True
+    assert manager.status(full_verify=True)["ready"] is True
+    assert manager.ensure()["ready"] is True
+    saved = json.loads(manager.status_path.read_text(encoding="utf-8"))
+    assert saved["files"][item["id"]]["sha256"] == digest
 
 
 def test_registry_exposes_zipvoice_cuda_under_stable_product_name_without_new_public_model(tmp_path):
@@ -198,10 +479,13 @@ def test_missing_declared_asset_downloads_once_and_verifies_manifest_identity(tm
     _install_fake_downloader(monkeypatch, download)
     assert manager.ensure()["ready"] is True
     assert destination.read_bytes() == payload
-    assert calls == [(item["repo"], item["filename"], item["revision"], str(manager.model_root))]
+    assert len(calls) == 1
+    assert calls[0][:3] == (item["repo"], item["filename"], item["revision"])
+    assert Path(calls[0][3]).parent == destination.parent
+    assert not Path(calls[0][3]).exists()
 
 
-def test_downloaded_declared_mismatch_preserves_artifact_without_retry_or_status(tmp_path, monkeypatch):
+def test_downloaded_declared_mismatch_never_publishes_artifact_or_status(tmp_path, monkeypatch):
     expected = hashlib.sha256(b"expected-model").hexdigest()
     manager, destination = _asset_manager(tmp_path, _asset_item(sha256=expected))
     calls = []
@@ -217,7 +501,7 @@ def test_downloaded_declared_mismatch_preserves_artifact_without_retry_or_status
     with pytest.raises(ZipVoiceAssetIntegrityError, match="declared"):
         manager.ensure()
     assert calls == ["download"]
-    assert destination.read_bytes() == b"wrong-model"
+    assert not destination.exists()
     assert not manager.status_path.exists()
 
 
@@ -272,9 +556,11 @@ def test_existing_undeclared_metadata_downloads_once_before_learning_digest(tmp_
         "repo_id": "k2-fsa/ZipVoice",
         "filename": "zipvoice_distill/tokens.txt",
         "revision": "test-immutable-revision",
-        "local_dir": str(manager.model_root),
+        "local_dir": calls[0]["local_dir"],
         "force_download": True,
     }]
+    assert Path(calls[0]["local_dir"]).parent == destination.parent
+    assert not Path(calls[0]["local_dir"]).exists()
     assert result["ready"] is True
     assert saved["sha256"] == hashlib.sha256(trusted).hexdigest()
     assert saved["sha256"] != hashlib.sha256(untrusted).hexdigest()
@@ -317,7 +603,7 @@ def test_existing_undeclared_metadata_reuses_matching_recorded_digest(tmp_path, 
     manager, destination = _asset_manager(tmp_path, _asset_item(asset_id="tokens", sha256=None, filename="zipvoice_distill/tokens.txt"))
     destination.parent.mkdir(parents=True)
     destination.write_bytes(payload)
-    manager.status_path.write_text(json.dumps({"files": {"tokens": {"sha256": digest, "verification_status": "verified"}}}), encoding="utf-8")
+    manager.status_path.write_text(json.dumps({"files": {"tokens": {"repo": "k2-fsa/ZipVoice", "revision": "test-immutable-revision", "sha256": digest, "verification_status": "verified"}}}), encoding="utf-8")
     calls = []
     _install_fake_downloader(monkeypatch, lambda **kwargs: calls.append(kwargs))
     assert manager.ensure()["ready"] is True
@@ -330,7 +616,7 @@ def test_existing_undeclared_metadata_rejects_mismatched_recorded_digest(tmp_pat
     manager, destination = _asset_manager(tmp_path, _asset_item(asset_id="tokens", sha256=None, filename="zipvoice_distill/tokens.txt"))
     destination.parent.mkdir(parents=True)
     destination.write_bytes(b"tampered-tokens")
-    manager.status_path.write_text(json.dumps({"files": {"tokens": {"sha256": expected, "verification_status": "verified"}}}), encoding="utf-8")
+    manager.status_path.write_text(json.dumps({"files": {"tokens": {"repo": "k2-fsa/ZipVoice", "revision": "test-immutable-revision", "sha256": expected, "verification_status": "verified"}}}), encoding="utf-8")
     status_before = manager.status_path.read_bytes()
     file_before = destination.read_bytes()
     calls = []

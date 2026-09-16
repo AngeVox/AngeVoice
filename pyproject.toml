@@ -24,6 +24,7 @@ classifiers = [
     "Topic :: Multimedia :: Sound/Audio :: Speech",
 ]
 dependencies = [
+    "filelock>=3.29.0,<4",
     "kokoro>=0.8.2",
     "misaki[zh]>=0.8.2",
     "jieba>=0.42.1",
