@@ -16,6 +16,7 @@ from typing import Optional
 logger = logging.getLogger(__name__)
 
 from .admin_config_schema import load_runtime_config
+from .admin_bootstrap import validate_admin_bootstrap
 from .batch_config_metadata import BATCH_CONFIG_BY_KEY
 from .cache_config_metadata import CACHE_CONFIG_BY_KEY
 from .config_env import apply_env
@@ -377,6 +378,10 @@ class TTSConfig:
         self._normalize_audio_transcoding()
 
     def _validate_auth_and_admin_security(self) -> None:
+        self._validate_api_auth_security()
+        validate_admin_bootstrap(self, logger)
+
+    def _validate_api_auth_security(self) -> None:
         api_key = (self.api_key or "").strip()
         normalized_key = api_key.lower()
         if api_key and normalized_key in PLACEHOLDER_API_KEYS:
@@ -390,28 +395,6 @@ class TTSConfig:
                 "在可信网络外暴露前，请设置 KOKORO_API_KEY=auto 或强密钥",
                 self.host,
             )
-        admin_username = (
-            os.environ.get("ANGEVOICE_ADMIN_USERNAME")
-            or os.environ.get("KOKORO_ADMIN_USERNAME")
-            or "admin"
-        ).strip()
-        admin_password = (
-            os.environ.get("ANGEVOICE_ADMIN_PASSWORD")
-            or os.environ.get("KOKORO_ADMIN_PASSWORD")
-            or "admin123"
-        ).strip()
-        credentials_file = Path(getattr(self, "admin_credentials_file", "/app/credentials/admin-credentials.json")).expanduser()
-        persisted_admin = credentials_file.is_file()
-        first_entry_default = admin_username == "admin" and admin_password == "admin123"
-        if self.admin_enabled and not persisted_admin and first_entry_default:
-            logger.warning("管理后台当前使用首次默认凭据 admin/admin123；公网暴露前必须在安全页修改密码")
-        if (
-            self.admin_enabled
-            and not persisted_admin
-            and admin_password.lower() in PLACEHOLDER_ADMIN_PASSWORDS
-            and not first_entry_default
-        ):
-            raise ValueError("ANGEVOICE_ADMIN_PASSWORD is still a placeholder; use the documented first-entry default or set a strong password")
 
     def _validate_feature_dependencies(self) -> None:
         if self.voice_upload_enabled and not self.admin_enabled:
@@ -531,6 +514,22 @@ class TTSConfig:
         return "cpu"
 
 
+def _normalize_config_paths(config: TTSConfig) -> None:
+    """Normalize the facade's existing string paths, in compatibility order.
+
+    Path objects and model-specific consumer-owned paths retain their current
+    semantics; this is not a rule for every future path field on TTSConfig.
+    """
+    for name in (
+        "output_dir", "credentials_dir", "api_key_file", "admin_credentials_file",
+        "runtime_config_file", "model_dir", "moss_model_dir",
+        "moss_audio_tokenizer_model_dir", "moss_repo_path", "moss_prompt_audio_path",
+    ):
+        value = getattr(config, name)
+        if isinstance(value, str):
+            setattr(config, name, Path(value).expanduser())
+
+
 def load_config(
     model_dir: Optional[str] = None,
     device: Optional[str] = None,
@@ -553,25 +552,6 @@ def load_config(
     for k, v in kwargs.items():
         if v is not None and hasattr(config, k):
             setattr(config, k, v)
-    if isinstance(config.output_dir, str):
-        config.output_dir = Path(config.output_dir).expanduser()
-    if isinstance(config.credentials_dir, str):
-        config.credentials_dir = Path(config.credentials_dir).expanduser()
-    if isinstance(config.api_key_file, str):
-        config.api_key_file = Path(config.api_key_file).expanduser()
-    if isinstance(config.admin_credentials_file, str):
-        config.admin_credentials_file = Path(config.admin_credentials_file).expanduser()
-    if isinstance(config.runtime_config_file, str):
-        config.runtime_config_file = Path(config.runtime_config_file).expanduser()
-    if isinstance(config.model_dir, str):
-        config.model_dir = Path(config.model_dir).expanduser()
-    if isinstance(config.moss_model_dir, str):
-        config.moss_model_dir = Path(config.moss_model_dir).expanduser()
-    if isinstance(config.moss_audio_tokenizer_model_dir, str):
-        config.moss_audio_tokenizer_model_dir = Path(config.moss_audio_tokenizer_model_dir).expanduser()
-    if isinstance(config.moss_repo_path, str):
-        config.moss_repo_path = Path(config.moss_repo_path).expanduser()
-    if isinstance(config.moss_prompt_audio_path, str):
-        config.moss_prompt_audio_path = Path(config.moss_prompt_audio_path).expanduser()
+    _normalize_config_paths(config)
     config.validate_security()
     return config

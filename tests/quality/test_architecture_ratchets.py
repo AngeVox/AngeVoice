@@ -25,11 +25,6 @@ pytestmark = pytest.mark.quality
 # function may exceed MAX_NEW_FUNCTION_COMPLEXITY.
 COMPLEXITY_BASELINE = {
     "kokoro_tts.admin_config.schema.load_runtime_config": 16,
-    "kokoro_tts.config.TTSConfig._validate_auth_and_admin_security": 19,
-    "kokoro_tts.config.load_config": 18,
-    "kokoro_tts.model_sources.ensure_kokoro_model_dir": 18,
-    "kokoro_tts.moss_engine.MossNanoEngine._refresh_vram_guard": 17,
-    "kokoro_tts.moss_engine_streaming.MossStreamingMixin._synthesize_stream_process_isolated": 18,
     "kokoro_tts.routes.status_parts.models.model_capabilities": 16,
     "kokoro_tts.routes.status_parts.models.model_catalog_snapshot": 19,
     "kokoro_tts.validation._looks_like_non_natural_text": 20,

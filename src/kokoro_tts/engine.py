@@ -150,12 +150,16 @@ class TTSEngine:
             "speed_supported": True,
         }
 
+    def _clear_runtime_state(self) -> None:
+        """Release instance ownership under the runtime lock, retaining device metadata."""
+        self._model = None
+        self._en_pipeline = None
+        self._zh_pipeline = None
+        self._loaded = False
+
     def unload(self) -> None:
         with self._runtime_lock:
-            self._model = None
-            self._en_pipeline = None
-            self._zh_pipeline = None
-            self._loaded = False
+            self._clear_runtime_state()
             try:
                 import torch
 
@@ -238,61 +242,73 @@ class TTSEngine:
         with self._runtime_lock:
             if self._loaded:
                 return self
-
-            import torch
-            from kokoro import KModel, KPipeline
-
-            self._device = self.config.resolve_device()
-            local_model, local_config, use_local = self._prepare_kokoro_load()
-
-            # Kokoro 的 repo_id 必须始终是合法的 Hugging Face 仓库名。
-            # 即使使用 /app/models 这样的本地模型目录，也不能把绝对路径传给 repo_id，
-            # 否则 huggingface_hub 会报错：
-            #   仓库名格式必须为 'repo_name' 或 'namespace/repo_name'：'/app/models'
-            # 本地模型通过 config/model 显式路径加载；repo_id 只保留为合法标识，
-            # 供 Kokoro 内部默认映射和 Pipeline 初始化使用。
-            repo_id = self._safe_kokoro_repo_id()
-            if use_local:
-                logger.info("从本地加载模型: %s (repo_id=%s) -> %s", self.config.model_dir, repo_id, self._device)
-                KModel.MODEL_NAMES[repo_id] = local_model.name
-            else:
-                source = resolve_model_source(self.config)
-                if source == "offline":
-                    raise RuntimeError(
-                        "ANGEVOICE_MODEL_SOURCE=offline，但本地 Kokoro 模型不完整。"
-                        f"请把 config.json、权重和 voices/*.pt 预先放入：{self.config.model_dir}"
-                    )
-                logger.info("本地未找到模型，从 %s 下载: %s", "Hugging Face" if source == "huggingface" else source, repo_id)
-
-            if self._device == "cpu":
-                try:
-                    torch.set_num_threads(min(8, (os.cpu_count() or 4)))
-                except Exception:
-                    pass
-
             try:
-                with _single_layer_rnn_dropout_compat():
-                    if use_local:
-                        self._model = KModel(repo_id=repo_id, config=str(local_config), model=str(local_model)).to(self._device).eval()
-                    else:
-                        self._model = KModel(repo_id=repo_id).to(self._device).eval()
-            except Exception as exc:
-                message = str(exc)
-                if "WeightsUnpickler" in message or "Unsupported operand 118" in message:
-                    raise RuntimeError(
-                        "Kokoro 模型权重加载失败：检测到 Git LFS 指针、损坏权重或不兼容缓存。"
-                        "请删除无效的 models/models--hexgrad--Kokoro-82M-v1.1-zh/*.pth、voices/*.pt 或 Hugging Face 缓存后重试；"
-                        "也可以执行 git lfs pull 下载真实模型文件。"
-                    ) from exc
+                model, pipeline, device = self._build_kokoro_runtime()
+            except BaseException:
+                # The Chinese constructor can invoke the lazy English callback.
+                self._clear_runtime_state()
                 raise
-
-            def en_callable(text):
-                return self._english_phonemes(text, repo_id=repo_id)
-
-            self._zh_pipeline = KPipeline(lang_code="z", repo_id=repo_id, model=self._model, en_callable=en_callable)
+            self._model = model
+            self._zh_pipeline = pipeline
+            self._device = device
             self._loaded = True
             logger.info("模型加载完成 (device=%s)", self._device)
             return self
+
+    def _build_kokoro_runtime(self):
+        """Construct under the runtime lock; publish only after both parts succeed."""
+        import torch
+        from kokoro import KModel, KPipeline
+
+        device = self.config.resolve_device()
+        local_model, local_config, use_local = self._prepare_kokoro_load()
+
+        # Kokoro 的 repo_id 必须始终是合法的 Hugging Face 仓库名。
+        # 即使使用 /app/models 这样的本地模型目录，也不能把绝对路径传给 repo_id，
+        # 否则 huggingface_hub 会报错：
+        #   仓库名格式必须为 'repo_name' 或 'namespace/repo_name'：'/app/models'
+        # 本地模型通过 config/model 显式路径加载；repo_id 只保留为合法标识，
+        # 供 Kokoro 内部默认映射和 Pipeline 初始化使用。
+        repo_id = self._safe_kokoro_repo_id()
+        if use_local:
+            logger.info("从本地加载模型: %s (repo_id=%s) -> %s", self.config.model_dir, repo_id, device)
+            KModel.MODEL_NAMES[repo_id] = local_model.name
+        else:
+            source = resolve_model_source(self.config)
+            if source == "offline":
+                raise RuntimeError(
+                    "ANGEVOICE_MODEL_SOURCE=offline，但本地 Kokoro 模型不完整。"
+                    f"请把 config.json、权重和 voices/*.pt 预先放入：{self.config.model_dir}"
+                )
+            logger.info("本地未找到模型，从 %s 下载: %s", "Hugging Face" if source == "huggingface" else source, repo_id)
+
+        if device == "cpu":
+            try:
+                torch.set_num_threads(min(8, (os.cpu_count() or 4)))
+            except Exception:
+                pass
+
+        try:
+            with _single_layer_rnn_dropout_compat():
+                if use_local:
+                    model = KModel(repo_id=repo_id, config=str(local_config), model=str(local_model)).to(device).eval()
+                else:
+                    model = KModel(repo_id=repo_id).to(device).eval()
+        except Exception as exc:
+            message = str(exc)
+            if "WeightsUnpickler" in message or "Unsupported operand 118" in message:
+                raise RuntimeError(
+                    "Kokoro 模型权重加载失败：检测到 Git LFS 指针、损坏权重或不兼容缓存。"
+                    "请删除无效的 models/models--hexgrad--Kokoro-82M-v1.1-zh/*.pth、voices/*.pt 或 Hugging Face 缓存后重试；"
+                    "也可以执行 git lfs pull 下载真实模型文件。"
+                ) from exc
+            raise
+
+        def en_callable(text):
+            return self._english_phonemes(text, repo_id=repo_id)
+
+        pipeline = KPipeline(lang_code="z", repo_id=repo_id, model=model, en_callable=en_callable)
+        return model, pipeline, device
 
     def _english_phonemes(self, text, *, repo_id):
         if text == "Kokoro":

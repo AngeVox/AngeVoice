@@ -24,23 +24,36 @@ def lazy_engine(monkeypatch, tmp_path):
         fail_english=False,
         fail_phonemes=False,
         creation_delay=0.0,
+        fail_stage=None,
+        load_error=RuntimeError("fake runtime construction failed"),
+        initialize_english_during_load=False,
     )
 
     class FakeKModel:
         MODEL_NAMES = {}
 
         def __init__(self, **_kwargs):
-            pass
+            if state.fail_stage == "model":
+                raise state.load_error
 
         def to(self, _device):
+            if state.fail_stage == "device":
+                raise state.load_error
             return self
 
         def eval(self):
+            if state.fail_stage == "eval":
+                raise state.load_error
             return self
 
     class FakeKPipeline:
         def __init__(self, *, lang_code, repo_id, model, en_callable=None, **_kwargs):
             state.language_codes.append(lang_code)
+            if lang_code == "z":
+                if state.initialize_english_during_load:
+                    en_callable("Hello")
+                if state.fail_stage == "pipeline":
+                    raise state.load_error
             if lang_code == "a":
                 state.english_creations += 1
                 state.english_repo_ids.append(repo_id)
@@ -81,6 +94,39 @@ def test_load_builds_only_chinese_pipeline(lazy_engine):
     assert engine._zh_pipeline is not None
 
 
+@pytest.mark.parametrize("stage", ["model", "device", "eval", "pipeline"])
+@pytest.mark.parametrize("error_type", [RuntimeError, KeyboardInterrupt])
+def test_failed_load_clears_owned_runtime_and_allows_retry(lazy_engine, stage, error_type):
+    engine, state = lazy_engine
+    engine.unload()
+    state.fail_stage = stage
+    state.load_error = error_type("fake runtime construction failed")
+    state.initialize_english_during_load = True
+
+    with pytest.raises(error_type) as caught:
+        engine.load()
+
+    assert caught.value is state.load_error
+    assert not engine.is_loaded
+    assert engine._model is None
+    assert engine._zh_pipeline is None
+    assert engine._en_pipeline is None
+
+    state.fail_stage = None
+    assert engine.load() is engine
+    assert engine.is_loaded
+    assert engine._zh_pipeline.model is engine._model
+    assert engine._zh_pipeline.en_callable("Again") == "phonemes:Again"
+    runtime = (engine._model, engine._zh_pipeline, engine._en_pipeline)
+    creations = list(state.language_codes)
+    assert engine.load() is engine
+    assert runtime == (engine._model, engine._zh_pipeline, engine._en_pipeline)
+    assert state.language_codes == creations
+    engine.unload()
+    assert not engine.is_loaded
+    assert (engine._model, engine._zh_pipeline, engine._en_pipeline) == (None, None, None)
+
+
 def test_first_english_callback_initializes_once_and_reuses_pipeline(lazy_engine):
     engine, state = lazy_engine
     callback = engine._zh_pipeline.en_callable
@@ -91,6 +137,50 @@ def test_first_english_callback_initializes_once_and_reuses_pipeline(lazy_engine
     assert state.english_creations == 1
     assert state.language_codes == ["z", "a"]
     assert engine._en_pipeline is not None
+
+
+def test_failed_reload_preserves_last_successful_device(lazy_engine, monkeypatch):
+    engine, state = lazy_engine
+    engine.unload()
+    monkeypatch.setattr(engine.config, "resolve_device", lambda: "cuda")
+    state.fail_stage = "pipeline"
+    with pytest.raises(RuntimeError):
+        engine.load()
+    assert engine.device == "cpu"
+    state.fail_stage = None
+    engine.load()
+    assert engine.device == "cuda"
+    engine.unload()
+    assert engine.device == "cuda"
+
+
+@pytest.mark.parametrize("message", ["WeightsUnpickler", "Unsupported operand 118"])
+def test_failed_weight_load_retains_actionable_error_and_cause(lazy_engine, message):
+    engine, state = lazy_engine
+    engine.unload()
+    state.fail_stage = "model"
+    state.load_error = ValueError(message)
+    with pytest.raises(RuntimeError, match="Kokoro 模型权重加载失败") as caught:
+        engine.load()
+    assert caught.value.__cause__ is state.load_error
+    assert not engine.is_loaded
+    assert engine._model is None
+
+
+def test_remote_load_and_optional_thread_tuning_failure(lazy_engine, monkeypatch):
+    engine, state = lazy_engine
+    engine.unload()
+    monkeypatch.setattr(engine, "_prepare_kokoro_load", lambda: (None, None, False))
+    monkeypatch.setattr(engine_module, "resolve_model_source", lambda _config: "huggingface")
+
+    def unavailable_thread_tuning(_count):
+        raise RuntimeError("thread tuning unavailable")
+
+    monkeypatch.setattr(sys.modules["torch"], "set_num_threads", unavailable_thread_tuning)
+    assert engine.load() is engine
+    assert engine.is_loaded
+    assert engine._zh_pipeline.model is engine._model
+    assert engine._en_pipeline is None
 
 
 def test_lazy_english_pipeline_uses_repo_id_captured_during_load(lazy_engine):

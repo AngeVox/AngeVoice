@@ -129,6 +129,41 @@ def test_zero_moss_silence_limit_disables_compression_instead_of_removing_silenc
     assert np.array_equal(result.reshape(-1), audio)
 
 
+@pytest.mark.parametrize("transition", ["rebuild", "force_unload"])
+def test_moss_executor_transition_cancels_pending_work_without_killing_active_work(transition):
+    engine = MossNanoEngine(TTSConfig(), execution_provider="cpu", process_isolation=False)
+    entered = threading.Event()
+    release = threading.Event()
+    pending_ran = threading.Event()
+    old = engine._executor
+
+    def active():
+        with engine._runtime_lock:
+            entered.set()
+            return release.wait(5)
+
+    running = old.submit(active)
+    try:
+        assert entered.wait(3)
+        pending = old.submit(pending_ran.set)
+        if transition == "force_unload":
+            engine.unload(force=True)
+            assert not engine.is_healthy
+        else:
+            engine._rebuild_executor()
+        assert pending.cancelled()
+        assert not running.done()
+        assert engine._executor.submit(lambda: "new executor").result(timeout=3) == "new executor"
+        release.set()
+        assert running.result(timeout=3) is True
+        old.shutdown(wait=True)
+        assert not pending_ran.is_set()
+    finally:
+        release.set()
+        old.shutdown(wait=True)
+        engine._executor.shutdown(wait=True)
+
+
 def test_unhealthy_nonisolated_moss_force_unload_never_waits_forever_on_runtime_lock():
     engine = MossNanoEngine(TTSConfig(), execution_provider="cpu", process_isolation=False)
     engine._loaded = True

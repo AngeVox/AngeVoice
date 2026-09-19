@@ -741,6 +741,7 @@ def _reader_source_and_qualname(reader: str) -> tuple[Path, list[str]]:
     source_root = Path(config_env.__file__).parent
     module_files = {
         "kokoro_tts.config": source_root / "config.py",
+        "kokoro_tts.admin_bootstrap": source_root / "admin_bootstrap.py",
         "kokoro_tts.model_sources": source_root / "model_sources.py",
         "kokoro_tts.zipvoice.runtime_cpu_onnx": source_root
         / "zipvoice"
@@ -834,13 +835,22 @@ def _reader_env_names(reader: str) -> set[str]:
 
 
 def test_declared_direct_env_readers_are_resolved_and_receiver_owned() -> None:
+    # The historical snapshot remains byte-for-byte frozen. Track migrated
+    # owners explicitly while retaining every declared ENV admission check.
+    current_admin_readers = {
+        "ANGEVOICE_ADMIN_USERNAME": "kokoro_tts.admin_bootstrap.admin_username",
+        "KOKORO_ADMIN_USERNAME": "kokoro_tts.admin_bootstrap.admin_username",
+        "ANGEVOICE_ADMIN_PASSWORD": "kokoro_tts.admin_bootstrap.admin_password",
+        "KOKORO_ADMIN_PASSWORD": "kokoro_tts.admin_bootstrap.admin_password",
+    }
     direct_readers = SNAPSHOT["direct_readers"]
     assert len(direct_readers) == 10
     for item in direct_readers:
-        module_path, qualname = _reader_source_and_qualname(item["reader"])
+        reader = current_admin_readers.get(item["env"], item["reader"])
+        module_path, qualname = _reader_source_and_qualname(reader)
         assert module_path.is_file()
         assert qualname
-        assert item["env"] in _reader_env_names(item["reader"])
+        assert item["env"] in _reader_env_names(reader)
 
 
 @pytest.mark.parametrize("env_name,attr", sorted(SNAPSHOT["str_env"].items()))

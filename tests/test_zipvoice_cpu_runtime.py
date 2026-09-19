@@ -30,6 +30,135 @@ def _cfg(tmp_path: Path) -> TTSConfig:
     )
 
 
+@pytest.fixture(params=["cpu", "cuda"])
+def loading_runtime(request, tmp_path, monkeypatch):
+    from kokoro_tts.zipvoice.runtime_cpu_onnx import ZipVoiceOnnxCpuRuntime
+    from kokoro_tts.zipvoice.runtime_cuda_torch import ZipVoiceTorchCudaRuntime
+
+    cfg = _cfg(tmp_path)
+    cfg.zipvoice_distill_dir.mkdir(parents=True)
+    (cfg.zipvoice_distill_dir / "model.json").write_text(
+        json.dumps({"feature": {"sampling_rate": 22050}, "model": {}}), encoding="utf-8",
+    )
+    (tmp_path / "zipvoice").mkdir()
+    cls = ZipVoiceOnnxCpuRuntime if request.param == "cpu" else ZipVoiceTorchCudaRuntime
+    runtime = cls(cfg)
+    monkeypatch.setattr(runtime, "_upstream_path", lambda: tmp_path)
+    monkeypatch.setattr(sys, "path", list(sys.path))
+    monkeypatch.setattr(runtime.assets, "ensure", lambda: {
+        "distill_dir": str(cfg.zipvoice_distill_dir), "vocos_dir": str(cfg.zipvoice_vocos_dir),
+    })
+    state = types.SimpleNamespace(stage=None, error=RuntimeError("construction failed"), calls=[])
+
+    def checkpoint(stage):
+        state.calls.append(stage)
+        if state.stage == stage:
+            raise state.error
+
+    class Component:
+        vocab_size = 12
+        pad_id = 0
+
+        def __init__(self, kind):
+            self.kind = kind
+            checkpoint(kind)
+
+        def to(self, device):
+            checkpoint(self.kind + "_to")
+            assert device == "cuda:0"
+            return self
+
+        def eval(self):
+            checkpoint(self.kind + "_eval")
+            return self
+
+    fake_torch = types.SimpleNamespace(
+        set_num_threads=lambda n: checkpoint("threads"),
+        set_num_interop_threads=lambda n: checkpoint("interop"),
+        device=lambda kind, index: f"{kind}:{index}",
+        cuda=types.SimpleNamespace(is_available=lambda: True, device_count=lambda: 1,
+                                  empty_cache=lambda: checkpoint("empty_cache")),
+    )
+    modules = {
+        "torch": fake_torch,
+        "zipvoice.bin.infer_zipvoice": types.SimpleNamespace(
+            get_vocoder=lambda path: Component("vocoder"), generate_sentence=object()),
+        "zipvoice.bin.infer_zipvoice_onnx": types.SimpleNamespace(
+            OnnxModel=lambda *a, **kw: Component("model"), generate_sentence=object()),
+        "zipvoice.models.zipvoice_distill": types.SimpleNamespace(
+            ZipVoiceDistill=lambda **kw: Component("model")),
+        "zipvoice.tokenizer.tokenizer": types.SimpleNamespace(
+            EmiliaTokenizer=lambda **kw: Component("tokenizer")),
+        "zipvoice.utils.checkpoint": types.SimpleNamespace(
+            load_checkpoint=lambda **kw: checkpoint("checkpoint")),
+        "zipvoice.utils.feature": types.SimpleNamespace(VocosFbank=lambda: Component("features")),
+    }
+    for name, module in modules.items():
+        monkeypatch.setitem(sys.modules, name, module)
+    return runtime, state, request.param
+
+
+@pytest.mark.parametrize("stage", ["tokenizer", "model", "vocoder", "vocoder_eval", "features"])
+@pytest.mark.parametrize("error_type", [RuntimeError, KeyboardInterrupt])
+def test_zipvoice_load_failure_does_not_publish_components(loading_runtime, stage, error_type):
+    runtime, state, provider = loading_runtime
+    state.stage = stage
+    state.error = error_type("construction failed")
+    with pytest.raises(error_type) as caught:
+        runtime.load()
+    assert caught.value is state.error
+    assert not runtime.loaded
+    assert all(getattr(runtime, field) is None for field in
+               ["model", "vocoder", "tokenizer", "feature_extractor", "generate_sentence", "torch"])
+    assert runtime.sample_rate == 24000
+    if provider == "cuda":
+        assert runtime.device is None
+    state.stage = None
+    assert runtime.load() is runtime
+    assert runtime.loaded and runtime.sample_rate == 22050
+    calls = list(state.calls)
+    assert runtime.load() is runtime
+    assert state.calls == calls
+    runtime.unload()
+    assert not runtime.loaded
+    assert runtime.model is None and runtime.vocoder is None and runtime.tokenizer is None
+    assert runtime.load() is runtime
+    assert runtime.loaded
+
+
+@pytest.mark.parametrize("stage", ["checkpoint", "model_to", "model_eval", "vocoder_to"])
+@pytest.mark.parametrize("loading_runtime", ["cuda"], indirect=True)
+def test_zipvoice_cuda_specific_construction_failure(loading_runtime, stage):
+    runtime, state, provider = loading_runtime
+    state.stage = stage
+    with pytest.raises(RuntimeError) as caught:
+        runtime.load()
+    assert caught.value is state.error
+    assert runtime.model is None and runtime.tokenizer is None and runtime.vocoder is None
+    assert runtime.device is None and not runtime.loaded
+    state.stage = None
+    assert runtime.load().loaded
+
+
+def test_zipvoice_failed_reload_keeps_successful_metadata(loading_runtime):
+    runtime, state, provider = loading_runtime
+    runtime.load()
+    runtime.unload()
+    (runtime.cfg.zipvoice_distill_dir / "model.json").write_text(
+        json.dumps({"feature": {"sampling_rate": 16000}, "model": {}}), encoding="utf-8",
+    )
+    state.stage = "features"
+    with pytest.raises(RuntimeError):
+        runtime.load()
+    assert not runtime.loaded and runtime.sample_rate == 22050
+    assert runtime.model is None and runtime.feature_extractor is None
+    if provider == "cuda":
+        assert runtime.device == "cuda:0"
+    state.stage = None
+    runtime.load()
+    assert runtime.loaded and runtime.sample_rate == 16000
+
+
 def test_registry_exposes_zipvoice_capabilities_without_breaking_moss_alias(tmp_path):
     cfg = _cfg(tmp_path)
     cfg.validate_security()

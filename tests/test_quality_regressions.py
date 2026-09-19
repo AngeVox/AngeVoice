@@ -3,10 +3,25 @@
 import os
 from unittest.mock import MagicMock
 
+import pytest
+
 from kokoro_tts.config import TTSConfig
 from kokoro_tts.engine import normalize_text_for_tts
 from kokoro_tts.engine_manager import EngineManager, EngineSpec
 from kokoro_tts.service_state import ServiceState
+
+
+@pytest.fixture
+def manager():
+    instance = EngineManager(TTSConfig(enabled_models=["kokoro"], default_model="kokoro"))
+    try:
+        yield instance
+    finally:
+        timer = instance._idle_timer
+        instance.stop_idle_timer()
+        if timer is not None:
+            timer.join(timeout=2)
+            assert not timer.is_alive()
 
 
 def test_large_money_amount_is_read_naturally():
@@ -18,10 +33,9 @@ def test_large_money_amount_is_read_naturally():
     assert "七千八百九十元五角" in text
 
 
-def test_model_snapshot_protects_core_identity_fields():
+def test_model_snapshot_protects_core_identity_fields(manager):
     """运行时 metadata 不应静默覆盖模型基础身份字段。"""
 
-    manager = EngineManager(TTSConfig(enabled_models=["kokoro"], default_model="kokoro"))
     engine = MagicMock()
     engine.is_loaded = True
     engine.is_healthy = True
@@ -198,10 +212,9 @@ def test_moss_model_assets_reject_onnx_without_manifest(tmp_path):
     assert not has_valid_moss_model_assets(root)
 
 
-def test_drop_model_unload_failure_keeps_engine_and_marks_pending():
+def test_drop_model_unload_failure_keeps_engine_and_marks_pending(manager):
     """模型重建前卸载失败时不能误删引擎，应保留待重建标记。"""
 
-    manager = EngineManager(TTSConfig(enabled_models=["kokoro"], default_model="kokoro"))
     engine = MagicMock()
     engine.unload.side_effect = RuntimeError("cuda unload failed")
     manager._engines["kokoro"] = engine
@@ -211,12 +224,11 @@ def test_drop_model_unload_failure_keeps_engine_and_marks_pending():
     assert "kokoro" in manager._pending_rebuild
 
 
-def test_get_engine_load_failure_cleanup_catches_unload_fallback_failure():
+def test_get_engine_load_failure_cleanup_catches_unload_fallback_failure(manager):
     """加载失败后，兼容旧 unload() 签名的清理异常不能覆盖原始加载异常。"""
 
     from unittest.mock import MagicMock
 
-    manager = EngineManager(TTSConfig(enabled_models=["kokoro"], default_model="kokoro"))
     engine = MagicMock()
     engine.is_loaded = False
     engine.load.side_effect = RuntimeError("load failed")

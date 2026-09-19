@@ -504,6 +504,30 @@ def _download_kokoro_assets(config, target: Path, *, logger: logging.Logger, man
     return None
 
 
+def _accept_kokoro_download_result(
+    config, path: Path | None, download_target: Path, target_dir: Path,
+    *, download_managed: bool, prefetch_voices: bool, logger: logging.Logger,
+) -> Path | None:
+    """Admit provider results without weakening managed-directory verification."""
+    for candidate in [Path(path).expanduser()] if path else []:
+        candidate_managed = is_managed_kokoro_mode(config, candidate)
+        if candidate_managed and not download_managed:
+            raise KokoroAssetIntegrityError("Kokoro managed official assets cannot be accepted from a custom download target")
+        if has_valid_kokoro_local_assets(candidate, log=logger):
+            return _accept_kokoro_candidate(
+                config, candidate, managed=candidate_managed, prefetch_voices=prefetch_voices, verified=download_managed and candidate_managed
+            )
+    if has_valid_kokoro_local_assets(download_target, log=logger):
+        return _accept_kokoro_candidate(
+            config, download_target, managed=download_managed, prefetch_voices=prefetch_voices, verified=download_managed
+        )
+    if download_managed:
+        raise KokoroAssetIntegrityError("Kokoro managed official assets could not be downloaded and verified")
+    logger.warning("下载后仍未找到有效 Kokoro 权重，将回退到上游 repo_id 懒加载路径。")
+    config.model_dir = target_dir
+    return None
+
+
 def ensure_kokoro_model_dir(config, *, logger: logging.Logger) -> Path | None:
     """确保 Kokoro 本地模型目录可用，并尽量预取完整音色库。
 
@@ -537,52 +561,33 @@ def ensure_kokoro_model_dir(config, *, logger: logging.Logger) -> Path | None:
     download_target = current_dir if current_has_assets else target_dir
     download_managed = is_managed_kokoro_mode(config, download_target)
     path = _download_kokoro_assets(config, download_target, logger=logger, managed=download_managed)
-    for candidate in [Path(path).expanduser()] if path else []:
-        candidate_managed = is_managed_kokoro_mode(config, candidate)
-        if candidate_managed and not download_managed:
-            raise KokoroAssetIntegrityError("Kokoro managed official assets cannot be accepted from a custom download target")
-        if has_valid_kokoro_local_assets(candidate, log=logger):
-            return _accept_kokoro_candidate(
-                config, candidate, managed=candidate_managed, prefetch_voices=prefetch_voices, verified=download_managed and candidate_managed
-            )
-    if has_valid_kokoro_local_assets(download_target, log=logger):
-        return _accept_kokoro_candidate(
-            config, download_target, managed=download_managed, prefetch_voices=prefetch_voices, verified=download_managed
-        )
-
-    if download_managed:
-        raise KokoroAssetIntegrityError("Kokoro managed official assets could not be downloaded and verified")
-    logger.warning("下载后仍未找到有效 Kokoro 权重，将回退到上游 repo_id 懒加载路径。")
-    config.model_dir = target_dir
-    return None
+    return _accept_kokoro_download_result(
+        config, path, download_target, target_dir, download_managed=download_managed,
+        prefetch_voices=prefetch_voices, logger=logger,
+    )
 
 
 def _download_moss_model_assets(config, target: Path, *, logger: logging.Logger) -> Path | None:
     """按可用源下载 MOSS ONNX 资产。"""
 
-    for source, repo in _moss_download_plan(config):
-        if source == "modelscope":
-            try:
-                path = _modelscope_snapshot_download(repo, target, logger=logger)
-            except Exception as exc:
-                _log_provider_failure_for_fallback(source, repo, exc, logger=logger)
-                continue
-        else:
-            path = _huggingface_snapshot_download(repo, target, logger=logger)
-        candidates = [target]
-        if path:
-            candidates.insert(0, Path(path).expanduser())
-        for candidate in candidates:
-            if has_valid_moss_model_assets(candidate, log=logger):
-                return candidate
-        logger.warning("MOSS 模型资产下载后校验未通过：provider=%s", source)
-    return None
+    return _download_moss_assets(
+        _moss_download_plan(config), target, logger=logger,
+        validator=has_valid_moss_model_assets, asset_label="MOSS 模型",
+    )
 
 
 def _download_moss_audio_tokenizer_assets(config, target: Path, *, logger: logging.Logger) -> Path | None:
     """按可用源下载 MOSS Audio Tokenizer / codec ONNX 资产。"""
 
-    for source, repo in _moss_audio_tokenizer_download_plan(config):
+    return _download_moss_assets(
+        _moss_audio_tokenizer_download_plan(config), target, logger=logger,
+        validator=has_valid_moss_audio_tokenizer_assets, asset_label="MOSS Audio Tokenizer ",
+    )
+
+
+def _download_moss_assets(plan, target: Path, *, logger: logging.Logger, validator, asset_label: str) -> Path | None:
+    """Execute the shared MOSS fallback loop with the asset family's validator."""
+    for source, repo in plan:
         if source == "modelscope":
             try:
                 path = _modelscope_snapshot_download(repo, target, logger=logger)
@@ -595,9 +600,9 @@ def _download_moss_audio_tokenizer_assets(config, target: Path, *, logger: loggi
         if path:
             candidates.insert(0, Path(path).expanduser())
         for candidate in candidates:
-            if has_valid_moss_audio_tokenizer_assets(candidate, log=logger):
+            if validator(candidate, log=logger):
                 return candidate
-        logger.warning("MOSS Audio Tokenizer 资产下载后校验未通过：provider=%s", source)
+        logger.warning("%s资产下载后校验未通过：provider=%s", asset_label, source)
     return None
 
 

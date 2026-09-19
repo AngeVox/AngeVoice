@@ -4,22 +4,12 @@ from __future__ import annotations
 
 import base64
 import binascii
-import os
 import secrets
 
 from fastapi import HTTPException, Request
 
 from .admin_credentials import AdminCredentialStore
-
-
-def admin_username() -> str:
-    """Return the bootstrap admin username used before durable credentials exist."""
-    return os.environ.get("ANGEVOICE_ADMIN_USERNAME") or os.environ.get("KOKORO_ADMIN_USERNAME") or "admin"
-
-
-def admin_password() -> str:
-    """Return the bootstrap administrator password with legacy env fallback."""
-    return os.environ.get("ANGEVOICE_ADMIN_PASSWORD") or os.environ.get("KOKORO_ADMIN_PASSWORD") or "admin123"
+from .admin_bootstrap import admin_password, admin_username
 
 
 def candidate_encodings(value: str) -> list[bytes]:

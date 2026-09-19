@@ -828,14 +828,14 @@ class TestOrdinaryKokoroOfflineGuard:
             for node in tree.body
             if isinstance(node, ast.ClassDef) and node.name == "TTSEngine"
         )
-        load = next(
+        build_runtime = next(
             node
             for node in tts_engine.body
-            if isinstance(node, ast.FunctionDef) and node.name == "load"
+            if isinstance(node, ast.FunctionDef) and node.name == "_build_kokoro_runtime"
         )
         kmodel_calls = [
             node
-            for node in ast.walk(load)
+            for node in ast.walk(build_runtime)
             if isinstance(node, ast.Call)
             and isinstance(node.func, ast.Name)
             and node.func.id == "KModel"

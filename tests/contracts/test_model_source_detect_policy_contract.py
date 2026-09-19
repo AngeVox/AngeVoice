@@ -704,6 +704,7 @@ def test_model_source_resolution_is_lazy_and_owned_by_asset_or_load_paths():
     create_app = _definition(server_tree, "create_app")
     prepare_kokoro = _definition(engine_tree, "_prepare_kokoro_load")
     load_kokoro = _definition(engine_tree, "load")
+    build_kokoro = _definition(engine_tree, "_build_kokoro_runtime")
     create_moss_runtime = _definition(moss_tree, "create_runtime")
     repair_assets = _definition(assets_tree, "repair")
 
@@ -714,7 +715,8 @@ def test_model_source_resolution_is_lazy_and_owned_by_asset_or_load_paths():
         "_detect_country",
     } & set(_call_names(create_app))
     assert "ensure_kokoro_model_dir" in _call_names(prepare_kokoro)
-    assert "resolve_model_source" in _call_names(load_kokoro)
+    assert "_build_kokoro_runtime" in _call_names(load_kokoro)
+    assert "resolve_model_source" in _call_names(build_kokoro)
     assert {
         "ensure_moss_model_dir",
         "ensure_moss_audio_tokenizer_dir",

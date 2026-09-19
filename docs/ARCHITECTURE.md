@@ -43,6 +43,7 @@ src/kokoro_tts/
 ├── workers/              # 三模型共用的 WorkerSpec、进程客户端与子进程入口
 ├── config.py             # TTSConfig 兼容 facade、校验和配置加载
 ├── config_env.py         # ENV 应用编排，消费领域声明/metadata
+├── admin_bootstrap.py    # 启动 Admin 凭据的 ENV 回退与启动校验，无 HTTP 依赖
 ├── cli.py                # angevoice / kokoro-tts CLI
 ├── static_assets.py      # 统一静态资源内容哈希与原生 ESM import map
 ├── templates/index.html  # Studio Web UI HTML shell
@@ -50,6 +51,14 @@ src/kokoro_tts/
 ```
 
 ## 请求路径
+
+配置仍由 `TTSConfig` 持有，`load_config` 保留默认值 → ENV → Admin runtime → 显式参数 → 路径归一化 → 校验的顺序。Admin 启动凭据选择由 `admin_bootstrap` 提供，配置启动校验和 `admin_auth` 登录入口共用；后者继续导出 `admin_username` / `admin_password`，持久化凭据验证仍归 `AdminCredentialStore`。配置校验只对副本去除首尾空白，认证使用原始 ENV 字符串，避免改变已有密码字节。API 鉴权校验仍先于 Admin 和功能依赖校验，日志继续归于 `kokoro_tts.config`。
+
+Kokoro 在现有 runtime 锁内构造模型和中文 pipeline，全部成功后才发布实例引用和设备信息。加载失败（包括中断）清理实例持有的模型、中文及构造期间触发的 English pipeline，原异常继续传播；English 正常使用仍延迟初始化。该边界不回滚资产准备、上游模型映射或 Torch 线程设置，也不承诺异常 traceback/分配器立即释放显存。
+
+ZipVoice CPU/CUDA runtime 各自在局部变量中完成组件构造，成功后更新实例组件、采样率和 CUDA 设备，再设置 loaded。失败及中断不发布半加载组件，原异常直接传播；卸载后失败重载保留最近成功的 metadata。CPU 的 ONNX/线程设置和 CUDA 的设备准入、checkpoint、迁移顺序仍分别维护；Engine 继续负责锁与 fallback。该边界不增加 runtime 直接调用的并发保证，不回滚资产、sys.path 或 Torch 线程配置，也不保证异常 traceback 中的组件立即释放。
+
+路径 helper 只转换既有十个字符串字段，保持处理顺序，不自动扫描所有 Path 字段。显式 `Path` 对象、ZipVoice 消费方路径处理、`port=0` 的历史 truthy 行为及显式 runtime 文件路径不能选择本次读取文件的限制均保持；改变这些兼容边界需另立行为规格。
 
 ### HTTP 合成
 

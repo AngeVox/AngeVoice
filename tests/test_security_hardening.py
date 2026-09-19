@@ -427,6 +427,80 @@ def test_loopback_bind_without_api_key_does_not_warn(caplog):
         cfg.validate_security()
     assert "未启用 API 鉴权" not in caplog.text
 
+
+@pytest.mark.parametrize("primary,legacy,expected", [
+    (None, None, ("admin", "admin123")),
+    (None, ("legacy-user", "legacy-secret"), ("legacy-user", "legacy-secret")),
+    (("", ""), ("legacy-user", "legacy-secret"), ("legacy-user", "legacy-secret")),
+    (("primary-user", "primary-secret"), ("legacy-user", "legacy-secret"), ("primary-user", "primary-secret")),
+    ((" admin ", " admin123 "), ("legacy-user", "legacy-secret"), (" admin ", " admin123 ")),
+])
+def test_admin_bootstrap_env_precedence_and_validation_whitespace(
+    monkeypatch, tmp_path, caplog, primary, legacy, expected,
+):
+    from kokoro_tts.admin_auth import admin_username, admin_password
+
+    for prefix, values in (("ANGEVOICE", primary), ("KOKORO", legacy)):
+        for index, suffix in enumerate(("USERNAME", "PASSWORD")):
+            name = f"{prefix}_ADMIN_{suffix}"
+            monkeypatch.delenv(name, raising=False)
+            if values is not None:
+                monkeypatch.setenv(name, values[index])
+    assert (admin_username(), admin_password()) == expected
+    cfg = TTSConfig(host="127.0.0.1", admin_enabled=True,
+                    admin_credentials_file=tmp_path / "absent.json")
+    cfg.validate_security()
+    assert ("首次默认凭据" in caplog.text) == (tuple(value.strip() for value in expected) == ("admin", "admin123"))
+    assert (admin_username(), admin_password()) == expected
+
+
+@pytest.mark.parametrize("persisted,enabled,should_raise", [
+    (False, True, True), (True, True, False), (False, False, False),
+])
+def test_admin_placeholder_policy_respects_persisted_file_and_disabled_admin(
+    monkeypatch, tmp_path, persisted, enabled, should_raise,
+):
+    monkeypatch.setenv("ANGEVOICE_ADMIN_USERNAME", "operator")
+    monkeypatch.setenv("ANGEVOICE_ADMIN_PASSWORD", "change-me")
+    path = tmp_path / "admin.json"
+    if persisted:
+        path.write_text("persisted-file-presence-is-the-existing-boundary", encoding="utf-8")
+    cfg = TTSConfig(host="127.0.0.1", admin_enabled=enabled,
+                    voice_upload_enabled=False, admin_credentials_file=path)
+    if should_raise:
+        with pytest.raises(ValueError, match="ANGEVOICE_ADMIN_PASSWORD is still a placeholder"):
+            cfg.validate_security()
+    else:
+        cfg.validate_security()
+
+
+def test_api_placeholder_rejection_precedes_admin_and_feature_validation(monkeypatch, tmp_path, caplog):
+    monkeypatch.setenv("ANGEVOICE_ADMIN_PASSWORD", "change-me")
+    cfg = TTSConfig(model_dir=tmp_path / "models", api_key="change-me-to-a-real-secret-key", admin_enabled=False,
+                    voice_upload_enabled=True, admin_credentials_file=tmp_path / "absent.json")
+    with pytest.raises(ValueError, match="KOKORO_API_KEY is still a placeholder"):
+        cfg.validate_security()
+    assert not caplog.records
+
+
+def test_config_warning_order_and_logger_are_preserved(monkeypatch, tmp_path, caplog):
+    for prefix in ("ANGEVOICE", "KOKORO"):
+        for suffix in ("USERNAME", "PASSWORD"):
+            monkeypatch.delenv(f"{prefix}_ADMIN_{suffix}", raising=False)
+    cfg = TTSConfig(model_dir=tmp_path / "models", host="0.0.0.0", api_key=None, admin_enabled=True,
+                    api_key_file=tmp_path / "absent-key",
+                    admin_credentials_file=tmp_path / "absent-admin.json")
+    cfg.validate_security()
+    assert len(caplog.records) == 2
+    assert all(record.name == "kokoro_tts.config" for record in caplog.records)
+    assert "未启用 API 鉴权" in caplog.records[0].getMessage()
+    assert "首次默认凭据" in caplog.records[1].getMessage()
+    caplog.clear()
+    cfg.api_key_file.write_text("persisted-key", encoding="utf-8")
+    cfg.validate_security()
+    assert len(caplog.records) == 1
+    assert "首次默认凭据" in caplog.records[0].getMessage()
+
 def test_websocket_producer_drains_after_cancel_without_sending_old_audio(monkeypatch):
     from unittest.mock import MagicMock
     from kokoro_tts.routes.ws import TtsWebSocketSession

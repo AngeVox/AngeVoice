@@ -723,6 +723,53 @@ class TestStreamingGeneratorOwnership:
 class TestMossNestedProcessIteratorOwnership:
     """RESOURCE OWNERSHIP CONTRACT for the nested process stream iterator."""
 
+    def test_process_timeout_closes_iterator_before_marking_worker_failure(self):
+        from kokoro_tts.workers.process_worker import EngineProcessTimeoutError
+
+        class TimedOutIterator(_SentinelIterator):
+            def __next__(self):
+                raise EngineProcessTimeoutError("synthetic stream timeout")
+        inner = TimedOutIterator(())
+        harness = _MossProcessHarness(inner)
+        def mark_failure(**details):
+            assert inner.close_calls == 1
+            harness.failures.append(details)
+        harness._mark_process_failure = mark_failure
+        frames = list(_moss_process_stream(harness))
+        assert frames == [
+            {"type": "segment_error", "index": 0, "message": "synthetic stream timeout", "model": "moss"},
+            {"type": "done", "total_segments": 0, "total_audio_chunks": 0},
+        ]
+        assert inner.close_calls == 1
+        assert harness.failures == [{"timeout": 5.0, "reason": "stream_timeout"}]
+
+    @pytest.mark.parametrize("terminal", ["done", "error", "segment_error", "cancelled"])
+    def test_terminal_events_and_nonmapping_values_pass_through_without_repair(self, terminal):
+        payload = [None, {"type": "audio", "index": "bad"}, {"type": terminal}]
+        inner = _SentinelIterator(payload)
+        harness = _MossProcessHarness(inner)
+        result = list(_moss_process_stream(harness))
+        assert len(result) == len(payload)
+        assert all(actual is expected for actual, expected in zip(result, payload))
+        assert inner.close_calls == 1
+        assert harness.failures == []
+
+    def test_truncation_error_uses_next_audio_index_after_closing_iterator(self):
+        payload = [{"type": "audio", "index": index} for index in (3, "bad", -2, 7)]
+        inner = _SentinelIterator(payload)
+        harness = _MossProcessHarness(inner)
+        outer = _moss_process_stream(harness)
+        for frame in payload:
+            assert next(outer) is frame
+            assert inner.close_calls == 0
+        error = next(outer)
+        assert error["type"] == "segment_error"
+        assert error["index"] == 8
+        assert error["model"] == "moss"
+        assert inner.close_calls == 1
+        assert list(outer) == []
+        assert harness.failures == []
+
     def test_normal_exhaustion_closes_nested_iterator_once(self) -> None:
         inner = _SentinelIterator(({"type": "done"},))
         harness = _MossProcessHarness(inner)
@@ -798,7 +845,9 @@ class TestMossNestedProcessIteratorOwnership:
         assert [frame["type"] for frame in _moss_process_stream(harness)] == ["done"]
 
     def test_moss_wrapper_explicitly_owns_nested_iterator_close(self) -> None:
-        source = inspect.getsource(MossStreamingMixin._synthesize_stream_process_isolated)
+        wrapper = inspect.getsource(MossStreamingMixin._synthesize_stream_process_isolated)
+        assert "yield from _forward_process_stream(" in wrapper
+        source = inspect.getsource(moss_streaming_module._forward_process_stream)
         tree = ast.parse(textwrap.dedent(source))
         assert "for event in process_iterator" in source
         assert "_close_process_iterator" in source

@@ -17,6 +17,7 @@ from .audio import write_wav_bytes
 from .config import TTSConfig
 from .config_ids import moss_voice_catalog
 from .moss_engine_streaming import MossStreamingMixin
+from .moss.vram import vram_refresh_due
 from .moss import (
     analyze_waveform,
     clean_text as moss_clean_text,
@@ -94,7 +95,7 @@ class MossNanoEngine(MossStreamingMixin):
         self._executor_lock = threading.Lock()
         self._consecutive_timeouts = 0
         self._last_vram_snapshot = None
-        self._last_vram_refresh_at = 0.0
+        self._last_vram_refresh_at: float | None = None
         self._low_vram_mode = False
         self._full_decode_disabled_until = 0.0
         self._full_decode_oom_count = 0
@@ -291,7 +292,7 @@ class MossNanoEngine(MossStreamingMixin):
                 thread_name_prefix=f"{self.engine_id}-worker",
             )
         try:
-            old.shutdown(wait=False)
+            old.shutdown(wait=False, cancel_futures=True)
         except Exception:
             logger.debug("Failed to shut down old executor", exc_info=True)
 
@@ -322,7 +323,7 @@ class MossNanoEngine(MossStreamingMixin):
             self._consecutive_timeouts = 0
             self._low_vram_mode = False
             self._last_vram_snapshot = None
-            self._last_vram_refresh_at = 0.0
+            self._last_vram_refresh_at = None
             with self._prompt_cache_lock:
                 self._prompt_audio_code_cache.clear()
         finally:
@@ -812,10 +813,10 @@ class MossNanoEngine(MossStreamingMixin):
             return
         now = time.monotonic()
         ttl = max(0.0, float(getattr(self.config, "moss_vram_snapshot_ttl_seconds", 10.0) or 0.0))
-        if not force and self._last_vram_snapshot is not None and ttl > 0 and now - self._last_vram_refresh_at < ttl:
+        if not vram_refresh_due(now=now, last_refresh=self._last_vram_refresh_at, ttl=ttl, force=force):
             return
         snapshot = get_cuda_vram_snapshot()
-        # 探测失败时不清除保护状态，也不缓存——等下次 TTL 过期后重试
+        # 失败只记录尝试时间；保留最后成功快照和保护状态，TTL 后重试。
         if not snapshot.available or snapshot.free_mb is None:
             self._last_vram_refresh_at = now
             return
@@ -884,7 +885,6 @@ class MossNanoEngine(MossStreamingMixin):
             raise RuntimeError("MOSS 运行时不支持增量编解码流式传输")
         pending_decode_frames: list[list[int]] = []
         waveforms: list = []
-        self._runtime.codec_streaming_session.reset()
 
         def decode_pending(force: bool) -> None:
             pending_count = len(pending_decode_frames)
@@ -897,7 +897,7 @@ class MossNanoEngine(MossStreamingMixin):
             frame_budget = pending_count if force else min(pending_count, budget)
             frame_chunk = pending_decode_frames[:frame_budget]
             del pending_decode_frames[:frame_budget]
-            decoded = self._runtime.codec_streaming_session.run_frames(frame_chunk)
+            decoded = codec_session.run_frames(frame_chunk)
             if decoded is None:
                 return
             audio, audio_length = decoded
@@ -909,13 +909,11 @@ class MossNanoEngine(MossStreamingMixin):
             pending_decode_frames.append(list(frame))
             decode_pending(False)
 
-        try:
+        with self._codec_streaming_scope() as codec_session:
             text_token_ids = self._runtime.encode_text(chunk_text)
             request_rows = self._runtime.build_voice_clone_request_rows(prompt_audio_codes, text_token_ids)
             self._runtime.generate_audio_frames(request_rows, on_frame=on_frame)
             decode_pending(True)
-        finally:
-            self._runtime.codec_streaming_session.reset()
         if not waveforms:
             return np.zeros((0, self.channels), dtype=np.float32)
         return concat_waveforms(waveforms, channels=self.channels)

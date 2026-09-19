@@ -87,6 +87,12 @@ uv pip compile requirements/test-torch-cpu.in --universal --python-version 3.10 
 
 ## 覆盖率策略
 
+MOSS VRAM 生命周期在 `test_moss_characterization_2615.py` 使用可控时钟与合成探测快照验证：首次失败也遵守 TTL，无历史快照的 OOM 保留保守限制至 TTL；探测失败保留最后成功快照，force 与零/负 TTL、阈值等号、CPU/禁用、卸载重置均有覆盖。没有真实 CUDA 探测或推理，不把策略正确性当作显存画像验收。探测时机是现有 `moss.vram` 的纯判断，引擎继续持有快照、低显存状态和独立 full-codec 冷却。
+
+MOSS 隔离流转发/关闭继续在 `test_request_cancellation_resource_ownership_contract.py` 演进：事件对象原样转发，done/error/segment_error/cancelled 不重复修复，缺失终止帧时关闭底层迭代器后报告下一音频索引。`yield from` 必须把上层提前关闭传递到转发层的 finally；既有普通关闭异常、BaseException、内部失败和取消行为断言保留。静态资源归属检查跟随实际 owner 更新，不替代这些行为测试。Manager 测试创建的空闲 timer 必须在 fixture teardown 停止并等待退出，不能通过过滤后续安全日志断言掩盖泄漏。
+
+模型来源执行行为继续在 `test_model_source_executor_fallback_contract.py`、`test_model_source_revision_credential_offline_contract.py` 和 `test_kokoro_managed_asset_integrity.py` 演进。MOSS 模型/tokenizer 共用执行循环，但入口各自选择计划和校验器；SDK 返回目录先于目标目录校验，原有 ModelScope fallback 和 Hugging Face 异常边界保留。Kokoro 单独验证受管目录准入、预置 revision/摘要、失败关闭及普通目录懒加载回退，不把两类策略合并。该批不宣称下载原子性或真实模型验收。
+
 CI 覆盖率下限为 70%，具体覆盖率随平台和候选变化，以该次 Gate 的 coverage JSON 和完整命令为准，不把历史百分比当作当前事实。每次有意义的实现需要比较同环境基线及变更路径覆盖，不能仅满足下限；跨平台稳定证据齐备后再单独收紧全局阈值。复杂度热点由 `tests/quality/test_architecture_ratchets.py` 执行逐函数只降不升规则，函数下降后应同步降低或移除其 ratchet 项。
 
 先跑变更相关合同、security 和 quality，在实现批次或最终累计候选运行完整套件。候选与风险未变化时复用已通过证据；纯文档修正不重复全量运行。测试失败、外部 runner 错误和缺少模型环境必须分别记录。日志、临时目录、coverage 和构建产物放在仓库外，保存真实命令/退出码，并使证据包覆盖 tracked/untracked 候选内容。
@@ -116,6 +122,8 @@ WS 首包失败与参考文件清理、输入别名、二进制元数据/音频�
 
 配置执行顺序继续由 `tests/contracts/test_config_env_contract.py` 和 facade 合同覆盖：路径/标量先于凭据生成、生成失败的部分写入状态、根目录与显式子目录优先级、runtime 与显式调用覆盖。新增领域修改应在这些行为合同演进，不依赖 helper 名称或函数行数。
 
+B1 的路径字符串展开、Path 对象身份、ZipVoice 消费方路径保留在 `test_ttsconfig_facade_contract.py` 验证；Admin ENV 主/旧名称回退、空值及空白、持久化文件存在、禁用后台、占位符拒绝顺序和日志归属在 `test_security_hardening.py` 验证。历史 P2A1 JSON 快照保持原样，当前 ENV reader 迁移在原归属合同中显式映射，不改历史快照或放宽 hash 门槛。`admin_auth` 原有函数导出保留，轻量 bootstrap 模块不引入 FastAPI/Torch 依赖。
+
 ZipVoice 共用合成路径在 `tests/test_zipvoice_cpu_runtime.py` 中参数化覆盖 CPU/CUDA 包装器，包含参数夹取、参考校验、FLOAT→PCM16、失败清理与 CUDA 专属参数。该文件保留历史名称；替身测试不证明真实 CUDA 推理或音质。provider fallback 继续由 `tests/test_zipvoice_gpu_provider.py` 维护。
 
 ZipVoice 资产校验也在 `tests/test_zipvoice_gpu_provider.py` 和 `tests/contracts/test_model_asset_integrity_partial_destination_contract.py` 演进：已学习摘要只对相同 repo/revision 的 verified 记录有效。清单换源或换版本后，无预置 SHA 的文件必须重新下载验证；禁止下载时明确失败。现有生产记录包含这些字段并继续复用；缺少来源身份的手写/不完整记录不能作为离线信任依据。清单预置 SHA 不依赖历史来源记录，内容匹配即可离线验收。来源身份与下述安装/互斥边界分别验收。
@@ -137,3 +145,13 @@ Manager 加载与失败重试行为继续在 `tests/test_runtime_resilience_and_
 Provider 决策在 `tests/test_product_model_registry.py` 维护：MOSS 显式提示、配置、CPU/CUDA 别名组合及禁用开关；ZipVoice 与普通设备选择不读取 MOSS 别名。显式禁用 CUDA 的拒绝仍由 Registry 负责。
 
 WS producer 生命周期继续在 `tests/test_ws_cancel_characterization_2615.py` 演进：队列拒绝、异常、取消、正常结束及关闭失败；保留迭代器引用验证显式关闭，并穿过真实 StreamingService 验证底层关闭、模型借用释放、结束通知的顺序。替身模型不证明真实推理或端到端背压。
+
+Kokoro 加载与延迟 English 生命周期统一在 `tests/test_engine_lazy_english_g2p.py` 演进：模型构造、设备迁移、eval、中文 pipeline 的普通异常和中断均保留异常并清理实例引用；覆盖构造中触发 English、成功重试、幂等加载、卸载及最近成功设备信息。权重错误保留提示和 cause，远程构造仍由来源策略准入；这些离线替身不证明真实模型推理或显存立即归还。来源依赖方向与上游 `local_files_only` 历史记录跟随实际构造 owner，冻结 P5 合同不变。
+
+ZipVoice 双 runtime 加载合同在 `tests/test_zipvoice_cpu_runtime.py` 共用离线组件夹具：tokenizer、model、vocoder、eval、feature 构造失败/中断均不发布半成品，随后可重试；CUDA 单独覆盖 checkpoint、model/device 迁移。幂等加载、卸载后再加载、失败重载保持最近成功采样率/device 一并验证。`test_zipvoice_gpu_provider.py` 保留 Engine fallback 与资产准入检查；CUDA 替身通过不能记为真实 GPU 推理通过。
+
+MOSS codec 生命周期在 `test_moss_characterization_2615.py` 覆盖流式/非流式两个实际调用方：OOM、取消、中断与 reset 同时失败时保留原异常；入口 reset 失败不生成，成功生成后的 reset 失败必须传播；后续请求仍重新 reset，并执行 frame callback/尾帧解码。P4 上独立方法与基础 CUDA 运算的探针仅证明该窄边界，不等同完整模型或音质验收。
+
+同一 MOSS 测试文件使用真实线程、Event 和锁验证非隔离 producer：等待 runtime 锁时取消，取得锁后不再准备 prompt；prompt 准备期间取消，不再修改生成配置，后续请求不继承取消状态。关闭消费者仅发出协作停止，正在运行的 producer 继续持锁直到退出；测试显式等待其退出，再验证锁可复用，不能以消费者 done 推断 CUDA/ONNX 已中断。
+
+`test_runtime_resilience_and_admin.py` 以真实 executor 验证重建及强制卸载：旧池尚未启动的 Future 被取消，活动任务仍可完成，新池可接收任务。取消待执行 Future 不代表强停活动线程；受损实例仍由 Manager 丢弃，不得因有新 executor 就重新视为健康。

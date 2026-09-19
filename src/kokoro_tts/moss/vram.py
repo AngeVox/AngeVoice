@@ -30,6 +30,11 @@ class VramSnapshot:
         }
 
 
+def vram_refresh_due(*, now: float, last_refresh: float | None, ttl: float, force: bool = False) -> bool:
+    """Schedule from the last probe attempt or OOM, not from snapshot success."""
+    return force or last_refresh is None or not (ttl > 0 and now - last_refresh < ttl)
+
+
 def get_cuda_vram_snapshot() -> VramSnapshot:
     """尽量安全地返回当前 CUDA 显存信息。"""
 

@@ -19,6 +19,43 @@ HF_REPO = "hexgrad/Kokoro-82M-v1.1-zh"
 MS_REPO = "AI-ModelScope/Kokoro-82M-v1.1-zh"
 
 
+@pytest.mark.parametrize("mode", [
+    "custom_target_complete", "managed_target_complete", "ready_default",
+    "custom_incomplete", "managed_incomplete", "custom_returned_managed",
+])
+def test_ensure_result_admission_preserves_target_and_failure_policy(monkeypatch, tmp_path, mode):
+    import logging
+
+    current, target, returned = (tmp_path / name for name in ("current", "target", "returned"))
+    cfg = SimpleNamespace(model_dir=current, model_source="huggingface", kokoro_prefetch_voices=False)
+    installed = [False]
+    calls = []
+    managed_target = mode.startswith("managed_")
+    monkeypatch.setattr(model_sources, "default_kokoro_model_dir", lambda: target)
+    monkeypatch.setattr(model_sources, "is_managed_kokoro_mode", lambda _cfg, path: (
+        (path == target and managed_target) or (path == returned and mode == "custom_returned_managed")
+    ))
+    monkeypatch.setattr(model_sources, "has_valid_kokoro_local_assets", lambda path, **kwargs: (
+        path == target and (mode == "ready_default" or (installed[0] and mode.endswith("_complete")))
+    ))
+    def download(_cfg, destination, *, logger, managed):
+        calls.append((destination, managed))
+        installed[0] = True
+        return returned if mode == "custom_returned_managed" else None
+    monkeypatch.setattr(model_sources, "_download_kokoro_assets", download)
+    log = logging.getLogger("kokoro-result-contract")
+    if mode in {"managed_incomplete", "custom_returned_managed"}:
+        message = "could not be downloaded" if mode == "managed_incomplete" else "custom download target"
+        with pytest.raises(kokoro_assets.KokoroAssetIntegrityError, match=message):
+            model_sources.ensure_kokoro_model_dir(cfg, logger=log)
+        assert cfg.model_dir == current
+    else:
+        result = model_sources.ensure_kokoro_model_dir(cfg, logger=log)
+        assert result == (None if mode == "custom_incomplete" else target)
+        assert cfg.model_dir == target
+    assert calls == ([] if mode == "ready_default" else [(target, managed_target)])
+
+
 def _digest(data: bytes) -> str:
     return hashlib.sha256(data).hexdigest()
 

@@ -40,6 +40,20 @@ class ZipVoiceOnnxCpuRuntime:
     def load(self):
         if self.loaded:
             return self
+        (
+            self.model,
+            self.vocoder,
+            self.tokenizer,
+            self.feature_extractor,
+            self.generate_sentence,
+            self.torch,
+            self.sample_rate,
+        ) = self._build_runtime()
+        self.loaded = True
+        return self
+
+    def _build_runtime(self):
+        """Build components locally; a failed attempt publishes no partial runtime."""
         asset_status = self.assets.ensure()
         upstream_path = self._upstream_path()
         if not (upstream_path / "zipvoice").is_dir():
@@ -63,16 +77,13 @@ class ZipVoiceOnnxCpuRuntime:
         distill = Path(getattr(self.cfg, "zipvoice_distill_dir", asset_status["distill_dir"]))
         vocos = Path(getattr(self.cfg, "zipvoice_vocos_dir", asset_status["vocos_dir"]))
         model_config = json.loads((distill / "model.json").read_text(encoding="utf-8"))
-        self.sample_rate = int(model_config["feature"]["sampling_rate"])
-        self.tokenizer = EmiliaTokenizer(token_file=distill / "tokens.txt")
-        self.model = OnnxModel(distill / "text_encoder_int8.onnx", distill / "fm_decoder_int8.onnx", num_thread=threads)
-        self.vocoder = get_vocoder(str(vocos))
-        self.vocoder.eval()
-        self.feature_extractor = VocosFbank()
-        self.generate_sentence = generate_sentence
-        self.torch = torch
-        self.loaded = True
-        return self
+        sample_rate = int(model_config["feature"]["sampling_rate"])
+        tokenizer = EmiliaTokenizer(token_file=distill / "tokens.txt")
+        model = OnnxModel(distill / "text_encoder_int8.onnx", distill / "fm_decoder_int8.onnx", num_thread=threads)
+        vocoder = get_vocoder(str(vocos))
+        vocoder.eval()
+        feature_extractor = VocosFbank()
+        return model, vocoder, tokenizer, feature_extractor, generate_sentence, torch, sample_rate
 
     def synthesize(self, *, text: str, prompt_audio_path: str, prompt_text: str, speed: float = 1.0, num_steps: int | None = None, remove_long_sil: bool | None = None) -> bytes:
         self.load()

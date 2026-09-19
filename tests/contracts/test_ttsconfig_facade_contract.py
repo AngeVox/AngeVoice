@@ -263,3 +263,37 @@ def test_create_app_preserves_injected_config_identity_without_reloading_sources
         assert app.state.angevoice.cfg is provided
     finally:
         app.state.angevoice.model_manager.stop_idle_timer()
+
+
+@pytest.mark.parametrize("field", [
+    "output_dir", "credentials_dir", "api_key_file", "admin_credentials_file",
+    "runtime_config_file", "moss_model_dir", "moss_audio_tokenizer_model_dir",
+    "moss_repo_path", "moss_prompt_audio_path",
+])
+@pytest.mark.parametrize("as_path", [False, True])
+def test_explicit_path_field_string_expansion_preserves_existing_path_objects(
+    monkeypatch, tmp_path, field, as_path,
+):
+    runtime = tmp_path / "runtime.json"
+    _write_runtime_config(runtime, {})
+    _isolate_load_config_environment(monkeypatch, tmp_path, runtime)
+    _disable_validation(monkeypatch)
+    value = Path("~/explicit-value") if as_path else "~/explicit-value"
+    result = getattr(load_config(**{field: value}), field)
+    if as_path:
+        assert result is value
+    else:
+        assert result == tmp_path / "fake-home" / "explicit-value"
+
+
+def test_explicit_zipvoice_paths_keep_consumer_owned_normalization(monkeypatch, tmp_path):
+    runtime = tmp_path / "runtime.json"
+    _write_runtime_config(runtime, {})
+    _isolate_load_config_environment(monkeypatch, tmp_path, runtime)
+    _disable_validation(monkeypatch)
+    values = {name: "~/" + name for name in (
+        "zipvoice_model_root", "zipvoice_distill_dir", "zipvoice_vocos_dir",
+    )}
+    config = load_config(**values)
+    for name, value in values.items():
+        assert getattr(config, name) == value

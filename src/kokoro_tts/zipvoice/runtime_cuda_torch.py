@@ -49,6 +49,21 @@ class ZipVoiceTorchCudaRuntime:
     def load(self):
         if self.loaded:
             return self
+        (
+            self.model,
+            self.vocoder,
+            self.tokenizer,
+            self.feature_extractor,
+            self.generate_sentence,
+            self.torch,
+            self.sample_rate,
+            self.device,
+        ) = self._build_runtime()
+        self.loaded = True
+        return self
+
+    def _build_runtime(self):
+        """Build components locally; a failed attempt publishes no partial runtime."""
         upstream_path = self._upstream_path()
         if not (upstream_path / "zipvoice").is_dir():
             raise RuntimeError(f"ZipVoice upstream Python source not found: {upstream_path}")
@@ -75,19 +90,16 @@ class ZipVoiceTorchCudaRuntime:
         distill = Path(getattr(self.cfg, "zipvoice_distill_dir", asset_status["distill_dir"]))
         vocos = Path(getattr(self.cfg, "zipvoice_vocos_dir", asset_status["vocos_dir"]))
         model_config = json.loads((distill / "model.json").read_text(encoding="utf-8"))
-        self.sample_rate = int(model_config["feature"]["sampling_rate"])
-        self.tokenizer = EmiliaTokenizer(token_file=distill / "tokens.txt")
-        tokenizer_config = {"vocab_size": self.tokenizer.vocab_size, "pad_id": self.tokenizer.pad_id}
-        self.model = ZipVoiceDistill(**model_config["model"], **tokenizer_config)
-        load_checkpoint(filename=distill / "model.pt", model=self.model, strict=True)
-        self.device = torch.device("cuda", device_index)
-        self.model = self.model.to(self.device).eval()
-        self.vocoder = get_vocoder(str(vocos)).to(self.device).eval()
-        self.feature_extractor = VocosFbank()
-        self.generate_sentence = generate_sentence
-        self.torch = torch
-        self.loaded = True
-        return self
+        sample_rate = int(model_config["feature"]["sampling_rate"])
+        tokenizer = EmiliaTokenizer(token_file=distill / "tokens.txt")
+        tokenizer_config = {"vocab_size": tokenizer.vocab_size, "pad_id": tokenizer.pad_id}
+        model = ZipVoiceDistill(**model_config["model"], **tokenizer_config)
+        load_checkpoint(filename=distill / "model.pt", model=model, strict=True)
+        device = torch.device("cuda", device_index)
+        model = model.to(device).eval()
+        vocoder = get_vocoder(str(vocos)).to(device).eval()
+        feature_extractor = VocosFbank()
+        return model, vocoder, tokenizer, feature_extractor, generate_sentence, torch, sample_rate, device
 
     def synthesize(self, *, text: str, prompt_audio_path: str, prompt_text: str, speed: float = 1.0, num_steps: int | None = None, remove_long_sil: bool | None = None) -> bytes:
         self.load()

@@ -11,6 +11,7 @@ import logging
 import queue
 import time
 import threading
+from contextlib import contextmanager
 from typing import Callable
 
 from .audio import encode_audio_segment
@@ -51,11 +52,58 @@ def _cancel_requested(cancel_check: Callable[[], bool] | None) -> bool:
         return False
 
 
+def _forward_process_stream(process_iterator, *, model_id: str, cancel_check: Callable[[], bool] | None):
+    """Forward unchanged events and own the nested iterator through termination."""
+    saw_protocol_done = False
+    saw_terminal_error = False
+    next_error_index = 0
+    try:
+        for event in process_iterator:
+            if isinstance(event, dict):
+                event_type = str(event.get("type") or "")
+                if event_type == "done":
+                    saw_protocol_done = True
+                elif event_type in {"error", "segment_error", "cancelled"}:
+                    saw_terminal_error = True
+                if event_type == "audio":
+                    try:
+                        next_error_index = max(next_error_index, int(event.get("index", -1)) + 1)
+                    except (TypeError, ValueError):
+                        next_error_index += 1
+            yield event
+    finally:
+        _close_process_iterator(process_iterator, model_id=model_id)
+    if not saw_protocol_done and not saw_terminal_error and not _cancel_requested(cancel_check):
+        logger.warning("MOSS 隔离流式合成提前结束，未收到协议完成帧")
+        yield {
+            "type": "segment_error",
+            "index": next_error_index,
+            "message": "MOSS 流式合成提前结束，未收到完成帧；本次部分音频已丢弃",
+            "model": model_id,
+        }
+
+
 class _MossStreamCancelled(Exception):
     """客户端取消 MOSS 流式请求时使用的内部异常。"""
 
 
 class MossStreamingMixin:
+    @contextmanager
+    def _codec_streaming_scope(self):
+        """Reset the same session at both boundaries without masking generation failure."""
+        session = self._runtime.codec_streaming_session
+        session.reset()
+        try:
+            yield session
+        except BaseException:
+            try:
+                session.reset()
+            except Exception:
+                logger.warning("MOSS codec reset failed during request cleanup", exc_info=True)
+            raise
+        else:
+            session.reset()
+
     def synthesize_stream(
         self,
         text,
@@ -235,9 +283,6 @@ class MossStreamingMixin:
             float(getattr(self.config, "engine_process_stream_idle_timeout_seconds", 120.0) or 120.0),
             5.0,
         )
-        saw_protocol_done = False
-        saw_terminal_error = False
-        next_error_index = 0
         try:
             process_iterator = iter(
                 self._process_client.stream(
@@ -256,30 +301,9 @@ class MossStreamingMixin:
                     cancel_check=cancel_check,
                 )
             )
-            try:
-                for event in process_iterator:
-                    if isinstance(event, dict):
-                        event_type = str(event.get("type") or "")
-                        if event_type == "done":
-                            saw_protocol_done = True
-                        elif event_type in {"error", "segment_error", "cancelled"}:
-                            saw_terminal_error = True
-                        if event_type == "audio":
-                            try:
-                                next_error_index = max(next_error_index, int(event.get("index", -1)) + 1)
-                            except (TypeError, ValueError):
-                                next_error_index += 1
-                    yield event
-            finally:
-                _close_process_iterator(process_iterator, model_id=self.engine_id)
-            if not saw_protocol_done and not saw_terminal_error and not _cancel_requested(cancel_check):
-                logger.warning("MOSS 隔离流式合成提前结束，未收到协议完成帧")
-                yield {
-                    "type": "segment_error",
-                    "index": next_error_index,
-                    "message": "MOSS 流式合成提前结束，未收到完成帧；本次部分音频已丢弃",
-                    "model": self.engine_id,
-                }
+            yield from _forward_process_stream(
+                process_iterator, model_id=self.engine_id, cancel_check=cancel_check,
+            )
         except EngineProcessTimeoutError as exc:
             self._mark_process_failure(timeout=stream_timeout, reason="stream_timeout")
             yield {"type": "segment_error", "index": 0, "message": str(exc), "model": self.engine_id}
@@ -299,7 +323,11 @@ class MossStreamingMixin:
         put_item: Callable[[tuple[str, object]], bool],
         is_cancelled: Callable[[], bool],
     ) -> None:
+        if is_cancelled():
+            raise _MossStreamCancelled()
         prompt_audio_codes = self._resolve_prompt_audio_codes_cached(voice=voice, prompt_audio_path=prompt_audio_path)
+        if is_cancelled():
+            raise _MossStreamCancelled()
         self._configure_runtime_generation()
         total_segments = len([item for item in segments if item.strip()])
         emitted = 0
@@ -378,7 +406,6 @@ class MossStreamingMixin:
             chunk_emitted = 0
             generated_frames: list[list[int]] = []
             t0 = time.monotonic()
-            self._runtime.codec_streaming_session.reset()
 
             def decode_pending(force: bool) -> None:
                 nonlocal chunk_emitted, emitted
@@ -395,7 +422,7 @@ class MossStreamingMixin:
                 frame_budget = pending_count if force else min(pending_count, max(1, decode_budget))
                 frame_chunk = pending_decode_frames[:frame_budget]
                 del pending_decode_frames[:frame_budget]
-                decoded = self._runtime.codec_streaming_session.run_frames(frame_chunk)
+                decoded = codec_session.run_frames(frame_chunk)
                 if decoded is None:
                     return
                 audio, audio_length = decoded
@@ -418,13 +445,11 @@ class MossStreamingMixin:
                 pending_decode_frames.append(list(frame))
                 decode_pending(False)
 
-            try:
+            with self._codec_streaming_scope() as codec_session:
                 text_token_ids = self._runtime.encode_text(chunk_text)
                 request_rows = self._runtime.build_voice_clone_request_rows(prompt_audio_codes, text_token_ids)
                 generated_frames = self._runtime.generate_audio_frames(request_rows, on_frame=on_frame)
                 decode_pending(True)
-            finally:
-                self._runtime.codec_streaming_session.reset()
 
             logger.info(
                 "MOSS 运行时小块 %d/%d 已流式输出（%.1fs，帧=%d，音频块=%d）",
