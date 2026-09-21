@@ -155,3 +155,8 @@ MOSS codec 生命周期在 `test_moss_characterization_2615.py` 覆盖流式/非
 同一 MOSS 测试文件使用真实线程、Event 和锁验证非隔离 producer：等待 runtime 锁时取消，取得锁后不再准备 prompt；prompt 准备期间取消，不再修改生成配置，后续请求不继承取消状态。关闭消费者仅发出协作停止，正在运行的 producer 继续持锁直到退出；测试显式等待其退出，再验证锁可复用，不能以消费者 done 推断 CUDA/ONNX 已中断。
 
 `test_runtime_resilience_and_admin.py` 以真实 executor 验证重建及强制卸载：旧池尚未启动的 Future 被取消，活动任务仍可完成，新池可接收任务。取消待执行 Future 不代表强停活动线程；受损实例仍由 Manager 丢弃，不得因有新 executor 就重新视为健康。
+
+同一测试文件使用真实线程和可观测的重入锁验证 `current_snapshot()`：读取方等待锁期间当前模型发生切换，取得锁后必须选择新的模型并返回 current=true，且不得创建/加载引擎。该合同保护唯一生命周期 owner 的一致视图；不要求为展示再创建状态服务，也不宣称第三方 metadata 自身线程安全。
+
+
+GPU 依赖兼容合同继续在 `test_transformers_compatibility_2615.py` 维护：CPU 与 GPU 允许各自锁定已经验证的 Transformers 版本，共享 hub/tokenizers 约束。清单通过不能替代 Docker 构建和真实模型验证。2026-09-21 P4 证据 `angevoice-gpu-compatibility` 使用完整候选镜像（非旧依赖镜像挂载源码），通过真实隔离 worker 验证三模型 HTTP/WS 与 Kokoro/MOSS raw/prepared、取消恢复；不宣称外部网络部署、全量文本读音、压力或主观音质通过。

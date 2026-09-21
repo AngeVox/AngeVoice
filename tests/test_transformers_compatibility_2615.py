@@ -19,7 +19,6 @@ CONSTRAINT_FILES = [
     REPO_ROOT / "docker" / "constraints-legacy-gpu.lock",
 ]
 RUNTIME_CONSTRAINTS = {
-    "transformers==5.10.4",
     "tokenizers==0.22.2",
     "huggingface_hub==1.23.0",
 }
@@ -39,8 +38,8 @@ def test_pyproject_uses_patched_transformers_line_without_rc_or_latest():
     dependencies = pyproject["project"]["dependencies"]
     gpu_dependencies = pyproject["project"]["optional-dependencies"]["gpu"]
 
-    assert "transformers>=5.10.4,<5.11" in dependencies
-    assert "transformers>=5.10.4,<5.11" in gpu_dependencies
+    assert "transformers>=5.10.4,<5.12" in dependencies
+    assert "transformers>=5.10.4,<5.12" in gpu_dependencies
     transformer_specs = [
         dependency.lower()
         for dependency in dependencies + gpu_dependencies
@@ -56,7 +55,10 @@ def test_transformers_runtime_constraints_are_synchronized():
             for line in path.read_text(encoding="utf-8").splitlines()
             if line.startswith(("transformers", "tokenizers", "huggingface_hub"))
         }
-        assert lines == RUNTIME_CONSTRAINTS
+        # Torch 2.6 GPU profiles need the upstream optional-FP8 import fix.
+        # CPU stays on its independently validated security baseline.
+        version = "5.10.4" if path.name == "constraints.txt" else "5.11.0"
+        assert lines == RUNTIME_CONSTRAINTS | {f"transformers=={version}"}
 
 
 def test_security_profiles_keep_explicit_torch_and_audio_pairs():

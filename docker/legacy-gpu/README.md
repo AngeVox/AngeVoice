@@ -78,3 +78,10 @@ Use it only for testing. If you see CUDA allocation errors, fallback to CPU, or 
 - `docker/gpu`：推荐 NVIDIA 画像。宿主机驱动较新的 Tesla P4/P40/V100 也建议优先尝试。
 - `docker/legacy-gpu`：兼容模式，不保证更快。
 - `docker/cpu`：无 NVIDIA GPU、NAS、最低风险部署。
+
+
+## Validated P4 candidate / P4 候选实测
+
+2026-09-21: both corrected candidate Dockerfiles passed real Kokoro/MOSS/ZipVoice HTTP/WS inference on a Tesla P4 with driver 580.142. Standard GPU used Torch 2.6.0+cu124; legacy used 2.6.0+cu118; both used Transformers 5.11.0. This validates this host and candidate, not every old GPU or driver, and is not a published image update.
+
+2026-09-21：修正后的标准 GPU 与 legacy 候选均在 Tesla P4 / 驱动 580.142 上通过三模型真实 HTTP/WS 推理，无 CPU 自动回退。P4 不必强制使用 legacy；默认 MOSS CPU 与可选 CUDA 实验策略保持不变。该结论仅覆盖本机和候选版本，不代表所有旧卡/驱动或音质验收，线上 `v2.6.616` 标签未更新。具体依赖、测试边界与安全残余见[依赖安全基线](../../docs/DEPENDENCY_SECURITY.md)。

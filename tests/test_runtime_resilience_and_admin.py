@@ -164,6 +164,46 @@ def test_moss_executor_transition_cancels_pending_work_without_killing_active_wo
         engine._executor.shutdown(wait=True)
 
 
+def test_current_snapshot_selects_model_inside_lifecycle_lock(monkeypatch):
+    from concurrent.futures import ThreadPoolExecutor
+
+    manager = EngineManager(TTSConfig(model_idle_timeout_seconds=0))
+    gate = threading.RLock()
+    waiting = threading.Event()
+    gate.acquire()
+
+    class ObservedLock:
+        def __enter__(self):
+            waiting.set()
+            gate.acquire()
+
+        def __exit__(self, *args):
+            gate.release()
+
+    monkeypatch.setattr(manager, "_lock", ObservedLock())
+    monkeypatch.setattr(manager, "_runtime_available", lambda spec: True)
+    monkeypatch.setattr(manager, "_create_engine", lambda *a, **kw: pytest.fail("snapshot must not construct an engine"))
+    pool = ThreadPoolExecutor(max_workers=1)
+    try:
+        result = pool.submit(manager.current_snapshot, include_runtime_metadata=False)
+        assert waiting.wait(3)
+        # Reproduce a lifecycle transition while the reader is waiting for the lock.
+        manager._current_model_id = "moss"
+        gate.release()
+        snapshot = result.result(timeout=3)
+        assert snapshot["id"] == "moss"
+        assert snapshot["current"] is True
+        assert manager._engines == {}
+    finally:
+        # Only the controlling thread acquires the initial gate.
+        try:
+            gate.release()
+        except RuntimeError:
+            pass
+        pool.shutdown(wait=True)
+        manager.stop_idle_timer()
+
+
 def test_unhealthy_nonisolated_moss_force_unload_never_waits_forever_on_runtime_lock():
     engine = MossNanoEngine(TTSConfig(), execution_provider="cpu", process_isolation=False)
     engine._loaded = True

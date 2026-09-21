@@ -5,8 +5,8 @@
 | 画像 | Torch / TorchAudio | CUDA | Transformers | 说明 |
 | --- | --- | --- | --- | --- |
 | CPU、轻量 CI | 2.13.0 / 2.11.0（CI不安装音频包） | CPU | 5.10.4 | CPU音频读写配套 TorchCodec 0.13.0 与共享 FFmpeg 库 |
-| GPU | 2.6.0 / 2.6.0 | 12.4 | 5.10.4 | 原12.1 wheel无2.6；改用官方cu124，部署前确认驱动支持CUDA12.4 |
-| legacy-gpu | 2.6.0 / 2.6.0 | 11.8 | 5.10.4 | 保留旧GPU画像，不升级至不支持旧CUDA的2.13 |
+| GPU | 2.6.0 / 2.6.0 | 12.4 | 5.11.0 | 使用官方 cu124；5.11.0 修复旧 Torch 导入时误用可选 FP8 类型的问题，硬件验收见下文 |
+| legacy-gpu | 2.6.0 / 2.6.0 | 11.8 | 5.11.0 | 保留旧 GPU 画像；不因兼容问题回退安全基线或伪造 Torch FP8 属性 |
 
 CPU完整消除本批已报告的版本范围命中。两个GPU画像消除Torch反序列化critical告警，但保留以下上游风险；这是兼容性限制，不能描述为GPU无漏洞。原依赖源码安装下限提高为Torch/TorchAudio 2.6，CPU安全部署应使用上述锁定组合，不依赖宽泛下限自动选择画像。
 
@@ -21,7 +21,7 @@ CPU完整消除本批已报告的版本范围命中。两个GPU画像消除Torch
 | c678-jfcj-6jmf | low：tuple handler内存破坏 | 已越过公告受影响范围 | 保留；公告无修复版本 |
 | 887c-mr87-cxwp | moderate：资源释放 | 已越过受影响范围 | 保留 |
 | 3749-ghw9-m3mg | low：本地拒绝服务 | 已越过受影响范围 | 保留 |
-| xrqw-3rrv-vx5w | high：Transformers保存模板路径穿越 | 三画像均升级5.10.4 | 三画像均升级5.10.4 |
+| xrqw-3rrv-vx5w | high：Transformers保存模板路径穿越 | 5.10.4 | 5.11.0，保留 5.10.4 安全下限 |
 
 GitHub告警当前主要由测试输入文件检测到；其自动关闭不表示GPU残余消失。不要对GPU残余执行dismiss。对无明确修复版本的条目，仅声明不再命中公告列出的版本范围。
 
@@ -36,3 +36,14 @@ GitHub告警当前主要由测试输入文件检测到；其自动关闭不表�
 现有jieba 0.42.1的 `_compat.py` 仍调用 `pkg_resources.resource_stream`，这是保留 `setuptools<81` 的实际兼容约束。不能直接解除上限并让参考文本处理在运行时失败；后续需验证上游替代包或兼容迁移，再提升setuptools。该条由 AV-D021 继续跟踪，不忽略或误报已修复。
 
 本地验收：Torch2.13独立环境完整1596 passed/4 skipped，CPU镜像导入、WAV读写/重采样及HTTP启动检查；GPU仅确认官方wheel及Torch/Audio/CUDNN依赖可解析，尚无真实GPU画像验证。镜像扫描记录与本批补丁存放于仓库外 `angevoice-dependency-security` 证据目录。
+
+
+## 2026-09-21 Tesla P4 候选镜像实测
+
+标准 GPU 原基础镜像标签误写为 `12.4.1-cudnn-runtime-runtime-ubuntu22.04`，仓库返回不存在；修正为官方 `12.4.1-cudnn-runtime-ubuntu22.04`。两个 GPU 画像原有 Transformers 5.10.4 在 Torch 2.6 导入 Kokoro 时访问不存在的 `torch.float8_e8m0fnu`，升级到包含[上游修复 #46393](https://github.com/huggingface/transformers/pull/46393)的正式版 5.11.0。CPU 约束仍为 5.10.4；项目允许范围 `<5.12` 容纳两套已明确锁定的画像，不使用 monkeypatch 或跳过导入检查。
+
+在 192.168.1.2 的 Tesla P4（驱动 580.142，8 GB）上，两套完整候选镜像均构建成功，构建阶段 Kokoro/ZipVoice/MOSS 导入、pip check 和 WAV 读写/重采样通过。标准 GPU 实际 Torch/TorchAudio 2.6.0+cu124、ORT GPU 1.20.2；legacy 为 2.6.0+cu118、ORT GPU 1.20.1，二者 Transformers 均为 5.11.0。
+
+直接使用新镜像内源码和依赖，独立容器、复制权重、禁网，真实隔离 worker 的 Kokoro/MOSS/ZipVoice HTTP 与 WS 全部生成有效音频；MOSS 实际 provider=cuda、ZipVoice=cuda_pytorch，关闭自动 CPU fallback。Kokoro/MOSS 额外通过 raw/prepared、收到音频后取消及后续请求恢复。标准 GPU 在这台 P4 上可运行，不要求仅因卡型切换 legacy；legacy 默认 MOSS CPU 策略不变，本轮 CUDA 为显式实验配置。
+
+这些是 ASGI 路由和真实模型 smoke，未涵盖所有宿主驱动、P40/V100、外部 TCP/代理部署、长期压力、ZipVoice 取消及主观音质/品牌读音。上表 GPU 安全残余仍开放，不能称为无漏洞。两套镜像均未发布，也未替换生产容器。证据目录：仓库外 `2026-09-20/angevoice-gpu-compatibility`（9 月 21 日收口）。

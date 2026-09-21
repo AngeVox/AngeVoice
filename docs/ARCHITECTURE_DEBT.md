@@ -34,9 +34,9 @@
 | AV-D016 / 2.12、旧 P7 | 路由注册依赖过多；service_extras / app assembly | 部分完成：2026-09-10 按批量、管理资源、格式查询显式组装；新旧入口 HTTP 回归 | 主路径不再传引擎/原始缓存/请求表，也不在 handler 从 app.state 取模型管理器；旧签名桥接保留，其他领域路由依赖仍需逐项核对 |
 | AV-D017 / 2.13、2.13b | Adapter/参数协议；Registry、Adapter、EngineParameterSchema | 部分完成：capability、错误及构造 owner 已闭合；2026-09-11 参数采集与类型校验分离，容器值及整数溢出返回参数错误 | 参数边界证据 `angevoice-engine-parameter-boundary`（2026-09-10 开始）；2026-09-11 MOSS provider 规则独立，提示→配置→别名优先级保持，见 `angevoice-provider-policy-boundary`；registry/adapter 静态回边仍在，随真实模型扩展收敛，不新增注册中心 |
 | AV-D018 / 2.17 | 测试组织与文档漂移；各领域维护者 | 部分完成：首轮批次二校正指南与领域索引 | 既有工单命名/AST 形状锁定尚未全量迁移；触及领域时演进合同、消除重复夹具，保留行为覆盖 |
-| AV-D019 / 旧 P0 smoke | 真实模型/WeText/画像验证；模型运行与部署验收 | 待环境验证；批次一 model-environment.json 为历史环境快照 | 尚无三模型真实 HTTP/WS、取消恢复、raw/prepared 和听感完整验收证据；开工重新核对环境，不能把历史依赖缺失当成当前事实，无权重测试不可替代 |
+| AV-D019 / 旧 P0 smoke | 真实模型/WeText/画像验证；模型运行与部署验收 | 部分完成：2026-09-21 两套完整 GPU 候选镜像在 Tesla P4 / 驱动 580.142 上通过三模型真实 HTTP/WS，Kokoro/MOSS raw/prepared、取消恢复；证据 `angevoice-gpu-compatibility` | ASGI + 真实隔离 worker，无 CPU fallback；ZipVoice 取消、外部部署、长期压力与听感/品牌读音仍开放；不能推广至所有旧卡/驱动 |
 | AV-D020 / 2.14 | SHA1 缓存文件名用途；moss/prompt | 开放、低优先；仅缓存命名 | 明确非安全用途或兼容 helper，保持文件名稳定；不当作密码学 P0 |
-| AV-D021 / 2.15、2.16 | 部署监听和依赖审计；部署/依赖维护者 | 0.0.0.0 为设计保留；漏洞状态需按发布时重新审计 | 保持容器/NAS 可达；认证/TLS/代理按部署边界治理，旧 pip-audit 无漏洞结论不可继承；2026-09-13 安全升级及 GPU 残余见 [依赖安全基线](DEPENDENCY_SECURITY.md) |
+| AV-D021 / 2.15、2.16 | 部署监听和依赖审计；部署/依赖维护者 | 0.0.0.0 为设计保留；漏洞状态需按发布时重新审计 | 保持容器/NAS 可达；认证/TLS/代理按部署边界治理，旧 pip-audit 无漏洞结论不可继承；2026-09-21 修正 GPU 基础标签与 Transformers 旧 Torch 导入兼容，两套 P4 完整镜像通过；安全残余仍见 [依赖安全基线](DEPENDENCY_SECURITY.md) |
 | AV-D022 / 兼容层 | shim、alias、re-export 的迁移；各兼容维护域 | 持续治理；COMP-001～008 | 逐项满足兼容台账的版本/使用方/公告/smoke 门槛才删除，不因无主路径调用直接判死代码 |
 
 用户词典持久化/CRUD、电子书章节和持久任务系统是功能计划，另行定义产品需求；已有批量 HTTP 接口不代表这些功能已交付。本台账不授权实现新功能。
@@ -63,10 +63,10 @@
 | C1c / AV-D007/010，旧 P4 | 增量 codec finally reset 失败覆盖原始 OOM/取消/生成异常 | 流式和非流式共用同一 session 生命周期方法；入口 reset 失败不生成，已有主异常时记录普通清理异常并保留主异常，正常结束的 reset 失败继续传播 | 2026-09-19 本地已验收、未提交：全量 1758 passed / 5 skipped，82.80%；3.12 定向 905 passed / 1 skipped；Linux 95 passed；wheel 通过。证据 `angevoice-moss-codec-lifecycle`。Tesla P4 / Torch 2.5.1+cu121 实际 FP32 CUDA 及独立候选清理方法探针通过；未运行完整候选/真实 MOSS 推理，未变更远端服务。非隔离 producer 取消后完成时机仍需独立核对；旧卡依赖、精度和帧预算未改 |
 | C1d / AV-D010，旧 P4 | 非隔离 producer 等待锁后已取消仍准备 prompt，prompt 中取消仍配置生成状态 | 持锁进入 producer 时及 prompt 准备后检查取消；协作停止保持请求局部。真实线程合同验证消费者关闭不提前释放运行中 producer 的 runtime 锁，退出后锁可复用 | 2026-09-19 本地候选：全量 1761 passed / 5 skipped，83.33%；3.12 定向 908 passed / 1 skipped；Linux 98 passed；证据 `angevoice-moss-producer-cancel`。不承诺原生推理立即中断或消费者 done 时资源已全部释放；不引入等待超时/杀线程。P4 依赖、精度和设备策略未改，完整真实模型 smoke 仍开放 |
 | C1e / AV-D007/010，旧 P4 | executor 重建后旧队列仍执行过期任务 | shutdown 明确取消尚未启动的 Future，保留运行任务及强制卸载的有界锁等待；真实线程验证旧任务完成与新池可用 | 2026-09-19 验收并纳入累计发布：3.12 定向 937 passed / 1 skipped，Linux 76 passed，最终全量及覆盖率见发布证据。原生任务不可强停、强制丢弃后的延迟资源回收仍为限制；P4 依赖/精度/算子未改 |
-| D1 / AV-D006，旧 P5 | Manager 只读状态展示仍与生命周期状态耦合 | 先分离只读投影，保留唯一状态 owner 与锁内快照；不得触发模型加载或改变 busy/重建/shutdown 语义 | 待独立规格 |
+| D1 / AV-D006，旧 P5 | Manager 只读状态展示仍与生命周期状态耦合 | 先保证唯一状态 owner 与锁内快照；展示投影只有明确独立输入后再分离，不传入整个 Manager 或引入第二可变状态服务 | D1a 于 2026-09-19 本地修复 current_snapshot 在锁外选 spec 的竞态：选择当前模型及生成快照在同一锁域，等待期间切换后返回新模型且 current=true；真实线程回归不创建引擎。证据 `angevoice-manager-snapshot`。只读投影分离仍待独立规格，busy/重建/shutdown 未改 |
 | D2 / AV-D016/017，旧 P7 | admin/audio/ws/status 路由依赖仍需逐域收敛 | 复用现有组装入口与领域服务；鉴权、公开目录、错误及参数合同保持；不造 ServiceLocator 或第二 Registry | 待 D1 后复核 |
 | E1 / AV-D012/015，旧 P2/P6 | worker 命令准入/关闭诊断，以及取消和背压残余 | 原 spec/首包/send 已完成不重做；只为可复现缺口立项，保留尾帧、超时和 finally 语义 | 后续低优先复核 |
-| V1 / AV-D019，旧 P0 | 三模型真实推理与硬件验收缺完整证据 | 已有环境运行 HTTP/WS、raw/prepared、prompt cache、取消恢复及听感；缺权重明确未验证，不自动下载；ARM64 QEMU 非阻塞 | 待环境验证，独立于结构治理推进 |
+| V1 / AV-D019，旧 P0 | 三模型真实推理与硬件验收缺完整证据 | 已有环境运行 HTTP/WS、raw/prepared、prompt cache、取消恢复及听感；缺权重明确未验证，不自动下载；ARM64 QEMU 非阻塞 | 2026-09-21 P4 两套完整候选三模型 HTTP/WS、Kokoro/MOSS raw/prepared 与取消恢复通过；其余验收保持开放，见 AV-D019 |
 | G1 / AV-D018/022，旧 P0/P7 | 文档发布状态、测试归属和兼容移除条件漂移 | 触及领域时维护既有行为合同与领域索引；按 COMP-001～008 各自窗口处理；不整体搬迁测试或提前删桥接 | 持续治理 |
 | G2 / AV-D020/021 | SHA1 缓存非安全用途标记及依赖残余 | 文件名稳定性合同后处理 SHA1；旧 GPU/setuptools 按兼容和真实依赖重新评估，不忽略告警；默认监听为设计保留 | 持续治理；漏洞状态以当期扫描为准 |
 

@@ -318,8 +318,8 @@ class EngineManager:
             return [self._model_snapshot(spec, include_runtime_metadata=include_runtime_metadata) for spec in specs]
 
     def current_snapshot(self, *, include_runtime_metadata: bool = True) -> dict:
-        spec = self._spec_for(self._current_model_id)
         with self._lock:
+            spec = self._spec_for(self._current_model_id)
             return self._model_snapshot(spec, include_runtime_metadata=include_runtime_metadata)
 
     def switch_model(self, model_id: str, *, unload_previous: bool | None = None, load: bool = True) -> dict[str, Any]:
