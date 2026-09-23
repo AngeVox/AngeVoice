@@ -17,7 +17,7 @@ from ..service_state import ServiceState
 from ..model_assets import ModelAssetService
 from ..diagnostics import build_diagnostics_bundle
 from ..update_checker import UpdateChecker
-from ..admin_config_schema import export_env_patch, schema_payload
+from ..admin_config import export_env_patch, schema_payload
 from .admin_models import (
     AdminApiKeyAction,
     AdminAssetRepairAction,
@@ -53,11 +53,6 @@ def create_admin_router(state: ServiceState) -> APIRouter:
             return templates.TemplateResponse(request, "admin.html", {})
         return HTMLResponse("<h1>AngeVoice 管理后台</h1><p>模板支持不可用。</p>")
 
-    def _active_requests_snapshot() -> list[dict]:
-        with state.request_lock:
-            values = list(state.active_requests.values())
-        return sorted(values, key=lambda item: float(item.get("updated_at", 0) or 0), reverse=True)[:50]
-
     @router.get("/admin/api/status")
     async def admin_status(_=Depends(verify_admin)):
         return {
@@ -65,7 +60,7 @@ def create_admin_router(state: ServiceState) -> APIRouter:
             "models": state.model_manager.list_models(),
             "cache_items": state.cache_size(),
             "cache_bytes": state.cache_bytes(),
-            "active_requests": _active_requests_snapshot(),
+            "active_requests": state.request_snapshot(limit=50),
             "stats": state.snapshot_stats(),
             "resources": state.resource_snapshot(),
             "idle_restart": state.idle_restart_snapshot(),

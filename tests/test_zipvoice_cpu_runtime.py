@@ -17,6 +17,42 @@ from kokoro_tts.zipvoice.profiles import ZipVoiceProfileStore
 from tests.quality.test_i18n_contract import _catalog
 
 
+@pytest.mark.parametrize("selection", ["config", "environment", "bundled", "missing-config"])
+@pytest.mark.parametrize("downloads", [False, True])
+def test_runtime_path_and_manager_availability_share_precedence(tmp_path, monkeypatch, selection, downloads):
+    from kokoro_tts.zipvoice import runtime_common
+    from kokoro_tts.zipvoice.runtime_cpu_onnx import ZipVoiceOnnxCpuRuntime
+    from kokoro_tts.zipvoice.runtime_cuda_torch import ZipVoiceTorchCudaRuntime
+
+    configured, environment = tmp_path / "configured", tmp_path / "environment"
+    bundled = tmp_path / "vendor" / "ZipVoice"
+    for root in (configured, environment, bundled):
+        (root / "zipvoice").mkdir(parents=True)
+    monkeypatch.setattr(runtime_common, "__file__", str(tmp_path / "src/kokoro_tts/zipvoice/runtime_common.py"))
+    monkeypatch.setenv("ZIPVOICE_REPO_PATH", str(environment))
+    cfg = TTSConfig(model_idle_timeout_seconds=0, enabled_models=["zipvoice"], zipvoice_download_enabled=downloads)
+    if selection == "config":
+        cfg.zipvoice_repo_path = configured
+        expected = configured
+    elif selection == "missing-config":
+        cfg.zipvoice_repo_path = tmp_path / "missing"
+        expected = cfg.zipvoice_repo_path
+    elif selection == "environment":
+        expected = environment
+    else:
+        monkeypatch.delenv("ZIPVOICE_REPO_PATH")
+        expected = bundled
+    manager = EngineManager(cfg)
+    try:
+        for runtime in (ZipVoiceOnnxCpuRuntime(cfg), ZipVoiceTorchCudaRuntime(cfg)):
+            assert runtime._upstream_path() == expected
+            assert runtime.loaded is False
+        assert manager._runtime_available(manager._spec_for("zipvoice")) is (downloads or selection != "missing-config")
+        assert not manager._engines
+    finally:
+        manager.stop_idle_timer()
+
+
 def _cfg(tmp_path: Path) -> TTSConfig:
     return TTSConfig(
         enabled_models=["kokoro", "moss-nano-cpu", "zipvoice"],

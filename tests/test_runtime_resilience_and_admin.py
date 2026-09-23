@@ -21,6 +21,38 @@ from kokoro_tts.moss_engine import MossNanoEngine
 ROOT = Path(__file__).resolve().parent.parent
 
 
+def test_catalog_snapshot_keeps_identity_and_collects_voices_under_owner_lock():
+    manager = EngineManager(TTSConfig(model_idle_timeout_seconds=0, enabled_models=["kokoro", "moss"]))
+    engine = MagicMock(is_loaded=False, is_healthy=True)
+    engine.metadata.return_value = {"id": "spoof", "backend": "spoof", "voices": []}
+    def metadata():
+        from concurrent.futures import ThreadPoolExecutor
+
+        def try_lifecycle_lock():
+            acquired = manager._lock.acquire(blocking=False)
+            if acquired:
+                manager._lock.release()
+            return acquired
+
+        with ThreadPoolExecutor(1) as pool:
+            assert pool.submit(try_lifecycle_lock).result(timeout=2) is False
+        return {"id": "spoof", "backend": "spoof", "voices": []}
+
+    engine.metadata.side_effect = metadata
+    engine.get_voices.return_value = "voice-one"
+    manager._create_engine = MagicMock(return_value=engine)
+    try:
+        snapshot = manager.catalog_snapshot("moss")
+        assert snapshot["id"] == "moss"
+        assert snapshot["backend"] != "spoof"
+        assert snapshot["voices"] == ["voice-one"]
+        assert snapshot["current"] is False
+        engine.load.assert_not_called()
+        engine.metadata.assert_called_once()
+    finally:
+        manager.stop_idle_timer()
+
+
 @pytest.mark.parametrize("active", [0, 1])
 @pytest.mark.parametrize("load", [False, True])
 def test_manager_provider_replacement_preserves_busy_and_load_false(active, load):
@@ -48,7 +80,36 @@ def test_manager_provider_replacement_preserves_busy_and_load_false(active, load
         manager.stop_idle_timer()
 
 
-@pytest.mark.parametrize("cleanup", ["force", "legacy", "fails", "legacy-fails"])
+@pytest.mark.parametrize("method", ["unload_model", "drop_model"])
+@pytest.mark.parametrize("legacy", [False, True])
+@pytest.mark.parametrize("fails", [False, True])
+def test_manager_unload_invokes_once_and_preserves_failure_state(method, legacy, fails):
+    manager = EngineManager(TTSConfig(model_idle_timeout_seconds=0))
+    calls = []
+
+    def unload(*, force=False):
+        calls.append(force)
+        if fails:
+            raise TypeError("runtime failure, not an incompatible signature")
+
+    def old_unload():
+        unload()
+
+    engine = MagicMock(is_loaded=True, is_healthy=True)
+    engine.unload = old_unload if legacy else unload
+    manager._engines["kokoro"] = engine
+    manager._active_counts["kokoro"] = 2
+    try:
+        assert getattr(manager, method)("kokoro", force=True) is (not fails)
+        assert calls == [not legacy]
+        assert manager._active_count("kokoro") == (2 if fails else 0)
+        assert ("kokoro" in manager._engines) == (fails or method == "unload_model")
+        assert ("kokoro" in manager._pending_rebuild) == (fails and method == "drop_model")
+    finally:
+        manager.stop_idle_timer()
+
+
+@pytest.mark.parametrize("cleanup", ["force", "legacy", "fails", "legacy-fails", "type-error"])
 def test_manager_failed_load_preserves_error_clears_state_and_retries(cleanup):
     manager = EngineManager(TTSConfig(model_idle_timeout_seconds=0, enabled_models=["kokoro"]))
     original = RuntimeError("synthetic load failure")
@@ -63,6 +124,8 @@ def test_manager_failed_load_preserves_error_clears_state_and_retries(cleanup):
 
     def force_unload(*, force):
         calls.append(force)
+        if cleanup == "type-error":
+            raise TypeError("runtime cleanup failure")
         if cleanup == "fails":
             raise OSError("synthetic cleanup failure")
 
@@ -437,3 +500,40 @@ def test_admin_schema_exposes_idle_unload_cleanup_switch():
     assert field["default"] is False
     assert "Docker" in field["help"]
     assert fields["restart_after_idle_unload_delay_seconds"]["advanced"] is True
+
+
+def test_resource_snapshot_reads_requests_under_registry_lock(tmp_path):
+    from kokoro_tts.service_state import ServiceState
+
+    state = ServiceState(TTSConfig(model_dir=tmp_path, model_idle_timeout_seconds=0))
+
+    class GuardedRequests(dict):
+        def values(self):
+            assert state.request_lock.locked(), "共享请求记录必须在锁内读取"
+            return super().values()
+
+    state.active_requests = GuardedRequests({
+        "active": {"id": "active", "status": "running"},
+        "finished": {"id": "finished", "status": "done"},
+    })
+    assert state.resource_snapshot()["active_requests"] == 1
+
+
+def test_admin_status_request_records_are_detached_and_limited(tmp_path):
+    import asyncio
+    from kokoro_tts.routes.admin import create_admin_router
+    from kokoro_tts.service_state import ServiceState
+
+    state = ServiceState(TTSConfig(model_dir=tmp_path, model_idle_timeout_seconds=0))
+    for index in range(55):
+        state.mark_request(str(index), "running", updated_at=float(index))
+    router = create_admin_router(state)
+    endpoint = next(route.endpoint for route in router.routes if route.path == "/admin/api/status")
+    payload = asyncio.run(endpoint())
+    records = payload["active_requests"]
+    assert len(records) == 50
+    assert [item["id"] for item in records] == [str(index) for index in range(54, 4, -1)]
+    state.mark_request("54", "done")
+    assert records[0]["status"] == "running"
+    records[1]["status"] = "cancelled"
+    assert state.request_info("53")["status"] == "running"

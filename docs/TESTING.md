@@ -41,7 +41,7 @@ uv pip compile requirements/test-torch-cpu.in --universal --python-version 3.10 
 - **历史行为记录**：复现已有兼容行为或已知缺陷，docstring 必须说明限制。缺陷被正式修复时，在原合同中升级为目标行为断言，保留原始 RED 证据；不得让“旧缺陷必须存在”阻止修复。
 - **依赖方向/安全边界检查**：只对明确的 owner、禁止反向 import、公开接口泄漏或敏感输出实施必要静态约束。不能把合法实现方式锁成唯一 AST 形状。
 
-新增测试按领域和行为命名，历史工单号放在 docstring/证据索引中。优先扩展已有领域合同；本轮不全量搬迁测试、不删除兼容覆盖。`test_text_preparation_boundary_contract.py` 的 CURRENT/FUTURE 命名来自冻结工序，目前 15 项已全绿；该冻结文件保持字节不变，新增进程验证放在独立 integration 模块。
+新增测试按领域和行为命名，优先扩展已有合同并保留兼容覆盖。`test_text_preparation_boundary_contract.py` 保留历史 CURRENT/FUTURE 名称，作为冻结边界基线不直接编辑；进程传输行为在 `test_text_preparation_process_integration.py` 中维护。测试名称不决定行为是否已经实现。
 
 ### 领域归属索引
 
@@ -50,8 +50,8 @@ uv pip compile requirements/test-torch-cpu.in --universal --python-version 3.10 
 | 请求文本准备 | `tests/contracts/test_text_preparation_boundary_contract.py`、`tests/test_text_frontend_recovery_tn.py` | service-selected TN、raw/prepared、MOSS runtime flags |
 | 文本进程传输 | `tests/test_text_preparation_process_integration.py` | 真实 spawn、父端转发、连续请求无 prepared 状态泄漏；使用替身 runtime |
 | 引擎和资源生命周期 | `tests/contracts/test_engine_adapter_conformance_contract.py`、`test_engine_manager_concrete_dependency_contract.py`、`test_shutdown_lifecycle_contract.py` | Adapter 一致性、构造 owner、shutdown admission/drain/retry |
-| Worker 协议与失败 | `tests/contracts/test_engine_worker_spec_contract.py`、`test_engine_error_worker_failure_envelope_contract.py`、`test_worker_load_failure_lifecycle_contract.py` | 序列化、code/message、加载事务与恢复 |
-| 配置与模型来源 | `tests/contracts/test_model_source_detect_policy_contract.py`、`test_model_source_executor_fallback_contract.py`、`test_model_source_revision_credential_offline_contract.py`，`tests/test_model_source_probe.py`，以及各领域 metadata 合同 | ENV/Admin 投影、优先级、来源选择、HTTP 重定向和下载兼容 |
+| Worker 协议与失败 | `tests/contracts/test_engine_worker_spec_contract.py`、`test_engine_error_worker_failure_envelope_contract.py`、`test_worker_load_failure_lifecycle_contract.py`、`test_process_topology_config_inheritance_contract.py`、`tests/test_worker_shutdown_process_integration.py` | 序列化、code/message、加载事务、关闭回执与真实 spawn 恢复 |
+| 配置与模型来源 | `tests/contracts/test_model_source_detect_policy_contract.py`、`test_model_source_executor_fallback_contract.py`、`test_model_source_revision_credential_offline_contract.py`，`tests/test_model_source_probe.py`、`tests/test_runtime_config_process_integration.py`，以及各领域 metadata 合同 | ENV/Admin 投影、优先级、跨进程配置写入、来源选择、HTTP 重定向和下载兼容 |
 | 流、取消与 WS | `tests/contracts/test_stream_event_error_transport_contract.py`、`test_request_cancellation_resource_ownership_contract.py`、`tests/test_ws_cancel_characterization_2615.py` | 结束事件、错误传输、迭代器关闭及断连释放 |
 | 前端与文档页面 | `tests/test_api_docs_i18n.py`、`tests/test_api_docs_browser.py`、`tests/quality/test_i18n_contract.py`，以及 Studio/Admin 行为测试 | 翻译和状态保持、静态资源、浏览器与 wheel |
 
@@ -85,13 +85,15 @@ uv pip compile requirements/test-torch-cpu.in --universal --python-version 3.10 
 | Studio 录音 PCM/WAV、权限失败、手动/自动停止和资源释放 | `test_studio_recording.py`、`test_product_features_packaging.py` |
 | Studio 参考试听请求取消、迟到响应隔离、WAV MIME、Object URL 与媒体错误释放 | `test_studio_reference_audio_preview.py`、`test_product_features_packaging.py` |
 
-## 覆盖率策略
+## 领域测试维护要点
 
 MOSS VRAM 生命周期在 `test_moss_characterization_2615.py` 使用可控时钟与合成探测快照验证：首次失败也遵守 TTL，无历史快照的 OOM 保留保守限制至 TTL；探测失败保留最后成功快照，force 与零/负 TTL、阈值等号、CPU/禁用、卸载重置均有覆盖。没有真实 CUDA 探测或推理，不把策略正确性当作显存画像验收。探测时机是现有 `moss.vram` 的纯判断，引擎继续持有快照、低显存状态和独立 full-codec 冷却。
 
 MOSS 隔离流转发/关闭继续在 `test_request_cancellation_resource_ownership_contract.py` 演进：事件对象原样转发，done/error/segment_error/cancelled 不重复修复，缺失终止帧时关闭底层迭代器后报告下一音频索引。`yield from` 必须把上层提前关闭传递到转发层的 finally；既有普通关闭异常、BaseException、内部失败和取消行为断言保留。静态资源归属检查跟随实际 owner 更新，不替代这些行为测试。Manager 测试创建的空闲 timer 必须在 fixture teardown 停止并等待退出，不能通过过滤后续安全日志断言掩盖泄漏。
 
-模型来源执行行为继续在 `test_model_source_executor_fallback_contract.py`、`test_model_source_revision_credential_offline_contract.py` 和 `test_kokoro_managed_asset_integrity.py` 演进。MOSS 模型/tokenizer 共用执行循环，但入口各自选择计划和校验器；SDK 返回目录先于目标目录校验，原有 ModelScope fallback 和 Hugging Face 异常边界保留。Kokoro 单独验证受管目录准入、预置 revision/摘要、失败关闭及普通目录懒加载回退，不把两类策略合并。该批不宣称下载原子性或真实模型验收。
+模型来源执行行为继续在 `test_model_source_executor_fallback_contract.py`、`test_model_source_revision_credential_offline_contract.py` 和 `test_kokoro_managed_asset_integrity.py` 演进。MOSS 模型/tokenizer 共用执行循环，但入口各自选择计划和校验器；SDK 返回目录先于目标目录校验，原有 ModelScope fallback 和 Hugging Face 异常边界保留。Kokoro 单独验证受管目录准入、预置 revision/摘要、失败关闭及普通目录懒加载回退，不把两类策略合并。这些测试不验证下载原子性或真实模型推理。
+
+### 覆盖率与执行顺序
 
 CI 覆盖率下限为 70%，具体覆盖率随平台和候选变化，以该次 Gate 的 coverage JSON 和完整命令为准，不把历史百分比当作当前事实。每次有意义的实现需要比较同环境基线及变更路径覆盖，不能仅满足下限；跨平台稳定证据齐备后再单独收紧全局阈值。复杂度热点由 `tests/quality/test_architecture_ratchets.py` 执行逐函数只降不升规则，函数下降后应同步降低或移除其 ratchet 项。
 
@@ -123,6 +125,8 @@ WS 首包失败与参考文件清理、输入别名、二进制元数据/音频�
 配置执行顺序继续由 `tests/contracts/test_config_env_contract.py` 和 facade 合同覆盖：路径/标量先于凭据生成、生成失败的部分写入状态、根目录与显式子目录优先级、runtime 与显式调用覆盖。新增领域修改应在这些行为合同演进，不依赖 helper 名称或函数行数。
 
 B1 的路径字符串展开、Path 对象身份、ZipVoice 消费方路径保留在 `test_ttsconfig_facade_contract.py` 验证；Admin ENV 主/旧名称回退、空值及空白、持久化文件存在、禁用后台、占位符拒绝顺序和日志归属在 `test_security_hardening.py` 验证。历史 P2A1 JSON 快照保持原样，当前 ENV reader 迁移在原归属合同中显式映射，不改历史快照或放宽 hash 门槛。`admin_auth` 原有函数导出保留，轻量 bootstrap 模块不引入 FastAPI/Torch 依赖。
+
+## 运行时与并发合同索引
 
 ZipVoice 共用合成路径在 `tests/test_zipvoice_cpu_runtime.py` 中参数化覆盖 CPU/CUDA 包装器，包含参数夹取、参考校验、FLOAT→PCM16、失败清理与 CUDA 专属参数。该文件保留历史名称；替身测试不证明真实 CUDA 推理或音质。provider fallback 继续由 `tests/test_zipvoice_gpu_provider.py` 维护。
 
@@ -158,5 +162,16 @@ MOSS codec 生命周期在 `test_moss_characterization_2615.py` 覆盖流式/非
 
 同一测试文件使用真实线程和可观测的重入锁验证 `current_snapshot()`：读取方等待锁期间当前模型发生切换，取得锁后必须选择新的模型并返回 current=true，且不得创建/加载引擎。该合同保护唯一生命周期 owner 的一致视图；不要求为展示再创建状态服务，也不宣称第三方 metadata 自身线程安全。
 
+GPU 依赖兼容合同继续在 `test_transformers_compatibility_2615.py` 维护：CPU 与 GPU 允许各自锁定已经验证的 Transformers 版本，共享 hub/tokenizers 约束。清单通过不能替代 Docker 构建和真实模型验证。已验证硬件、源码范围与剩余限制见 [依赖安全基线](DEPENDENCY_SECURITY.md)，后续候选必须按变更风险重新验证。
 
-GPU 依赖兼容合同继续在 `test_transformers_compatibility_2615.py` 维护：CPU 与 GPU 允许各自锁定已经验证的 Transformers 版本，共享 hub/tokenizers 约束。清单通过不能替代 Docker 构建和真实模型验证。2026-09-21 P4 证据 `angevoice-gpu-compatibility` 使用完整候选镜像（非旧依赖镜像挂载源码），通过真实隔离 worker 验证三模型 HTTP/WS 与 Kokoro/MOSS raw/prepared、取消恢复；不宣称外部网络部署、全量文本读音、压力或主观音质通过。
+MOSS prompt 文件名兼容继续在 `test_moss_characterization_2615.py` 维护：模拟拒绝安全用途 SHA1 的 provider，执行实际参考音频准备函数，确认非安全路径散列保留非安全命名前缀、生成唯一临时路径且裁剪结果保持。使用真实 Torch 张量与音频 I/O 替身，不作为真实 FIPS 环境或模型推理验收。
+
+Manager 卸载合同覆盖旧签名、force 参数、内部 TypeError 和失败后的计数/待重建状态；运行时异常不可触发二次调用。ZipVoice 路径合同覆盖显式配置、环境变量、内置目录和无效显式路径的优先级，并验证 CPU/CUDA runtime 与只读可用性探测一致且不加载模型。环境变量历史快照保持不变，迁移后的读取者在配置合同中显式映射。
+
+目录查询的状态和音色收集由 Manager 在生命周期锁内完成；路由不再次合并引擎 metadata。行为合同验证目录标识不可被 metadata 覆盖、查询不加载权重，并用另一线程检查锁归属。
+
+参考音频准备通过真实线程和同步屏障验证请求间文件隔离：先完成的请求清理自己的文件后，后完成的请求仍能读取自己的参考音频；写入失败或中断不留下部分文件。音频 I/O 使用替身，不替代模型听感验收。
+
+runtime 配置迁移、过滤和回写与保存/删除共享文件锁。并发合同验证清理不能覆盖随后保存的新值；有效配置读取不要求目录可写，也不创建锁文件。Windows 沿用进程内锁，POSIX 同时使用现有 flock；此项不保证 Windows 跨进程写入或多个内存配置实例自动同步。
+
+子进程 worker 的流合同保留迭代器强引用，验证正常结束、取消、生成异常和队列发送失败时均显式关闭；已有主异常不被普通清理异常覆盖，独立清理失败通过错误通道报告。未知命令必须在创建或加载引擎前返回协议错误。兼容导出不因静态扫描判为未使用就删除；移除仍遵守兼容层台账。

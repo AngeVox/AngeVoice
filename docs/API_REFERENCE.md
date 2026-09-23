@@ -17,7 +17,7 @@ BASE_URL=http://localhost:8000
 WS_URL=ws://localhost:8000/ws/v1/tts
 ```
 
-Docker 部署时只需替换端口号。远程 NAS 部署时把 `localhost` 换成 NAS 主机名或 IP，例如 `http://192.168.1.2:8101`。
+Docker 部署时只需替换端口号。远程 NAS 部署时把 `localhost` 换成 NAS 主机名或 IP，例如 `http://nas.example:8101`。
 
 ## 文档页面
 

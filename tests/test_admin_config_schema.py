@@ -18,6 +18,63 @@ from kokoro_tts.config import TTSConfig
 from kokoro_tts.routes.admin_models import AdminConfigPatch
 
 
+def test_load_cleanup_does_not_overwrite_a_concurrent_save(tmp_path, monkeypatch):
+    import threading
+    from contextlib import contextmanager
+    from concurrent.futures import ThreadPoolExecutor
+    from kokoro_tts.admin_config import schema
+
+    path = tmp_path / "runtime.json"
+    path.write_text(json.dumps({"values": {"cache_max_items": 7, "retired_key": 1}}))
+    cfg = TTSConfig(runtime_config_file=path)
+    cleaning, release = threading.Event(), threading.Event()
+    writer_attempt, writer_entered = threading.Event(), threading.Event()
+    write, lock = schema._atomic_write_json, schema._runtime_config_file_lock
+
+    def paused_write(target, payload):
+        if threading.current_thread().name.startswith("loader"):
+            cleaning.set()
+            assert release.wait(timeout=4)
+        return write(target, payload)
+
+    @contextmanager
+    def observed_lock(target):
+        writer = threading.current_thread().name.startswith("writer")
+        if writer:
+            writer_attempt.set()
+        with lock(target):
+            if writer:
+                writer_entered.set()
+            yield
+
+    monkeypatch.setattr(schema, "_atomic_write_json", paused_write)
+    monkeypatch.setattr(schema, "_runtime_config_file_lock", observed_lock)
+    with ThreadPoolExecutor(1, thread_name_prefix="loader") as loaders, ThreadPoolExecutor(1, thread_name_prefix="writer") as writers:
+        loading = loaders.submit(load_runtime_config, cfg)
+        try:
+            assert cleaning.wait(timeout=3)
+            saving = writers.submit(save_runtime_config_values, cfg, {"cache_max_items": 99})
+            assert writer_attempt.wait(timeout=3)
+            assert not writer_entered.wait(timeout=0.05)
+        finally:
+            release.set()
+        assert loading.result(timeout=3) == ["cache_max_items"]
+        saving.result(timeout=3)
+    assert json.loads(path.read_text())["values"] == {"cache_max_items": 99}
+
+
+def test_valid_runtime_config_load_does_not_require_a_writable_directory(tmp_path, monkeypatch):
+    from kokoro_tts.admin_config import schema
+
+    path = tmp_path / "runtime.json"
+    path.write_text(json.dumps({"values": {"cache_max_items": 17}}))
+    monkeypatch.setattr(schema, "_runtime_config_file_lock", lambda path: pytest.fail("valid reads must not create lock files"))
+    cfg = TTSConfig(runtime_config_file=path)
+    assert load_runtime_config(cfg) == ["cache_max_items"]
+    assert cfg.cache_max_items == 17
+    assert list(tmp_path.iterdir()) == [path]
+
+
 def test_admin_config_rejects_unknown_field():
     with pytest.raises(KeyError):
         validate_admin_config_values({"not_a_real_field": 1})

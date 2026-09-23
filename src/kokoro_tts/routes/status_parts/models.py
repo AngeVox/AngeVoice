@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from fastapi import APIRouter, Depends, HTTPException, Request
+from fastapi import APIRouter, Depends, Request
 
 from ... import __version__
 from ...audio_formats import supported_response_formats
@@ -106,40 +106,8 @@ def voice_details(model_id: str, voices: list[str], snapshot: dict, cfg) -> list
 
 
 def model_catalog_snapshot(ctx: StatusRouteContext, target_model: str) -> dict:
-    """返回模型元数据和音色列表，不触发模型实际加载。"""
-    state = ctx.state
-    target_model = state.model_manager.normalize_model_id(target_model)
-    snapshot = {}
-    engine = None
-    try:
-        if target_model == state.model_manager.current_model_id:
-            snapshot = state.model_manager.current_snapshot()
-        else:
-            snapshot = next((m for m in state.model_manager.list_models() if m.get("id") == target_model), {})
-            engine = state.model_manager.get_engine(target_model, load=False)
-            metadata = engine.metadata() if hasattr(engine, "metadata") and callable(engine.metadata) else {}
-            if isinstance(metadata, dict):
-                merged = dict(snapshot)
-                merged.update(metadata)
-                snapshot = merged
-    except HTTPException:
-        raise
-    except Exception:
-        snapshot = next((m for m in state.model_manager.list_models() if m.get("id") == target_model), {})
-    snapshot.setdefault("id", target_model)
-    voices = snapshot.get("voices") or []
-    if not voices:
-        try:
-            if engine is None:
-                engine = state.model_manager.get_engine(target_model, load=False)
-            if hasattr(engine, "get_voices") and callable(engine.get_voices):
-                voices = engine.get_voices()
-        except Exception:
-            voices = []
-    if not isinstance(voices, list):
-        voices = [str(voices)]
-    snapshot["voices"] = [str(item) for item in voices]
-    return snapshot
+    """返回由生命周期管理器统一采集的目录信息。"""
+    return ctx.state.model_manager.catalog_snapshot(target_model)
 
 
 def attach_model_routes(router: APIRouter, ctx: StatusRouteContext) -> None:

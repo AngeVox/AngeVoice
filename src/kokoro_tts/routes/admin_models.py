@@ -6,7 +6,7 @@ from typing import Any
 
 from pydantic import BaseModel, ConfigDict, Field, create_model
 
-from ..admin_config_schema import ADMIN_CONFIG_FIELDS
+from ..admin_config import ADMIN_CONFIG_FIELDS
 
 
 class StrictModel(BaseModel):
@@ -45,7 +45,7 @@ class AdminProfileAction(StrictModel):
     profile: str
 
 
-# 管理后台可编辑字段统一维护在 admin_config_schema。
+# 管理后台可编辑字段统一维护在 admin_config 包。
 # Pydantic 仍会拒绝未知字段；取值范围和类型由
 # validate_admin_config_values() 校验，因此新增可编辑字段只需要修改
 # 一张 schema 表。

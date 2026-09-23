@@ -1,4 +1,4 @@
-"""Admin runtime configuration schema aggregation and persistence."""
+"""Admin 运行时配置的字段聚合与持久化。"""
 
 from __future__ import annotations
 
@@ -12,6 +12,8 @@ from collections import OrderedDict
 from contextlib import contextmanager
 from pathlib import Path
 from typing import Any
+
+from filelock import FileLock
 
 from .fields import AdminConfigField
 from .groups import cache, core, moss, resources, security, streaming, text, zipvoice
@@ -28,10 +30,15 @@ _RUNTIME_CONFIG_LOCK = threading.RLock()
 
 @contextmanager
 def _runtime_config_file_lock(path: Path):
-    """Serialize runtime-config read/modify/write across threads and workers."""
+    """串行化配置读改写；所有平台均协调合作写入进程。"""
     path.parent.mkdir(parents=True, exist_ok=True)
     lock_path = path.with_suffix(path.suffix + ".lock")
     with _RUNTIME_CONFIG_LOCK:
+        if fcntl is None:
+            # Windows 没有 fcntl；只持有 RLock 会让多个 API 进程丢失更新。
+            with FileLock(str(lock_path)):
+                yield
+            return
         with lock_path.open("a+", encoding="utf-8") as handle:
             if fcntl is not None:
                 fcntl.flock(handle.fileno(), fcntl.LOCK_EX)
@@ -43,7 +50,7 @@ def _runtime_config_file_lock(path: Path):
 
 
 def _atomic_write_json(path: Path, payload: dict[str, Any]) -> None:
-    """Persist admin runtime configuration without exposing a torn JSON file."""
+    """原子替换运行时配置，避免读取方看到不完整的 JSON。"""
     path.parent.mkdir(parents=True, exist_ok=True)
     temp: Path | None = None
     try:
@@ -306,8 +313,8 @@ def read_runtime_config_values(path: Path) -> dict[str, Any]:
     return {str(key): value for key, value in values.items()}
 
 
-def load_runtime_config(cfg) -> list[str]:
-    path = runtime_config_path(cfg)
+def _read_or_migrate_runtime_values(cfg, path: Path) -> dict[str, Any]:
+    """在调用方持有配置文件锁期间读取并迁移旧配置。"""
     raw_values = read_runtime_config_values(path)
     legacy_path = legacy_runtime_config_path(cfg)
     if not raw_values and path != legacy_path and legacy_path.exists():
@@ -316,8 +323,39 @@ def load_runtime_config(cfg) -> list[str]:
             payload = {"version": 1, "updated_at": int(time.time()), "values": raw_values, "migrated_from": str(legacy_path)}
             _atomic_write_json(path, payload)
             logger.info("已迁移 Admin runtime config: %s -> %s", legacy_path, path)
-    if not raw_values:
+    return raw_values
+
+
+def _apply_runtime_values(cfg, path: Path, values: dict[str, Any]) -> list[str]:
+    for key, value in values.items():
+        setattr(cfg, key, value)
+    logger.info("已加载 Admin runtime config: %s (%d fields)", path, len(values))
+    return list(values)
+
+
+def load_runtime_config(cfg) -> list[str]:
+    path = runtime_config_path(cfg)
+    raw_values = read_runtime_config_values(path)
+    if raw_values:
+        try:
+            cleaned = validate_admin_config_values(raw_values)
+        except (TypeError, ValueError, KeyError):
+            pass
+        else:
+            # 原子替换保证完整读取；有效配置无需创建锁文件，允许只读部署。
+            return _apply_runtime_values(cfg, path, cleaned)
+    elif not legacy_runtime_config_path(cfg).exists():
         return []
+    with _runtime_config_file_lock(path):
+        # 获得写入权后重新读取，避免用过期快照覆盖并发保存。
+        cleaned = _load_runtime_values_locked(cfg, path)
+    return _apply_runtime_values(cfg, path, cleaned)
+
+
+def _load_runtime_values_locked(cfg, path: Path) -> dict[str, Any]:
+    raw_values = _read_or_migrate_runtime_values(cfg, path)
+    if not raw_values:
+        return {}
     cleaned: dict[str, Any] = {}
     removed_keys: list[str] = []
     invalid_keys: list[str] = []
@@ -339,10 +377,7 @@ def load_runtime_config(cfg) -> list[str]:
     if removed_keys or invalid_keys:
         _atomic_write_json(path, {"version": 1, "updated_at": int(time.time()), "values": cleaned})
         logger.info("已清理 runtime config 中不可用字段并保留有效设置: %s", path)
-    for key, value in cleaned.items():
-        setattr(cfg, key, value)
-    logger.info("已加载 Admin runtime config: %s (%d fields)", path, len(cleaned))
-    return list(cleaned)
+    return cleaned
 
 
 def save_runtime_config_values(cfg, changed_values: dict[str, Any]) -> Path:

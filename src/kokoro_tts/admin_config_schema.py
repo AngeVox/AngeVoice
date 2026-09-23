@@ -1,7 +1,7 @@
 """Compatibility facade for admin runtime configuration schema.
 
 New code should import from :mod:`kokoro_tts.admin_config`; this module keeps
-the historical import path stable for routes, tests, and third-party tooling.
+the historical import path stable for existing callers and tests.
 """
 
 from __future__ import annotations

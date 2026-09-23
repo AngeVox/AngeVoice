@@ -749,6 +749,7 @@ def _reader_source_and_qualname(reader: str) -> tuple[Path, list[str]]:
         "kokoro_tts.zipvoice.runtime_cuda_torch": source_root
         / "zipvoice"
         / "runtime_cuda_torch.py",
+        "kokoro_tts.zipvoice.runtime_common": source_root / "zipvoice" / "runtime_common.py",
     }
     module = next(
         (
@@ -837,16 +838,17 @@ def _reader_env_names(reader: str) -> set[str]:
 def test_declared_direct_env_readers_are_resolved_and_receiver_owned() -> None:
     # The historical snapshot remains byte-for-byte frozen. Track migrated
     # owners explicitly while retaining every declared ENV admission check.
-    current_admin_readers = {
+    current_readers = {
         "ANGEVOICE_ADMIN_USERNAME": "kokoro_tts.admin_bootstrap.admin_username",
         "KOKORO_ADMIN_USERNAME": "kokoro_tts.admin_bootstrap.admin_username",
         "ANGEVOICE_ADMIN_PASSWORD": "kokoro_tts.admin_bootstrap.admin_password",
         "KOKORO_ADMIN_PASSWORD": "kokoro_tts.admin_bootstrap.admin_password",
+        "ZIPVOICE_REPO_PATH": "kokoro_tts.zipvoice.runtime_common.upstream_path",
     }
     direct_readers = SNAPSHOT["direct_readers"]
     assert len(direct_readers) == 10
     for item in direct_readers:
-        reader = current_admin_readers.get(item["env"], item["reader"])
+        reader = current_readers.get(item["env"], item["reader"])
         module_path, qualname = _reader_source_and_qualname(reader)
         assert module_path.is_file()
         assert qualname

@@ -316,6 +316,107 @@ def test_vram_unload_resets_probe_schedule(vram_engine, monkeypatch):
     assert engine._vram_status()["free_mb"] == 2000
 
 
+def test_prompt_filename_preserved_when_security_sha1_is_restricted(tmp_path, monkeypatch):
+    import sys
+    import torch
+    from kokoro_tts.moss import prompt
+
+    source = tmp_path / "reference.wav"
+    source.write_bytes(b"audio fixture")
+    original_sha1 = prompt.hashlib.sha1
+    tag = original_sha1(str(source.resolve()).encode(), usedforsecurity=False).hexdigest()[:10]
+    expected = tmp_path / "angevoice_moss_prompt" / f"reference_{tag}_1000ms.wav"
+
+    def restricted_sha1(data, *, usedforsecurity=True):
+        if usedforsecurity:
+            raise ValueError("SHA1 is unavailable for security use")
+        return original_sha1(data, usedforsecurity=False)
+
+    saved = []
+    audio = SimpleNamespace(
+        load=lambda path: (torch.ones(1, 2000), 1000),
+        save=lambda path, waveform, rate: saved.append((path, waveform.shape, rate)),
+    )
+    monkeypatch.setitem(sys.modules, "torchaudio", audio)
+    monkeypatch.setattr(prompt.hashlib, "sha1", restricted_sha1)
+    monkeypatch.setattr(prompt.tempfile, "gettempdir", lambda: str(tmp_path))
+
+    prepared, cleanup = prompt.prepare_prompt_audio(
+        str(source), max_seconds=1, sample_rate=1000, channels=1,
+    )
+
+    assert prepared == cleanup
+    assert Path(prepared).parent == expected.parent
+    assert Path(prepared).name.startswith(expected.stem + "_")
+    assert saved == [(prepared, (1, 1000), 1000)]
+    Path(cleanup).unlink()
+
+
+def test_parallel_prompt_preparation_owns_distinct_files_until_encoding_finishes(tmp_path, monkeypatch):
+    import sys
+    import torch
+    from collections import OrderedDict
+    from kokoro_tts.moss import prompt
+
+    source = tmp_path / "reference.wav"
+    source.write_bytes(b"original")
+    audio = SimpleNamespace(
+        load=lambda path: (torch.ones(1, 20), 1000),
+        save=lambda path, waveform, rate: Path(path).write_text(str(waveform.shape[0])),
+    )
+    monkeypatch.setitem(sys.modules, "torchaudio", audio)
+    monkeypatch.setattr(prompt.tempfile, "gettempdir", lambda: str(tmp_path))
+    ready = threading.Barrier(2)
+    release_second = threading.Event()
+    paths = {}
+
+    def encode(channels, *, voice, prompt_audio_path):
+        paths[channels] = Path(prompt_audio_path)
+        ready.wait(timeout=3)
+        if channels == 2:
+            assert release_second.wait(timeout=3)
+        assert Path(prompt_audio_path).read_text() == str(channels)
+        return [[channels]]
+
+    def run(channels):
+        runtime = SimpleNamespace(resolve_prompt_audio_codes=lambda **kw: encode(channels, **kw))
+        return prompt.resolve_prompt_audio_codes_cached(
+            runtime=runtime, cache=OrderedDict(), cache_lock=threading.Lock(),
+            voice="v", default_voice="v", prompt_audio_path=str(source),
+            max_items=1, max_seconds=1, sample_rate=1000, channels=channels,
+        )
+
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        first, second = pool.submit(run, 1), pool.submit(run, 2)
+        try:
+            assert first.result(timeout=4) == [[1]]
+            assert not paths[1].exists()
+            assert paths[2].exists()
+        finally:
+            release_second.set()
+        assert second.result(timeout=4) == [[2]]
+    assert paths[1] != paths[2]
+    assert not paths[2].exists()
+    assert source.read_bytes() == b"original"
+
+
+@pytest.mark.parametrize("failure", [OSError, KeyboardInterrupt])
+def test_prepared_audio_save_failure_cleans_owned_partial_file(tmp_path, failure):
+    import torch
+    from kokoro_tts.moss.prompt import _save_prepared_audio
+
+    error = failure("save failed")
+
+    def save(path, waveform, rate):
+        Path(path).write_bytes(b"partial")
+        raise error
+
+    with pytest.raises(failure) as caught:
+        _save_prepared_audio(tmp_path, "reference_", torch.ones(1, 2), 1000, SimpleNamespace(save=save))
+    assert caught.value is error
+    assert not list(tmp_path.iterdir())
+
+
 def test_2615_moss_prompt_cache_key_contract_for_voice_and_prompt_file(tmp_path):
     prompt = tmp_path / "prompt.wav"
     prompt.write_bytes(b"prompt-audio")

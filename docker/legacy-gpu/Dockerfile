@@ -4,7 +4,7 @@ ENV DEBIAN_FRONTEND=noninteractive
 WORKDIR /app
 
 # Legacy GPU 配置：使用 CUDA 11.8 运行时，兼容旧款驱动和显卡。
-# ffmpeg 用于可选 MP3 输出（KOKORO_MP3_ENABLED=true 时生效）。
+# ffmpeg 用于可选 MP3 输出；建议配置 ANGEVOICE_FFMPEG_ENABLED，旧变量仍兼容。
 RUN apt-get update && \
     apt-get install -y --no-install-recommends \
       ca-certificates \

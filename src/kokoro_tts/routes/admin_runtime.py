@@ -8,7 +8,7 @@ from pathlib import Path
 from ..admin_credentials import AdminCredentialStore
 from ..admin_auth import admin_password, admin_username
 from ..config_api_key import effective_api_key, rotate_api_key as rotate_persisted_api_key
-from ..admin_config_schema import (
+from ..admin_config import (
     ADMIN_CONFIG_FIELDS,
     apply_admin_config_values,
     config_values,

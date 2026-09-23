@@ -289,7 +289,8 @@ class ZipVoiceEngine:
             yield websocket_error_frame_from_http(exc)
             return
         if not prompt_audio_path or not str(prompt_text or "").strip():
-            yield {"type": "error", "message": "ZipVoice 流式生成需要参考音频与参考文本，或选择已保存音色"}; return
+            yield {"type": "error", "message": "ZipVoice 流式生成需要参考音频与参考文本，或选择已保存音色"}
+            return
         try:
             if not prompt_text_prepared:
                 prompt_text = prepare_text_for_synthesis(prompt_text, self.cfg, model_id=self.public_id, field_name="prompt_text")
@@ -311,10 +312,12 @@ class ZipVoiceEngine:
             }, timeout=timeout, cancel_check=cancel_check)
             return
         if fmt not in {"pcm_s16le", "wav"}:
-            yield {"type": "error", "message": f"不支持的流式音频格式：{fmt}"}; return
+            yield {"type": "error", "message": f"不支持的流式音频格式：{fmt}"}
+            return
         segments = segment_text_natural(str(text), max_text_length=int(getattr(self.cfg, "max_text_length", 5000) or 5000), segment_length=int(getattr(self.cfg, "segment_length", 120) or 120), flush_sentence_boundaries=True)
         if not segments:
-            yield {"type": "error", "message": "文本清理后为空"}; return
+            yield {"type": "error", "message": "文本清理后为空"}
+            return
         yield {"type": "started", "segments": len(segments), "sample_rate": self.sample_rate, "channels": 1, "format": fmt, "dtype": "s16le" if fmt == "pcm_s16le" else "wav", "stream_mode": "segmented", "model": self.public_id, "voice_clone": True, "recommended_prebuffer_seconds": float(getattr(self.cfg, "stream_prebuffer_seconds", 0.25))}
         audio_index = 0
         for segment_index, segment in enumerate(segments):
@@ -329,8 +332,10 @@ class ZipVoiceEngine:
                 audio_index += 1
             except ZeroDivisionError:
                 logger.warning("ZipVoice 流式片段无可合成 token", extra={"segment_index": segment_index})
-                yield no_synthesizable_text_frame(); break
+                yield no_synthesizable_text_frame()
+                break
             except Exception:
                 logger.exception("ZipVoice 流式片段合成失败", extra={"segment_index": segment_index})
-                yield {"type": "segment_error", "index": segment_index, "message": "当前片段合成失败，请检查文本和参考音频", "model": self.public_id}; break
+                yield {"type": "segment_error", "index": segment_index, "message": "当前片段合成失败，请检查文本和参考音频", "model": self.public_id}
+                break
         yield {"type": "done", "total_segments": len(segments), "total_audio_chunks": audio_index, "stream_mode": "segmented"}

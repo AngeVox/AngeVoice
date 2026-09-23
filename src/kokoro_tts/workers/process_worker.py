@@ -6,10 +6,11 @@ API 进程负责路由、持久化配置档案元数据和配置。重量级推�
 
 from __future__ import annotations
 
-from contextlib import suppress
+from contextlib import contextmanager, suppress
 import inspect
 import multiprocessing as mp
 import queue
+import sys
 import threading
 import time
 import uuid
@@ -209,23 +210,30 @@ class EngineProcessClient:
         # CUDA 上下文（context）销毁可能需要额外时间；kill 模式给更长的宽限期。
         base_grace = float(getattr(self.config, "engine_process_kill_grace_seconds", 2.0) or 2.0)
         grace = max(base_grace, 5.0) if kill else base_grace
+        shutdown_request_id = None
+        forced = False
         if process.is_alive() and not kill:
             try:
                 if self._command_queue is not None:
-                    self._command_queue.put_nowait((uuid.uuid4().hex, "shutdown", {}))
+                    shutdown_request_id = uuid.uuid4().hex
+                    self._command_queue.put_nowait((shutdown_request_id, "shutdown", {}))
             except Exception:
-                pass
+                shutdown_request_id = None
             process.join(timeout=grace)
         if process.is_alive():
+            forced = True
             process.terminate()
             process.join(timeout=grace)
         if process.is_alive():
+            forced = True
             process.kill()
             process.join(timeout=min(1.0, grace))
+        self._last_exit_reason = self._shutdown_exit_reason(
+            process, shutdown_request_id=shutdown_request_id, forced=forced
+        )
         self._process = None
         self._loaded = False
         self._unhealthy = False
-        self._last_exit_reason = ""
         # 在下次全新启动前重置取消标志。
         try:
             self._cancel_flag.value = 0
@@ -233,6 +241,43 @@ class EngineProcessClient:
             if self.logger:
                 self.logger.debug("重置 cancel_flag 失败", exc_info=True)
         self._discard_queues()
+
+    def _shutdown_exit_reason(self, process, *, shutdown_request_id: str | None, forced: bool) -> str:
+        """只保留可公开诊断的状态；子进程异常正文可能包含凭据。"""
+        if forced:
+            code = "worker_process_failed"
+        elif shutdown_request_id is not None:
+            code = self._shutdown_reply_code(shutdown_request_id)
+        elif self._last_exit_reason:
+            return self._last_exit_reason
+        else:
+            code = "" if process.exitcode in (0, None) else "worker_process_failed"
+        if not code and process.exitcode in (0, None):
+            return ""
+        return f"worker 关闭失败（{code or 'worker_process_failed'}，退出码：{process.exitcode}）"
+
+    def _shutdown_reply_code(self, request_id: str) -> str:
+        """进程已退出后读取其回执；其他请求的残留消息不决定关闭结果。"""
+        if self._result_queue is None:
+            return "worker_protocol_failed"
+        while True:
+            try:
+                raw = self._result_queue.get_nowait()
+            except Exception:
+                return "worker_protocol_failed"
+            try:
+                reply = _worker_result_from_raw(raw, engine_id=self.engine_id)
+            except EngineError:
+                continue
+            if reply.request_id != request_id:
+                continue
+            if reply.kind == "error":
+                return _engine_error_from_payload(
+                    reply.payload, engine_id=self.engine_id, legacy_code="engine_runtime_failed"
+                ).code
+            if reply.kind == "result" and reply.payload == {"ok": True}:
+                return ""
+            return "worker_protocol_failed"
 
     def load(self, *, timeout: float) -> dict:
         value = self.request("load", {}, timeout=timeout)
@@ -467,6 +512,23 @@ def _stream_accepts_cancel_check(method) -> bool:
     return any(item.kind == inspect.Parameter.VAR_KEYWORD for item in parameters.values())
 
 
+@contextmanager
+def _owned_child_stream(iterator):
+    """子进程拥有流迭代器；清理完成后才允许发送传输结束消息。"""
+    try:
+        yield iterator
+    finally:
+        has_primary_error = sys.exc_info()[0] is not None
+        close = getattr(iterator, "close", None)
+        if callable(close):
+            try:
+                close()
+            except Exception:
+                # 保留生成/发送的原始异常；单独的清理失败交由 worker 错误通道报告。
+                if not has_primary_error:
+                    raise
+
+
 def _run_child_stream_phase(current, payload, request_id, result_queue, cancel_flag) -> None:
     payload.pop("cancel_check", None)
     cancel_generation = int(payload.pop("_cancel_generation", 0) or 0)
@@ -483,19 +545,20 @@ def _run_child_stream_phase(current, payload, request_id, result_queue, cancel_f
     audio_chunks = 0
     total_segments = None
     cancelled_by_generation = False
-    for item in current.synthesize_stream(**payload):
-        # 在每个 yield 的帧之间检查当前请求自己的取消代次。
-        # 旧 WebSocket 的迟到取消不会命中新请求，避免正常长文本被误截断。
-        if worker_cancelled():
-            cancelled_by_generation = True
-            break
-        if isinstance(item, dict):
-            item_type = str(item.get("type") or "")
-            if item_type == "started":
-                total_segments = item.get("segments")
-            audio_chunks += int(item_type == "audio")
-            saw_terminal_event |= item_type in {"done", "cancelled", "error", "segment_error"}
-        result_queue.put((request_id, "event", item))
+    with _owned_child_stream(current.synthesize_stream(**payload)) as iterator:
+        for item in iterator:
+            # 在每个 yield 的帧之间检查当前请求自己的取消代次。
+            # 旧 WebSocket 的迟到取消不会命中新请求，避免正常长文本被误截断。
+            if worker_cancelled():
+                cancelled_by_generation = True
+                break
+            if isinstance(item, dict):
+                item_type = str(item.get("type") or "")
+                if item_type == "started":
+                    total_segments = item.get("segments")
+                audio_chunks += int(item_type == "audio")
+                saw_terminal_event |= item_type in {"done", "cancelled", "error", "segment_error"}
+            result_queue.put((request_id, "event", item))
     if not saw_terminal_event and not cancelled_by_generation and not worker_cancelled():
         result_queue.put((
             request_id,
@@ -544,9 +607,27 @@ def _worker_main(config, spec: EngineWorkerSpec,
             try:
                 if engine is not None:
                     engine.unload()
-            finally:
-                result_queue.put((request_id, "result", {"ok": True}))
+            except BaseException as exc:
+                # 卸载失败不能确认成功；保留原异常，让进程退出状态仍反映失败。
+                try:
+                    result_queue.put((request_id, "error", _child_failure("engine_runtime_failed", exc)))
+                except Exception:
+                    # 结果队列失效时仍保留原始卸载异常。
+                    pass
+                raise
+            result_queue.put((request_id, "result", {"ok": True}))
             return
+        if command not in ("load", "metadata", "synthesize", "synthesize_array", "synthesize_stream", "get_voices"):
+            result_queue.put((
+                request_id,
+                "error",
+                WorkerFailureEnvelope(
+                    version=WORKER_FAILURE_ENVELOPE_VERSION,
+                    code="worker_protocol_failed",
+                    message=f"未知 {engine_id} worker 命令：{command}",
+                ),
+            ))
+            continue
         failure_code = _initial_worker_failure_code(engine)
         try:
             current = ensure_engine()
@@ -563,15 +644,6 @@ def _worker_main(config, spec: EngineWorkerSpec,
                 _run_child_stream_phase(current, payload, request_id, result_queue, cancel_flag)
             elif command == "get_voices":
                 result_queue.put((request_id, "result", current.get_voices()))
-            else:
-                result_queue.put((
-                    request_id,
-                    "error",
-                    WorkerFailureEnvelope(
-                        version=WORKER_FAILURE_ENVELOPE_VERSION,
-                        code="worker_protocol_failed",
-                        message=f"未知 {engine_id} worker 命令：{command}",
-                    ),
-                ))
+
         except BaseException as exc:  # noqa: BLE001
             result_queue.put((request_id, "error", _child_failure(failure_code, exc)))

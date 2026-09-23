@@ -12,6 +12,19 @@ from threading import Lock
 from kokoro_tts.moss_runtime.prompt import prompt_audio_cache_key
 
 
+def _save_prepared_audio(directory, prefix, waveform, sample_rate, torchaudio) -> Path:
+    """独占临时文件；写入成功后，将清理责任交给请求调用方。"""
+    with tempfile.NamedTemporaryFile(dir=directory, prefix=prefix, suffix=".wav", delete=False) as handle:
+        target = Path(handle.name)
+    try:
+        torchaudio.save(str(target), waveform.cpu(), sample_rate)
+    except BaseException:
+        with suppress(OSError):
+            target.unlink()
+        raise
+    return target
+
+
 def prepare_prompt_audio(
     prompt_audio_path: str | None,
     *,
@@ -61,8 +74,10 @@ def prepare_prompt_audio(
 
     temp_dir = Path(tempfile.gettempdir()) / "angevoice_moss_prompt"
     temp_dir.mkdir(parents=True, exist_ok=True)
-    target = temp_dir / f"{source.stem}_{hashlib.sha1(str(source).encode()).hexdigest()[:10]}_{int(float(max_seconds) * 1000)}ms.wav"
-    torchaudio.save(str(target), waveform.cpu(), target_sample_rate)
+    # 路径散列只用于可辨识的文件名前缀，不承担完整性校验或认证。
+    path_tag = hashlib.sha1(str(source).encode(), usedforsecurity=False).hexdigest()[:10]
+    prefix = f"{source.stem}_{path_tag}_{int(float(max_seconds) * 1000)}ms_"
+    target = _save_prepared_audio(temp_dir, prefix, waveform, target_sample_rate, torchaudio)
     return str(target), str(target)
 
 

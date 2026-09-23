@@ -1,18 +1,17 @@
-"""Lazy ZipVoice-Distill ONNX INT8 CPU runtime wrapper."""
+"""按需加载的 ZipVoice-Distill ONNX INT8 CPU 运行时。"""
 
 from __future__ import annotations
 
 import gc
 import json
 import logging
-import os
 import sys
 import time
 from pathlib import Path
 
 from ..audio import normalize_wav_to_pcm16_bytes
 from .assets import ZipVoiceAssetManager
-from .runtime_common import generation_metrics, generation_settings, prepare_reference, temporary_output
+from .runtime_common import generation_metrics, generation_settings, prepare_reference, temporary_output, upstream_path
 
 logger = logging.getLogger(__name__)
 
@@ -32,10 +31,7 @@ class ZipVoiceOnnxCpuRuntime:
         self.last_metrics: dict[str, float] = {}
 
     def _upstream_path(self) -> Path:
-        configured = getattr(self.cfg, "zipvoice_repo_path", None) or os.environ.get("ZIPVOICE_REPO_PATH")
-        if configured:
-            return Path(configured).expanduser()
-        return Path(__file__).resolve().parents[3] / "vendor" / "ZipVoice"
+        return upstream_path(self.cfg)
 
     def load(self):
         if self.loaded:
@@ -53,7 +49,7 @@ class ZipVoiceOnnxCpuRuntime:
         return self
 
     def _build_runtime(self):
-        """Build components locally; a failed attempt publishes no partial runtime."""
+        """先在局部变量中完成组件构造，失败时不发布半成品运行时。"""
         asset_status = self.assets.ensure()
         upstream_path = self._upstream_path()
         if not (upstream_path / "zipvoice").is_dir():

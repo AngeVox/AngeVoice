@@ -16,6 +16,65 @@ from kokoro_tts.workers.spec import EngineWorkerSpec
 pytestmark = pytest.mark.contract
 
 
+@pytest.mark.parametrize("mode", ["normal", "cancel", "iteration-error", "queue-error"])
+@pytest.mark.parametrize("close_fails", [False, True])
+def test_child_stream_closes_retained_iterator_before_transport_completion(mode, close_fails):
+    events = []
+    primary = ValueError("iteration failure") if mode == "iteration-error" else OSError("queue failure")
+    cleanup = RuntimeError("close failure")
+
+    class RetainedIterator:
+        sent = False
+        close_count = 0
+
+        def __iter__(self):
+            return self
+
+        def __next__(self):
+            if mode == "iteration-error":
+                raise primary
+            if self.sent:
+                raise StopIteration
+            self.sent = True
+            return {"type": "audio" if mode == "cancel" else "done"}
+
+        def close(self):
+            self.close_count += 1
+            events.append("close")
+            if close_fails:
+                raise cleanup
+
+    class Results:
+        def put(self, message):
+            if mode == "queue-error":
+                raise primary
+            events.append(message[1])
+
+    iterator = RetainedIterator()
+    engine = SimpleNamespace(synthesize_stream=lambda **kwargs: iterator)
+    flag = SimpleNamespace(value=1 if mode == "cancel" else 0)
+    expected = primary if mode.endswith("error") else cleanup if close_fails else None
+    if expected:
+        with pytest.raises(type(expected)) as caught:
+            process_worker._run_child_stream_phase(engine, {"_cancel_generation": 1}, "r", Results(), flag)
+        assert caught.value is expected
+    else:
+        process_worker._run_child_stream_phase(engine, {"_cancel_generation": 1}, "r", Results(), flag)
+        assert events[-2:] == ["close", "done"]
+    assert iterator.close_count == 1
+
+
+def test_unknown_command_is_rejected_without_constructing_an_engine(monkeypatch):
+    commands, results = queue.Queue(), queue.Queue()
+    commands.put(("unknown", "not-a-command", {}))
+    commands.put(("stop", "shutdown", {}))
+    monkeypatch.setattr(process_worker, "create_worker_engine", lambda *args: pytest.fail("unknown commands cannot load models"))
+    process_worker._worker_main(None, EngineWorkerSpec("contract", _unused_factory), commands, results, SimpleNamespace(value=0))
+    request_id, kind, error = results.get_nowait()
+    assert (request_id, kind, error.code) == ("unknown", "error", "worker_protocol_failed")
+    assert results.get_nowait() == ("stop", "result", {"ok": True})
+
+
 class _BaseEngine:
     def __init__(self) -> None:
         self.loaded = False
@@ -307,3 +366,57 @@ def test_stream_exception_uses_outer_runtime_envelope_without_queue_done(
     assert payload.code == "engine_runtime_failed"
     assert isinstance(payload.message, str) and "failure" in payload.message
     assert not any(item[1] == "done" for item in results)
+
+
+@pytest.mark.parametrize("failure", [RuntimeError("unload failed"), KeyboardInterrupt()])
+def test_shutdown_failure_never_sends_success_and_preserves_exit_error(monkeypatch, failure):
+    commands, results = queue.Queue(), queue.Queue()
+    commands.put(("load", "load", {}))
+    commands.put(("stop", "shutdown", {}))
+    calls = []
+
+    def unload():
+        calls.append("unload")
+        raise failure
+
+    engine = SimpleNamespace(load=lambda: None, metadata=lambda: {}, unload=unload)
+    monkeypatch.setattr(process_worker, "create_worker_engine", lambda *args: engine)
+    with pytest.raises(type(failure)) as caught:
+        process_worker._worker_main(None, EngineWorkerSpec("contract", _unused_factory), commands, results, SimpleNamespace(value=0))
+    assert caught.value is failure
+    assert calls == ["unload"]
+    assert results.get_nowait() == ("load", "result", {})
+    request_id, kind, envelope = results.get_nowait()
+    assert (request_id, kind) == ("stop", "error")
+    assert isinstance(envelope, WorkerFailureEnvelope)
+    assert envelope.code == "engine_runtime_failed"
+    assert results.empty()
+
+
+
+def test_shutdown_retains_unload_failure_when_error_queue_is_broken(monkeypatch):
+    commands = queue.Queue()
+    commands.put(("load", "load", {}))
+    commands.put(("stop", "shutdown", {}))
+    failure = RuntimeError("unload failed")
+
+    def unload():
+        raise failure
+
+    engine = SimpleNamespace(load=lambda: None, metadata=lambda: {}, unload=unload)
+    monkeypatch.setattr(process_worker, "create_worker_engine", lambda *args: engine)
+
+    class BrokenResults:
+        def __init__(self):
+            self.messages = []
+
+        def put(self, message):
+            if message[0] == "stop":
+                raise OSError("result queue unavailable")
+            self.messages.append(message)
+
+    results = BrokenResults()
+    with pytest.raises(RuntimeError) as caught:
+        process_worker._worker_main(None, EngineWorkerSpec("contract", _unused_factory), commands, results, SimpleNamespace(value=0))
+    assert caught.value is failure
+    assert results.messages == [("load", "result", {})]

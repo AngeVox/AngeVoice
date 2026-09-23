@@ -1,8 +1,8 @@
-# 新模型 Adapter 接入模板：不再堆公共特判
+# 新模型 Adapter 接入指南
 
-## 目标与硬规则
+## 接入边界
 
-新增一个支持预置音色、参考音频或保存 Profile 的模型时，应只新增 adapter/runtime/资产/provider/schema 注册及该模型专属测试；**不得再要求修改 `routes/audio.py`、`routes/ws.py` 或为 CPU/CUDA 新建用户可见模型名**。
+新增一个支持预置音色、参考音频或保存 Profile 的模型时，应只新增 adapter/runtime/资产/provider/schema 注册及该模型专属测试；**不得要求修改 `routes/audio.py`、`routes/ws.py` 或为 CPU/CUDA 新建用户可见模型名**。
 
 AngeVoice 已提供的通用入口：
 

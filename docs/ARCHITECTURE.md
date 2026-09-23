@@ -2,7 +2,7 @@
 
 本文档说明 AngeVoice v2.6 的模块化结构。v2.6 的目标不是改变模型能力，而是提升服务端可维护性、可测试性和后续扩展空间。
 
-接口字段、鉴权方式和调用示例集中维护在 [API 参考](API_REFERENCE.md)。当前未偿还问题、关闭条件和历史阶段映射统一维护在 [架构债务台账](ARCHITECTURE_DEBT.md)；阶段关闭仅代表其验收边界完成。
+接口字段、鉴权方式和调用示例集中维护在 [API 参考](API_REFERENCE.md)。当前未偿还问题、关闭条件和历史阶段映射统一维护在 [架构债务台账](ARCHITECTURE_DEBT.md)；条目关闭仅代表其声明的行为边界完成。
 
 > 统一 Voice Profile、流式协议、资源状态、Provider Policy 与动态参数 schema 的设计见本文及 [新增模型 Adapter 指南](NEW_MODEL_ADAPTER_GUIDE.md)。Kokoro、MOSS-TTS-Nano 与 ZipVoice 的推理实现通过 adapter 接入。
 
@@ -12,7 +12,7 @@
 - 保留 `kokoro_tts` import 包名，避免破坏旧脚本。
 - 新增 `angevoice` CLI，同时保留 `kokoro-tts` 兼容命令。
 - 将原本集中的 `server.py` 拆成状态、鉴权、数据模型和路由模块。
-- 批量、管理、MP3 等扩展继续通过 `service_extras.py` 注册。
+- 批量、管理资源与格式查询由 `service_extras.register_service_routes` 显式组装，旧注册入口保留兼容。
 - 内置 Studio Web UI 拆分为模板和静态资源，便于 Docker 热更新与包分发。
 - 中文文本规则独立放入 `zh_rules.py`，避免把分词/多音字逻辑散落在引擎内。
 - 通过 `engine_manager.py` 管理可选模型引擎，默认保持 Kokoro，MOSS-TTS-Nano 通过官方运行时适配。

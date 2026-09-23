@@ -24,9 +24,7 @@ pytestmark = pytest.mark.quality
 # functions may decrease, but must not exceed these values. No new unlisted
 # function may exceed MAX_NEW_FUNCTION_COMPLEXITY.
 COMPLEXITY_BASELINE = {
-    "kokoro_tts.admin_config.schema.load_runtime_config": 16,
     "kokoro_tts.routes.status_parts.models.model_capabilities": 16,
-    "kokoro_tts.routes.status_parts.models.model_catalog_snapshot": 19,
     "kokoro_tts.validation._looks_like_non_natural_text": 20,
     "kokoro_tts.workers.process_worker.EngineProcessClient.stream": 23,
     "kokoro_tts.zipvoice.engine.ZipVoiceEngine.synthesize_stream": 20,

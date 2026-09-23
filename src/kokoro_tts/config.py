@@ -15,7 +15,7 @@ from typing import Optional
 
 logger = logging.getLogger(__name__)
 
-from .admin_config_schema import load_runtime_config
+from .admin_config import load_runtime_config
 from .admin_bootstrap import validate_admin_bootstrap
 from .batch_config_metadata import BATCH_CONFIG_BY_KEY
 from .cache_config_metadata import CACHE_CONFIG_BY_KEY

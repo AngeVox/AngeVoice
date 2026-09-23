@@ -5,7 +5,6 @@ from __future__ import annotations
 import asyncio
 import logging
 import time
-from contextlib import suppress
 
 from .state import WsSessionState
 

@@ -5,7 +5,7 @@ ENV DEBIAN_FRONTEND=noninteractive
 WORKDIR /app
 
 # 安装 Python 3.10 + 系统依赖
-# ffmpeg 用于可选 MP3 转码；未开启 KOKORO_MP3_ENABLED 时不会影响默认路径
+# ffmpeg 用于可选 MP3 转码；建议配置 ANGEVOICE_FFMPEG_ENABLED，旧变量仍兼容
 # 使用 --no-install-recommends 减少依赖，并加重试逻辑应对网络抖动
 RUN for i in 1 2 3; do \
       apt-get update && break || sleep 5; \

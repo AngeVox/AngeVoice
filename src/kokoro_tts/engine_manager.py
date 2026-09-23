@@ -18,6 +18,7 @@ from .config import TTSConfig
 from .config_ids import moss_voice_catalog
 from .engines import EngineRegistry, EngineSpec
 from .engines.base import EngineAdapter
+from .zipvoice.runtime_common import upstream_path as zipvoice_upstream_path
 
 logger = logging.getLogger(__name__)
 
@@ -146,13 +147,12 @@ class EngineManager:
 
     @staticmethod
     def _unload_accepts_force(unload) -> bool:
-        """Return whether *unload* explicitly accepts the shutdown force keyword."""
+        """判断卸载方法是否接受 force 关键字参数。"""
 
         try:
             signature = inspect.signature(unload)
         except (TypeError, ValueError):
-            # An opaque callable is invoked once with the current contract. Its
-            # exceptions must not be interpreted as evidence of a legacy shape.
+            # 无法检查签名时按当前协议调用一次，不能用运行异常推断旧签名。
             return True
         try:
             signature.bind(force=False)
@@ -160,15 +160,19 @@ class EngineManager:
             return False
         return True
 
+    def _invoke_unload(self, unload, *, force: bool) -> None:
+        """调用前适配旧签名；运行中的异常不触发第二次卸载。"""
+        if self._unload_accepts_force(unload):
+            unload(force=force)
+        else:
+            unload()
+
     def _close_engine(self, model_id: str, engine, *, force: bool) -> bool:
         unload = getattr(engine, "unload", None)
         if not callable(unload):
             return True
         try:
-            if self._unload_accepts_force(unload):
-                unload(force=force)
-            else:
-                unload()
+            self._invoke_unload(unload, force=force)
             return True
         except Exception:
             logger.warning("应用关闭时模型释放失败：%s", model_id, exc_info=True)
@@ -271,11 +275,9 @@ class EngineManager:
             self._close_condition.notify_all()
 
     def close_all(self) -> bool:
-        """Drain active work and release every engine owned by this manager.
+        """等待活动请求退出并释放本管理器拥有的引擎。
 
-        Returns ``True`` only when no engine ownership remains. Failed engines
-        stay owned so a later idempotent call can retry their cleanup.
-        """
+        仅在所有引擎均已释放时返回 True；释放失败的实例仍由管理器持有，供后续重试。"""
 
         engines, active = self._begin_close_all()
         if not engines:
@@ -321,6 +323,37 @@ class EngineManager:
         with self._lock:
             spec = self._spec_for(self._current_model_id)
             return self._model_snapshot(spec, include_runtime_metadata=include_runtime_metadata)
+
+    def catalog_snapshot(self, model_id: str) -> dict[str, Any]:
+        """在生命周期锁内采集目录信息，不加载模型权重。"""
+        with self._lock:
+            target_id = self.normalize_model_id(model_id)
+            engine = self._engines.get(target_id)
+            try:
+                if target_id != self._current_model_id:
+                    engine = self.get_engine(target_id, load=False)
+                snapshot = self._model_snapshot(self._spec_for(target_id))
+            except HTTPException:
+                raise
+            except Exception:
+                snapshot = self._model_snapshot(self._spec_for(target_id), include_runtime_metadata=False)
+            snapshot["voices"] = self._catalog_voices(target_id, snapshot, engine)
+            return snapshot
+
+    def _catalog_voices(self, model_id, snapshot, engine) -> list[str]:
+        voices = snapshot.get("voices") or []
+        if not voices:
+            try:
+                if engine is None:
+                    engine = self.get_engine(model_id, load=False)
+                get_voices = getattr(engine, "get_voices", None)
+                if callable(get_voices):
+                    voices = get_voices()
+            except Exception:
+                voices = []
+        if not isinstance(voices, list):
+            voices = [str(voices)]
+        return [str(item) for item in voices]
 
     def switch_model(self, model_id: str, *, unload_previous: bool | None = None, load: bool = True) -> dict[str, Any]:
         resolution = self.resolve_model_id(model_id)
@@ -455,14 +488,14 @@ class EngineManager:
 
     @staticmethod
     def _needs_provider_replacement(target_id, engine, provider_hint) -> bool:
-        """Resolve only provider identity; the locked caller owns replacement."""
+        """只解析 provider 身份；实例替换由持锁的调用方负责。"""
         if engine is None or target_id != "moss" or not provider_hint:
             return False
         current = str(getattr(engine, "requested_provider", "") or "").strip().lower()
         return bool(current and current != provider_hint)
 
     def _load_engine(self, target_id, engine) -> None:
-        """Load under get_engine's existing lock, retaining the original error."""
+        """在 get_engine 已持有的锁内加载，并保留原始异常。"""
         try:
             engine.load()
         except Exception:
@@ -471,17 +504,12 @@ class EngineManager:
         self._touch_model(target_id)
 
     def _discard_failed_load(self, target_id, engine) -> None:
-        """Rollback a failed load under the same lock; do not mask its error."""
+        """在同一锁域清理加载失败的实例，不覆盖原始加载异常。"""
         self._active_counts[target_id] = 0
         unload = getattr(engine, "unload", None)
         if callable(unload):
             try:
-                unload(force=True)
-            except TypeError:
-                try:
-                    unload()
-                except Exception:
-                    logger.debug("加载失败后的模型清理失败：%s", target_id, exc_info=True)
+                self._invoke_unload(unload, force=True)
             except Exception:
                 logger.debug("加载失败后的模型清理失败：%s", target_id, exc_info=True)
         self._engines.pop(target_id, None)
@@ -514,13 +542,7 @@ class EngineManager:
             unload = getattr(engine, "unload", None)
             if callable(unload):
                 try:
-                    unload(force=force)
-                except TypeError:
-                    try:
-                        unload()
-                    except Exception:
-                        logger.warning("模型卸载失败：%s", target_id, exc_info=True)
-                        return False
+                    self._invoke_unload(unload, force=force)
                 except Exception:
                     logger.warning("模型卸载失败：%s", target_id, exc_info=True)
                     return False
@@ -529,12 +551,10 @@ class EngineManager:
             return True
 
     def cancel_model_request(self, model_id: str | None, *, force: bool = False) -> dict[str, Any]:
-        """Signal the runtime handling a cancelled request.
+        """将请求取消信号传递给对应运行时。
 
-        ServiceState owns request lifecycle state; this method only bridges that
-        cancellation into the model runtime so process-isolated workers can stop
-        promptly instead of holding the request lock until a long synth finishes.
-        """
+        请求生命周期由 ServiceState 管理；此处只负责通知引擎，使隔离 worker 能及时停止，
+        避免长时间合成持续占用请求锁。"""
 
         target_id = self.normalize_model_id(model_id)
         with self._lock:
@@ -590,14 +610,7 @@ class EngineManager:
             unload = getattr(engine, "unload", None)
             if callable(unload):
                 try:
-                    unload(force=force)
-                except TypeError:
-                    try:
-                        unload()
-                    except Exception:
-                        logger.warning("模型重建前卸载失败：%s", target_id, exc_info=True)
-                        self._pending_rebuild.add(target_id)
-                        return False
+                    self._invoke_unload(unload, force=force)
                 except Exception:
                     logger.warning("模型重建前卸载失败：%s", target_id, exc_info=True)
                     self._pending_rebuild.add(target_id)
@@ -740,11 +753,8 @@ class EngineManager:
         if spec.id == "kokoro":
             return True
         if spec.id == "zipvoice":
-            repo_path = getattr(self.cfg, "zipvoice_repo_path", None)
-            if repo_path and (Path(repo_path).expanduser() / "zipvoice").is_dir():
-                return True
-            bundled = Path(__file__).resolve().parents[3] / "vendor" / "ZipVoice" / "zipvoice"
-            return bundled.is_dir() or bool(getattr(self.cfg, "zipvoice_download_enabled", True))
+            runtime_path = zipvoice_upstream_path(self.cfg) / "zipvoice"
+            return runtime_path.is_dir() or bool(getattr(self.cfg, "zipvoice_download_enabled", True))
         if spec.id == "moss" and spec.provider == "cuda" and not self.cfg.moss_cuda_enabled:
             return False
         if spec.backend != "moss-tts-nano-onnx":

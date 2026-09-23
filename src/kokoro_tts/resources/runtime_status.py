@@ -43,7 +43,7 @@ class RuntimeResourceService:
         stats = self.state.snapshot_stats()
         active_statuses = {"queued", "running", "streaming", "loading", "processing", "cancelling"}
         active = [
-            value for value in self.state.active_requests.values()
+            value for value in self.state.request_snapshot()
             if str(value.get("status", "")).lower() in active_statuses
         ]
         return RuntimeResourceStatus(

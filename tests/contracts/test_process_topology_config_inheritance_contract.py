@@ -843,6 +843,67 @@ class TestMossProcessCompatibilityFacade:
 
 
 class TestEngineChildLifecycleOwnership:
+    @pytest.mark.parametrize(
+        ("reply", "exitcode", "expected_reason"),
+        [
+            (("result", {"ok": True}), 0, ""),
+            (("error", "secret=unload-token"), 1, "engine_runtime_failed"),
+            (("error", object()), 1, "worker_protocol_failed"),
+            (("result", {"ok": False}), 0, "worker_protocol_failed"),
+            (("result", {"ok": True}), 1, "worker_process_failed"),
+            (None, 0, "worker_protocol_failed"),
+        ],
+    )
+    def test_graceful_close_records_only_its_shutdown_outcome(
+        self, monkeypatch, tmp_path, reply, exitcode, expected_reason
+    ):
+        context = _FakeMultiprocessingContext()
+        monkeypatch.setattr(process_worker.mp, "get_context", lambda _method: context)
+        client = process_worker.EngineProcessClient(
+            config=_synthetic_config(tmp_path), spec=_contract_worker_spec()
+        )
+
+        class ResultQueue(_FakeQueue):
+            def get_nowait(self):
+                self.events.append((self.label, "get_nowait"))
+                if self.items:
+                    return self.items.pop(0)
+                raise queue.Empty
+
+        results = ResultQueue()
+
+        class CommandQueue(_FakeQueue):
+            def put_nowait(self, item):
+                super().put_nowait(item)
+                results.items.append(("old-request", "error", "secret=old-token"))
+                if reply is not None:
+                    results.items.append((item[0], reply[0], reply[1]))
+
+        class ExitingProcess(_FakeProcess):
+            def join(self, *, timeout):
+                super().join(timeout=timeout)
+                self.killed = True
+
+        process = ExitingProcess()
+        process.started = True
+        process.exitcode = exitcode
+        client._process = process
+        client._command_queue = CommandQueue()
+        client._result_queue = results
+        client._loaded = True
+        client._last_exit_reason = "old failure"
+
+        client.close()
+
+        assert client._process is None
+        if expected_reason:
+            assert expected_reason in client.last_exit_reason
+            assert f"退出码：{exitcode}" in client.last_exit_reason
+        else:
+            assert client.last_exit_reason == ""
+        assert "secret=" not in client.last_exit_reason
+        assert results.items == []
+
     def test_explicit_close_owns_shutdown_terminate_kill_and_queue_cleanup(
         self, monkeypatch, tmp_path
     ):
@@ -889,6 +950,7 @@ class TestEngineChildLifecycleOwnership:
         assert client._command_queue is None
         assert client._result_queue is None
         assert client._loaded is False
+        assert "worker_process_failed" in client.last_exit_reason
 
     def test_timeout_and_dead_child_health_are_owned_by_process_client(
         self, monkeypatch, tmp_path

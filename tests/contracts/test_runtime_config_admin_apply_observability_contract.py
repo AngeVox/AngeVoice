@@ -8,10 +8,10 @@ Contract classifications:
 
 * load order, envelope, atomic replace, merge, and current-worker dispatch:
   BEHAVIOR/OWNERSHIP CONTRACT;
-* fcntl and concrete Admin/request owners: STATIC/BEHAVIOR CONTRACT;
+* platform file locks and concrete Admin/request owners: STATIC/BEHAVIOR CONTRACT;
 * persistence-first current-worker mutation: BEHAVIOR/OWNERSHIP CONTRACT;
-* Windows process-local locking, stale workers, missing convergence
-  observability, and UI wording: CURRENT-BEHAVIOR CHARACTERIZATION
+* stale workers, missing convergence observability, and UI wording:
+  CURRENT-BEHAVIOR CHARACTERIZATION
   (not design endorsement).
 """
 
@@ -427,15 +427,29 @@ class TestRuntimeConfigLockOwnership:
             "cache_max_items": 12,
         }
 
-    def test_fcntl_unavailable_leaves_only_process_local_rlock(
+    def test_fcntl_unavailable_uses_platform_file_lock_inside_process_lock(
         self, monkeypatch, tmp_path
     ):
-        """CURRENT-BEHAVIOR CHARACTERIZATION, not a cross-process guarantee."""
+        """锁域合同：Windows 分支仍在 RLock 内持有跨进程文件锁。"""
 
         monkeypatch.setattr(admin_schema, "fcntl", None)
         path = tmp_path / "runtime-config.json"
+        events = []
+
+        class RecordingLock:
+            def __init__(self, lock_path):
+                assert Path(lock_path) == path.with_suffix(".json.lock")
+
+            def __enter__(self):
+                events.append("acquire")
+
+            def __exit__(self, *_):
+                events.append("release")
+
+        monkeypatch.setattr(admin_schema, "FileLock", RecordingLock)
         with admin_schema._runtime_config_file_lock(path):
-            assert path.with_suffix(".json.lock").exists()
+            events.append("body")
+        assert events == ["acquire", "body", "release"]
 
         tree = _module_tree("admin_config/schema.py")
         assignment = next(
