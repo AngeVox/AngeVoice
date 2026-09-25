@@ -451,7 +451,8 @@ class EngineManager:
                 continue
             if self._active_count(model_id) > 0:
                 raise HTTPException(status_code=409, detail=f"Model {model_id} is busy; cannot wake {target_id} yet")
-            self.unload_model(model_id, force=False, raise_if_busy=False)
+            if not self.unload_model(model_id, force=False, raise_if_busy=False):
+                raise HTTPException(status_code=503, detail=f"Model {model_id} could not be released; cannot wake {target_id} yet")
 
     def get_engine(self, model_id: str | None = None, *, load: bool = True, provider_hint: str | None = None):
         resolution = self.resolve_model_id(model_id)

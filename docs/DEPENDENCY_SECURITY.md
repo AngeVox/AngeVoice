@@ -49,3 +49,5 @@ GPU 使用 `12.4.1-cudnn-runtime-ubuntu22.04` 基础镜像。Transformers 5.11.0
 
 
 2026-09-23 针对本地未提交候选，分别在上述标准 GPU 与 legacy-gpu 依赖镜像中挂载当前源码，使用复制模型资产、禁网与真实隔离 worker，在 Tesla P4 上验证 ZipVoice 收到首个 WS 音频片段后发送取消，两套画像均收到 `cancelled`，随后 HTTP 请求均生成有效 WAV。标准画像 Torch 2.6.0+cu124，legacy 为 2.6.0+cu118。此结果验证的是“既有镜像依赖 + 当前挂载源码”组合，不是重新构建后的完整发行镜像，也不覆盖外部 TCP/代理、持续压力或听感。独立探针和结果见仓库外 `angevoice-repository-audit` 证据包。
+
+2026-09-25 在独立局域网端口上，Tesla P4 的 Kokoro 服务通过了带 API Key 的 HTTP WAV 与 WebSocket 音频请求；无密钥 HTTP 返回 401，错误 WebSocket 密钥被拒绝。相同请求经一次性反向代理转发后也通过，实际 provider 为 CUDA、未回退 CPU。验证使用既有标准 GPU 依赖镜像挂载本轮候选源码和只读模型资产，未替换运行中的服务。代理为受控测试实现，不代表正式部署的代理或 TLS 配置；当前 Dockerfile 的完整 GPU 镜像重建仍需在稳定的包仓库连接下完成。

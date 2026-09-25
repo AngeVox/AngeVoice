@@ -80,6 +80,74 @@ def test_manager_provider_replacement_preserves_busy_and_load_false(active, load
         manager.stop_idle_timer()
 
 
+def test_manager_does_not_wake_new_model_when_old_model_unload_fails():
+    from fastapi import HTTPException
+
+    manager = EngineManager(TTSConfig(model_idle_timeout_seconds=0, enabled_models=["kokoro", "moss"]))
+    old = MagicMock(is_loaded=True, is_healthy=True)
+    fresh = MagicMock(is_loaded=False, is_healthy=True)
+    failures = [True]
+
+    def unload_old(*, force=False):
+        if failures and failures.pop(0):
+            raise RuntimeError("synthetic CUDA release failure")
+        old.is_loaded = False
+
+    old.unload.side_effect = unload_old
+    fresh.load.side_effect = lambda: setattr(fresh, "is_loaded", True)
+    manager._engines["kokoro"] = old
+    manager._create_engine = MagicMock(return_value=fresh)
+    try:
+        with pytest.raises(HTTPException) as caught:
+            manager.get_engine("moss")
+        assert caught.value.status_code == 503
+        assert "synthetic CUDA release failure" not in caught.value.detail
+        assert manager._engines == {"kokoro": old}
+        manager._create_engine.assert_not_called()
+
+        assert manager.get_engine("moss") is fresh
+        assert old.is_loaded is False
+        assert fresh.is_loaded is True
+        assert old.unload.call_count == 2
+    finally:
+        manager.stop_idle_timer()
+
+
+def test_manager_switch_keeps_selected_model_when_release_fails():
+    from fastapi import HTTPException
+
+    manager = EngineManager(TTSConfig(model_idle_timeout_seconds=0, enabled_models=["kokoro", "moss"]))
+    old = MagicMock(is_loaded=True, is_healthy=True)
+    fresh = MagicMock(is_loaded=False, is_healthy=True)
+    release_allowed = False
+
+    def unload_old(*, force=False):
+        if not release_allowed:
+            raise RuntimeError("synthetic CUDA release failure")
+        old.is_loaded = False
+
+    old.unload.side_effect = unload_old
+    fresh.load.side_effect = lambda: setattr(fresh, "is_loaded", True)
+    manager._engines["kokoro"] = old
+    manager._create_engine = MagicMock(return_value=fresh)
+    try:
+        with pytest.raises(HTTPException) as caught:
+            manager.switch_model("moss")
+        assert caught.value.status_code == 503
+        assert manager.current_model_id == "kokoro"
+        assert manager._engines == {"kokoro": old}
+        manager._create_engine.assert_not_called()
+
+        release_allowed = True
+        result = manager.switch_model("moss")
+        assert result["current_model"] == "moss"
+        assert manager.current_model_id == "moss"
+        assert old.is_loaded is False
+        assert fresh.is_loaded is True
+    finally:
+        manager.stop_idle_timer()
+
+
 @pytest.mark.parametrize("method", ["unload_model", "drop_model"])
 @pytest.mark.parametrize("legacy", [False, True])
 @pytest.mark.parametrize("fails", [False, True])
